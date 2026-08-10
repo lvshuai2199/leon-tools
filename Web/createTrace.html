@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>机器人轨迹分析工具</title>
+    <!-- 引入 Plotly.js 用于绘图 -->
+    <script src="https://cdn.plot.ly/plotly-2.24.1.min.js"></script>
+    <!-- 引入 PapaParse 用于高效解析 CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f5f7f9; margin: 0; padding: 20px; }
+        .container { max-width: 1200px; margin: 0 auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; font-size: 24px; margin-bottom: 20px; border-left: 5px solid #3498db; padding-left: 15px; }
+        .input-section { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 20px; }
+        .card { border: 1px solid #e1e4e8; padding: 15px; border-radius: 8px; }
+        label { display: block; margin-bottom: 8px; font-weight: bold; color: #34495e; }
+        textarea { width: 100%; height: 150px; border: 1px solid #ddd; border-radius: 4px; padding: 10px; box-sizing: border-box; resize: vertical; font-family: monospace; }
+        .file-upload { margin-top: 10px; }
+        button { background-color: #3498db; color: white; border: none; padding: 10px 25px; border-radius: 5px; cursor: pointer; font-size: 16px; transition: background 0.3s; width: 100%; margin-top: 10px; }
+        button:hover { background-color: #2980b9; }
+        #charts-container { display: grid; grid-template-columns: 1fr; gap: 20px; margin-top: 30px; }
+        .chart-box { height: 600px; border: 1px solid #eee; border-radius: 8px; }
+        .status { margin-top: 10px; padding: 10px; border-radius: 4px; display: none; }
+        .success { background: #d4edda; color: #155724; display: block; }
+        .error { background: #f8d7da; color: #721c24; display: block; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>机器人轨迹交互式分析工具</h1>
+
+    <div class="input-section">
+        <!-- 方式一：粘贴脚本 -->
+        <div class="card">
+            <label>方式一：粘贴脚本内容-Elite (movep 格式)</label>
+            <textarea id="scriptInput" placeholder="在此粘贴包含 movep(full_apply_touch_offset([...])) 的脚本内容..."></textarea>
+            <button onclick="processScript()">解析并生成图表</button>
+        </div>
+
+        <!-- 方式二：导入文件 -->
+        <div class="card">
+            <label>方式二：导入文件 (CSV 或 TXT)</label>
+            <div class="file-upload">
+                <input type="file" id="fileInput" accept=".csv,.txt">
+                <p style="font-size: 12px; color: #666; margin-top: 10px;">
+                    支持脚本文件或标准CSV(前三列为X,Y,Z)。
+                </p>
+            </div>
+            <button onclick="processFile()" style="background-color: #27ae60;">读取文件并生成图表</button>
+        </div>
+    </div>
+
+    <div id="statusMsg" class="status"></div>
+
+    <div id="charts-container">
+        <div id="chart2D" class="chart-box"></div>
+        <div id="chart3D" class="chart-box"></div>
+    </div>
+</div>
+
+<script>
+    // 通用解析逻辑：从文本中提取坐标
+    function parseTrajectoryData(text) {
+        let trajectory = [];
+        
+        // 尝试正则匹配脚本格式
+        const pattern = /movep\s*\(full_apply_touch_offset\s*\(\[(.*?)\]\)/g;
+        let match;
+        while ((match = pattern.exec(text)) !== null) {
+            const coords = match[1].split(',').map(n => parseFloat(n.trim()));
+            if (coords.length >= 3) {
+                trajectory.push({x: coords[0], y: coords[1], z: coords[2]});
+            }
+        }
+
+        // 如果正则没匹配到，尝试当作纯 CSV 处理
+        if (trajectory.length === 0) {
+            const results = Papa.parse(text.trim(), { dynamicTyping: true, skipEmptyLines: true });
+            results.data.forEach(row => {
+                if (row.length >= 3 && typeof row[0] === 'number') {
+                    trajectory.push({x: row[0], y: row[1], z: row[2]});
+                }
+            });
+        }
+
+        return trajectory;
+    }
+
+    // 绘图核心函数
+    function drawCharts(data) {
+        if (data.length === 0) {
+            showStatus("未能解析到有效坐标数据，请检查格式。", "error");
+            return;
+        }
+
+        const x = data.map(d => d.x);
+        const y = data.map(d => d.y);
+        const z = data.map(d => d.z);
+        const indices = data.map((_, i) => i);
+
+        showStatus(`成功解析 ${data.length} 个点位`, "success");
+
+        // --- 2D XY 轨迹图 ---
+        const trace2D = {
+            x: x, y: y,
+            mode: 'lines+markers',
+            marker: { size: 4, color: indices, colorscale: 'Viridis', showscale: true },
+            line: { width: 1, color: '#888' },
+            type: 'scatter',
+            hovertemplate: 'Index: %{text}<br>X: %{x}<br>Y: %{y}<extra></extra>',
+            text: indices
+        };
+
+        const layout2D = {
+            title: 'XY 平面投影 (等比例分析)',
+            xaxis: { title: 'X (m)', scaleanchor: 'y', scaleratio: 1 },
+            yaxis: { title: 'Y (m)' },
+            hovermode: 'closest'
+        };
+
+        Plotly.newPlot('chart2D', [trace2D], layout2D);
+
+        // --- 3D 空间轨迹图 ---
+        const trace3D = {
+            x: x, y: y, z: z,
+            mode: 'lines+markers',
+            marker: { size: 2, color: indices, colorscale: 'Viridis' },
+            line: { width: 2, color: '#3498db' },
+            type: 'scatter3d',
+            hovertemplate: 'X: %{x}<br>Y: %{y}<br>Z: %{z}<extra></extra>'
+        };
+
+        const layout3D = {
+            title: '空间 3D 轨迹',
+            scene: {
+                xaxis: { title: 'X' },
+                yaxis: { title: 'Y' },
+                zaxis: { title: 'Z' },
+                aspectmode: 'data'
+            }
+        };
+
+        Plotly.newPlot('chart3D', [trace3D], layout3D);
+    }
+
+    // 处理粘贴的脚本
+    function processScript() {
+        const text = document.getElementById('scriptInput').value;
+        const data = parseTrajectoryData(text);
+        drawCharts(data);
+    }
+
+    // 处理文件导入
+    function processFile() {
+        const fileInput = document.getElementById('fileInput');
+        if (!fileInput.files[0]) {
+            showStatus("请先选择一个文件。", "error");
+            return;
+        }
+
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const data = parseTrajectoryData(e.target.result);
+            drawCharts(data);
+        };
+        reader.readAsText(file);
+    }
+
+    function showStatus(msg, type) {
+        const div = document.getElementById('statusMsg');
+        div.innerText = msg;
+        div.className = 'status ' + type;
+    }
+</script>
+
+</body>
+</html>
