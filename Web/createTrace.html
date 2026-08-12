@@ -69,6 +69,9 @@
                 <label class="checkbox-item" style="border-left: 2px solid #ddd; padding-left: 15px; color: #e67e22;">
                     <input type="checkbox" id="showMarkers" onchange="refreshView()"> 显示基准标记点 (Frame)
                 </label>
+                <label class="checkbox-item" style="border-left: 2px solid #ddd; padding-left: 15px; color: #e74c3c;">
+                    <input type="checkbox" id="showArrows" onchange="refreshView()"> 显示姿态箭头 (Orientation)
+                </label>
                 <div id="statusMsg" class="status" style="margin:0; margin-left:auto;"></div>
             </div>
 
@@ -92,6 +95,7 @@
 
                 <div style="margin-top:20px; font-size:12px; color:#666; background:#f1f3f5; padding:12px; border-radius:6px; line-height:1.6;">
                     <strong>操作技巧：</strong><br>
+                    • 红色箭头代表工具 Z 轴方向（姿态）。<br>
                     • 橙色虚线代表 <code>movej</code> 关节接近移动。<br>
                     • 绿色圆点代表焊接路径 <code>movep/movel/movec</code>。<br>
                     • 红色菱形代表 <code>full_tracking_frame</code> 基准。<br>
@@ -106,62 +110,69 @@
     let globalData = { main: [], markers: [] };
     let lastSelectedValue = "";
 
-    // ===== 核心：统一解析所有运动指令的轨迹点 =====
+    // ===== 核心：统一解析所有运动指令的轨迹点（含姿态 rx,ry,rz） =====
     function parseTrajectoryData(text) {
         let data = { main: [], markers: [] };
 
-        // 匹配包含 full_apply_touch_offset([...]) 的所有运动指令
+        // 匹配包含 full_apply_touch_offset([x,y,z,rx,ry,rz]) 的所有运动指令（6 值）
         // movej 通常包裹在 get_inverse_kin() 中，作为接近点
         // movel / movep 是线性/工艺焊道移动
         // movec 是圆弧移动，有两个位姿数组(途经点+终点)
         // 注意：{0,500}? 限制搜索范围，防止跨函数匹配（如 movel(touch_sense_offset(...)) 不含 full_apply_touch_offset）
-        const motionReg = /(movej|movel|movep|movec)\s*\([\s\S]{0,500}?full_apply_touch_offset\s*\(\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
+        const motionReg = /(movej|movel|movep|movec)\s*\([\s\S]{0,500}?full_apply_touch_offset\s*\(\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
 
-        // 匹配 full_tracking_frame 赋值（只取非零的）
-        const markerReg = /full_tracking_frame\s*=\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
+        // 匹配 full_tracking_frame 赋值（6 值，但只显示非零的）
+        const markerReg = /full_tracking_frame\s*=\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
 
         // 第一遍：解析所有运动指令（movec 只取第一个数组作为途经点）
-        let m, lastIndex = 0;
+        let m;
         while ((m = motionReg.exec(text)) !== null) {
             let type = m[1];
             let pt = {
-                x: parseFloat(m[2]),
-                y: parseFloat(m[3]),
-                z: parseFloat(m[4]),
+                x:  parseFloat(m[2]),
+                y:  parseFloat(m[3]),
+                z:  parseFloat(m[4]),
+                rx: parseFloat(m[5]),
+                ry: parseFloat(m[6]),
+                rz: parseFloat(m[7]),
                 type: type
             };
             data.main.push(pt);
-            lastIndex = motionReg.lastIndex;
         }
 
-        // 第二遍：单独解析 movec 的第二个数组（终点位姿）
-        const movecEndReg = /movec\s*\([\s\S]{0,500}?full_apply_touch_offset\s*\(\s*\[[^\]]+\]\s*\)[\s\S]{0,200}?full_apply_touch_offset\s*\(\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
+        // 第二遍：单独解析 movec 的第二个数组（终点位姿，6 值）
+        const movecEndReg = /movec\s*\([\s\S]{0,500}?full_apply_touch_offset\s*\(\s*\[[^\]]+\]\s*\)[\s\S]{0,200}?full_apply_touch_offset\s*\(\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
         while ((m = movecEndReg.exec(text)) !== null) {
-            // 将 movec 终点追加到主数组（标记为 movec_end）
             data.main.push({
-                x: parseFloat(m[1]),
-                y: parseFloat(m[2]),
-                z: parseFloat(m[3]),
+                x:  parseFloat(m[1]),
+                y:  parseFloat(m[2]),
+                z:  parseFloat(m[3]),
+                rx: parseFloat(m[4]),
+                ry: parseFloat(m[5]),
+                rz: parseFloat(m[6]),
                 type: 'movec_end'
             });
         }
 
         // 解析 full_tracking_frame 基准标记点（跳过全零初始化值）
         while ((m = markerReg.exec(text)) !== null) {
-            let x = parseFloat(m[1]),
-                y = parseFloat(m[2]),
-                z = parseFloat(m[3]);
+            let x = parseFloat(m[1]), y = parseFloat(m[2]), z = parseFloat(m[3]),
+                rx = parseFloat(m[4]), ry = parseFloat(m[5]), rz = parseFloat(m[6]);
             // 跳过全零的初始化占位
-            if (x === 0 && y === 0 && z === 0) continue;
-            data.markers.push({ x: x, y: y, z: z });
+            if (x === 0 && y === 0 && z === 0 && rx === 0 && ry === 0 && rz === 0) continue;
+            data.markers.push({ x, y, z, rx, ry, rz });
         }
 
-        // 兜底：CSV 格式，3 列数值
+        // 兜底：CSV 格式（至少 3 列数值，可选 6 列含姿态）
         if (data.main.length === 0 && data.markers.length === 0) {
             const csv = Papa.parse(text.trim(), { dynamicTyping: true, skipEmptyLines: true });
             csv.data.forEach(row => {
                 if (row.length >= 3 && typeof row[0] === 'number') {
-                    data.main.push({x: row[0], y: row[1], z: row[2], type: 'csv'});
+                    data.main.push({
+                        x: row[0], y: row[1], z: row[2],
+                        rx: row[3] || 0, ry: row[4] || 0, rz: row[5] || 0,
+                        type: 'csv'
+                    });
                 }
             });
         }
@@ -198,6 +209,30 @@
         return preparePath(filtered);
     }
 
+    // ===== 姿态工具：Euler 角 (Rx,Ry,Rz) → 工具 Z 轴方向向量 =====
+    // 旋转顺序：RotZ(rz) * RotY(ry) * RotX(rx)，提取 Z 轴 [0,0,1] 旋转后的方向
+    function eulerToToolZ(rx, ry, rz) {
+        let crx = Math.cos(rx), srx = Math.sin(rx);
+        let cry = Math.cos(ry), sry = Math.sin(ry);
+        let crz = Math.cos(rz), srz = Math.sin(rz);
+        // Z 轴方向 [0,0,1] 经 Rx → Ry → Rz 旋转后的结果
+        return {
+            u: crz * sry * crx + srz * srx,
+            v: srz * sry * crx - crz * srx,
+            w: cry * crx
+        };
+    }
+
+    // 计算轨迹包围盒对角线长度，用于自动缩放箭头
+    function computeSpan(points) {
+        if (!points || points.length === 0) return 0.1;
+        let xs = points.map(p => p.x), ys = points.map(p => p.y), zs = points.map(p => p.z);
+        let dx = Math.max(...xs) - Math.min(...xs);
+        let dy = Math.max(...ys) - Math.min(...ys);
+        let dz = Math.max(...zs) - Math.min(...zs);
+        return Math.sqrt(dx*dx + dy*dy + dz*dz) || 0.1;
+    }
+
     // ===== 绘图 =====
     function drawCharts(data) {
         if (data.main.length === 0 && data.markers.length === 0) {
@@ -208,6 +243,7 @@
         const showLine   = document.getElementById('showLine').checked;
         const showPoints = document.getElementById('showPoints').checked;
         const showMarkers= document.getElementById('showMarkers').checked;
+        const showArrows = document.getElementById('showArrows').checked;
 
         let mode = 'none';
         if (showLine && showPoints) mode = 'lines+markers';
@@ -295,6 +331,56 @@
             traces2D.push({
                 x: mX, y: mY, name: '基准标记点 (frame)', mode: 'markers', type: 'scatter',
                 marker: { color: '#e74c3c', size: 10, symbol: 'diamond' }
+            });
+        }
+
+        // --- 姿态箭头（工具 Z 轴方向） ---
+        if (showArrows && data.main.length > 0) {
+            let span = computeSpan(data.main);
+            let arrowLen = span * 0.06;   // 箭头长度 = 包围盒对角线的 6%
+
+            // 每隔 N 个点采样，避免过于密集
+            let step = Math.max(1, Math.floor(data.main.length / 80));
+            let arrowPts = [];
+            for (let i = 0; i < data.main.length; i += step) {
+                let p = data.main[i];
+                let dir = eulerToToolZ(p.rx || 0, p.ry || 0, p.rz || 0);
+                arrowPts.push({
+                    x: p.x, y: p.y, z: p.z,
+                    u: dir.u, v: dir.v, w: dir.w
+                });
+            }
+
+            // 用 scatter3d + 小线段画箭头（比 cone trace 更可控）
+            let arrowX = [], arrowY = [], arrowZ = [];
+            for (let a of arrowPts) {
+                let tipX = a.x + a.u * arrowLen;
+                let tipY = a.y + a.v * arrowLen;
+                let tipZ = a.z + a.w * arrowLen;
+                // 箭杆（从点位到尖端）
+                arrowX.push(a.x, tipX, null);
+                arrowY.push(a.y, tipY, null);
+                arrowZ.push(a.z, tipZ, null);
+            }
+
+            traces3D.push({
+                x: arrowX, y: arrowY, z: arrowZ,
+                name: '姿态箭头 (Tool Z)', mode: 'lines', type: 'scatter3d',
+                line: { color: '#e74c3c', width: 2 },
+                hoverinfo: 'skip',
+                showlegend: true
+            });
+
+            // 箭头尖端小点
+            let tipX = arrowPts.map(a => a.x + a.u * arrowLen);
+            let tipY = arrowPts.map(a => a.y + a.v * arrowLen);
+            let tipZ = arrowPts.map(a => a.z + a.w * arrowLen);
+            traces3D.push({
+                x: tipX, y: tipY, z: tipZ,
+                name: '箭头尖端', mode: 'markers', type: 'scatter3d',
+                marker: { color: '#c0392b', size: 3, symbol: 'triangle-up' },
+                hoverinfo: 'skip',
+                showlegend: false
             });
         }
 
