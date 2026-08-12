@@ -45,7 +45,7 @@
             <div class="card">
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
                     <div>
-                        <label>粘贴脚本内容 (movep)</label>
+                        <label>粘贴 EliScript 脚本内容 (movej/movel/movep/movec)</label>
                         <textarea id="scriptInput" placeholder="在此粘贴 Elite/A9 脚本内容..."></textarea>
                         <button onclick="processScript()">解析文本</button>
                     </div>
@@ -53,7 +53,7 @@
                         <label>导入文件</label>
                         <input type="file" id="fileInput" accept=".csv,.txt,.jbi,.eli" style="margin-bottom:10px; font-size:12px;">
                         <button onclick="processFile()" style="background-color:#27ae60;">读取外部文件</button>
-                        <div class="hint">注：Z轴突变 > 2mm 处会自动断开连线</div>
+                        <div class="hint">支持 movej/movel/movep/movec，Z 突变 > 5mm 自动断开连线</div>
                     </div>
                 </div>
             </div>
@@ -92,8 +92,9 @@
 
                 <div style="margin-top:20px; font-size:12px; color:#666; background:#f1f3f5; padding:12px; border-radius:6px; line-height:1.6;">
                     <strong>操作技巧：</strong><br>
-                    • 勾选“显示轨迹点位”更容易精准点击。<br>
-                    • 橙色菱形代表 <code>full_tracking_frame</code> 基准。<br>
+                    • 橙色虚线代表 <code>movej</code> 关节接近移动。<br>
+                    • 绿色圆点代表焊接路径 <code>movep/movel/movec</code>。<br>
+                    • 红色菱形代表 <code>full_tracking_frame</code> 基准。<br>
                     • 连线断开处表示机器人发生了大幅度抬升。
                 </div>
             </div>
@@ -105,123 +106,246 @@
     let globalData = { main: [], markers: [] };
     let lastSelectedValue = "";
 
+    // ===== 核心：统一解析所有运动指令的轨迹点 =====
     function parseTrajectoryData(text) {
         let data = { main: [], markers: [] };
-        const markerReg = /full_tracking_frame\s*=\s*\[\s*(-?\d+\.?\d*[Ee]?-?\d*)\s*,\s*(-?\d+\.?\d*[Ee]?-?\d*)\s*,\s*(-?\d+\.?\d*[Ee]?-?\d*)/g;
-        const movepReg = /movep\s*\(full_apply_touch_offset\s*\(\[\s*(-?\d+\.?\d*[Ee]?-?\d*)\s*,\s*(-?\d+\.?\d*[Ee]?-?\d*)\s*,\s*(-?\d+\.?\d*[Ee]?-?\d*)/g;
-        
-        let m;
-        while ((m = markerReg.exec(text)) !== null) data.markers.push({x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3])});
-        while ((m = movepReg.exec(text)) !== null) data.main.push({x: parseFloat(m[1]), y: parseFloat(m[2]), z: parseFloat(m[3])});
 
+        // 匹配包含 full_apply_touch_offset([...]) 的所有运动指令
+        // movej 通常包裹在 get_inverse_kin() 中，作为接近点
+        // movel / movep 是线性/工艺焊道移动
+        // movec 是圆弧移动，有两个位姿数组(途经点+终点)
+        // 注意：{0,500}? 限制搜索范围，防止跨函数匹配（如 movel(touch_sense_offset(...)) 不含 full_apply_touch_offset）
+        const motionReg = /(movej|movel|movep|movec)\s*\([\s\S]{0,500}?full_apply_touch_offset\s*\(\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
+
+        // 匹配 full_tracking_frame 赋值（只取非零的）
+        const markerReg = /full_tracking_frame\s*=\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
+
+        // 第一遍：解析所有运动指令（movec 只取第一个数组作为途经点）
+        let m, lastIndex = 0;
+        while ((m = motionReg.exec(text)) !== null) {
+            let type = m[1];
+            let pt = {
+                x: parseFloat(m[2]),
+                y: parseFloat(m[3]),
+                z: parseFloat(m[4]),
+                type: type
+            };
+            data.main.push(pt);
+            lastIndex = motionReg.lastIndex;
+        }
+
+        // 第二遍：单独解析 movec 的第二个数组（终点位姿）
+        const movecEndReg = /movec\s*\([\s\S]{0,500}?full_apply_touch_offset\s*\(\s*\[[^\]]+\]\s*\)[\s\S]{0,200}?full_apply_touch_offset\s*\(\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
+        while ((m = movecEndReg.exec(text)) !== null) {
+            // 将 movec 终点追加到主数组（标记为 movec_end）
+            data.main.push({
+                x: parseFloat(m[1]),
+                y: parseFloat(m[2]),
+                z: parseFloat(m[3]),
+                type: 'movec_end'
+            });
+        }
+
+        // 解析 full_tracking_frame 基准标记点（跳过全零初始化值）
+        while ((m = markerReg.exec(text)) !== null) {
+            let x = parseFloat(m[1]),
+                y = parseFloat(m[2]),
+                z = parseFloat(m[3]);
+            // 跳过全零的初始化占位
+            if (x === 0 && y === 0 && z === 0) continue;
+            data.markers.push({ x: x, y: y, z: z });
+        }
+
+        // 兜底：CSV 格式，3 列数值
         if (data.main.length === 0 && data.markers.length === 0) {
             const csv = Papa.parse(text.trim(), { dynamicTyping: true, skipEmptyLines: true });
-            csv.data.forEach(row => { if (row.length >= 3 && typeof row[0] === 'number') data.main.push({x:row[0], y:row[1], z:row[2]}); });
+            csv.data.forEach(row => {
+                if (row.length >= 3 && typeof row[0] === 'number') {
+                    data.main.push({x: row[0], y: row[1], z: row[2], type: 'csv'});
+                }
+            });
         }
+
+        // 按 type 统计
+        let cnt = {};
+        data.main.forEach(p => { cnt[p.type] = (cnt[p.type] || 0) + 1; });
+        console.log("解析完成 — 总计:", data.main.length, "标记:", data.markers.length, "明细:", cnt);
         return data;
     }
 
+    // ===== 路径预处理 & 自动断路 =====
     function preparePath(points) {
-        if (!points || points.length === 0) return { x: [], y: [], z: [], idx: [] };
-        let res = { x: [], y: [], z: [], idx: [] };
+        if (!points || points.length === 0) return { x: [], y: [], z: [], idx: [], types: [] };
+        let res = { x: [], y: [], z: [], idx: [], types: [] };
         for (let i = 0; i < points.length; i++) {
-            if (i > 0 && Math.abs(points[i].z - points[i-1].z) > 0.002) {
-                res.x.push(null); res.y.push(null); res.z.push(null); res.idx.push(null);
+            // Z 突变 > 5mm 则自动断开连线（机器人提刀）
+            if (i > 0 && Math.abs(points[i].z - points[i-1].z) > 0.005) {
+                res.x.push(null); res.y.push(null); res.z.push(null);
+                res.idx.push(null); res.types.push(null);
             }
-            res.x.push(points[i].x); res.y.push(points[i].y); res.z.push(points[i].z);
-            res.idx.push(i); 
+            res.x.push(points[i].x);
+            res.y.push(points[i].y);
+            res.z.push(points[i].z);
+            res.idx.push(i);
+            res.types.push(points[i].type || '?');
         }
         return res;
     }
 
-    function drawCharts(data) {
-        const showLine = document.getElementById('showLine').checked;
-        const showPoints = document.getElementById('showPoints').checked;
-        const showMarkers = document.getElementById('showMarkers').checked;
-        
-        const traces3D = [];
-        const traces2D = [];
+    // 按类型筛选点集，返回独立的 path 结构
+    function filterByType(points, types) {
+        let filtered = points.filter(p => types.includes(p.type));
+        return preparePath(filtered);
+    }
 
-        // 轨迹绘制模式
+    // ===== 绘图 =====
+    function drawCharts(data) {
+        if (data.main.length === 0 && data.markers.length === 0) {
+            alert("未能识别到有效的轨迹坐标数据（movej/movel/movep/movec），请检查格式。");
+            return;
+        }
+
+        const showLine   = document.getElementById('showLine').checked;
+        const showPoints = document.getElementById('showPoints').checked;
+        const showMarkers= document.getElementById('showMarkers').checked;
+
         let mode = 'none';
         if (showLine && showPoints) mode = 'lines+markers';
         else if (showLine) mode = 'lines';
         else if (showPoints) mode = 'markers';
 
-        // 1. 主轨迹 (去除渐变色，统一蓝色)
-        if (data.main.length > 0 && (showLine || showPoints)) {
+        const traces3D = [], traces2D = [];
+
+        // --- 主线：全部点位（含 Z 突变断线）---
+        if (data.main.length > 0) {
             const path = preparePath(data.main);
-            const mainColor = '#3498db';
-            
+
+            // hover 信息里带上运动类型
+            let hoverText = path.types.map((t, i) => t ? `Type: ${t}` : '');
+
             traces3D.push({
                 x: path.x, y: path.y, z: path.z,
-                name: '轨迹路径', mode: mode, type: 'scatter3d',
-                line: { color: mainColor, width: 3 },
-                marker: { size: 3, color: mainColor, opacity: 0.8 },
+                name: '完整轨迹 (all)', mode: mode, type: 'scatter3d',
+                line: { color: '#3498db', width: 4 },
+                marker: { size: 2, color: '#2980b9' },
                 customdata: path.idx,
-                hovertemplate: 'Index: %{customdata}<br>X: %{x}<br>Y: %{y}<br>Z: %{z}<extra></extra>'
+                text: hoverText,
+                hovertemplate: 'Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<br>%{text}<extra></extra>'
             });
             traces2D.push({
-                x: path.x, y: path.y, name: '轨迹投影', mode: mode, type: 'scatter',
-                line: { color: mainColor, width: 1.5 },
-                marker: { size: 5, color: mainColor },
+                x: path.x, y: path.y, name: '平面投影 (all)', mode: mode, type: 'scatter',
+                line: { color: '#3498db', width: 2 },
+                marker: { size: 4 },
                 customdata: path.idx,
-                hovertemplate: 'Index: %{customdata}<br>X: %{x}<br>Y: %{y}<extra></extra>'
+                text: hoverText,
+                hovertemplate: 'Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>%{text}<extra></extra>'
             });
+
+            // --- movej 接近点单独显示（虚线） ---
+            const movejPts = data.main.filter(p => p.type === 'movej');
+            if (movejPts.length > 0) {
+                traces3D.push({
+                    x: movejPts.map(p => p.x),
+                    y: movejPts.map(p => p.y),
+                    z: movejPts.map(p => p.z),
+                    name: 'movej 接近点', mode: 'markers+lines', type: 'scatter3d',
+                    line: { color: '#e67e22', width: 2, dash: 'dash' },
+                    marker: { size: 4, color: '#e67e22', symbol: 'circle-open' },
+                    hovertemplate: 'movej<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>'
+                });
+                traces2D.push({
+                    x: movejPts.map(p => p.x),
+                    y: movejPts.map(p => p.y),
+                    name: 'movej 接近点', mode: 'markers+lines', type: 'scatter',
+                    line: { color: '#e67e22', width: 2, dash: 'dash' },
+                    marker: { size: 6, color: '#e67e22', symbol: 'circle-open' }
+                });
+            }
+
+            // --- 焊接路径点 (movep + movel + movec) 单独高亮 ---
+            const weldPts = data.main.filter(p => ['movep','movel','movec','movec_end'].includes(p.type));
+            if (weldPts.length > 0) {
+                traces3D.push({
+                    x: weldPts.map(p => p.x),
+                    y: weldPts.map(p => p.y),
+                    z: weldPts.map(p => p.z),
+                    name: '焊道路径 (movep/movel/movec)', mode: 'markers', type: 'scatter3d',
+                    marker: { size: 3, color: '#27ae60', symbol: 'circle' },
+                    hovertemplate: '%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>',
+                    text: weldPts.map(p => p.type)
+                });
+                traces2D.push({
+                    x: weldPts.map(p => p.x),
+                    y: weldPts.map(p => p.y),
+                    name: '焊接路径', mode: 'markers', type: 'scatter',
+                    marker: { size: 6, color: '#27ae60', symbol: 'circle' }
+                });
+            }
         }
 
-        // 2. 基准标记点 (橙色)
+        // --- 基准标记点 (full_tracking_frame) ---
         if (showMarkers && data.markers.length > 0) {
-            const mX = data.markers.map(p=>p.x), mY = data.markers.map(p=>p.y), mZ = data.markers.map(p=>p.z);
-            const mIdx = data.markers.map((_,i)=>i);
+            const mX = data.markers.map(p => p.x),
+                  mY = data.markers.map(p => p.y),
+                  mZ = data.markers.map(p => p.z);
             traces3D.push({
-                x: mX, y: mY, z: mZ, name: '基准标记', mode: 'markers', type: 'scatter3d',
-                marker: { color: '#e67e22', size: 5, symbol: 'diamond' },
-                customdata: mIdx
+                x: mX, y: mY, z: mZ, name: '基准标记点 (frame)', mode: 'markers', type: 'scatter3d',
+                marker: { color: '#e74c3c', size: 8, symbol: 'diamond' }
             });
             traces2D.push({
-                x: mX, y: mY, name: '基准标记', mode: 'markers', type: 'scatter',
-                marker: { color: '#e67e22', size: 10, symbol: 'diamond' },
-                customdata: mIdx
+                x: mX, y: mY, name: '基准标记点 (frame)', mode: 'markers', type: 'scatter',
+                marker: { color: '#e74c3c', size: 10, symbol: 'diamond' }
             });
         }
 
-        const layout3D = { 
-            scene: { aspectmode: 'data', xaxis: {title:'X'}, yaxis: {title:'Y'}, zaxis: {title:'Z'} },
+        const layout3D = {
+            scene: { aspectmode: 'data', xaxis: {title:'X (m)'}, yaxis: {title:'Y (m)'}, zaxis: {title:'Z (m)'} },
             margin: { l:0, r:0, b:0, t:30 },
-            clickmode: 'event+select'
+            hovermode: 'closest',
+            legend: { x: 0.01, y: 1, font: { size: 10 } }
         };
-        const layout2D = { 
-            xaxis: { title: 'X (m)', scaleanchor: 'y' }, 
+        const layout2D = {
+            xaxis: { title: 'X (m)', scaleanchor: 'y' },
             yaxis: { title: 'Y (m)' },
-            hovermode: 'closest', 
-            clickmode: 'event+select' 
+            hovermode: 'closest',
+            legend: { x: 0.01, y: 1, font: { size: 10 } }
         };
 
         Plotly.newPlot('chart3D', traces3D, layout3D);
         Plotly.newPlot('chart2D', traces2D, layout2D);
 
-        const bindClick = (id) => {
-            document.getElementById(id).on('plotly_click', function(data){
-                if(data.points.length > 0) updateInspector(data.points[0]);
+        // 点击事件
+        ['chart3D', 'chart2D'].forEach(id => {
+            document.getElementById(id).on('plotly_click', ev => {
+                if (ev.points.length > 0) updateInspector(ev.points[0]);
             });
-        };
-        bindClick('chart3D');
-        bindClick('chart2D');
+        });
+
+        // 状态栏
+        let cnt = {}; data.main.forEach(p => { cnt[p.type] = (cnt[p.type] || 0) + 1; });
+        let parts = [];
+        if (cnt.movej) parts.push(cnt.movej + ' movej');
+        if (cnt.movel) parts.push(cnt.movel + ' movel');
+        if (cnt.movep) parts.push(cnt.movep + ' movep');
+        if (cnt.movec) parts.push(cnt.movec + ' movec');
+        if (cnt.movec_end) parts.push(cnt.movec_end + ' movec_end');
+        if (cnt.csv) parts.push(cnt.csv + ' csv');
 
         const status = document.getElementById('statusMsg');
-        status.innerText = `点位总数: ${data.main.length}`;
+        status.innerText = `✅ 点位: ${data.main.length} (${parts.join(', ')})${data.markers.length ? ' | 标记: ' + data.markers.length : ''}`;
         status.className = 'status success';
     }
 
+    // ===== 右侧面板 =====
     function updateInspector(pts) {
-        const type = pts.fullData.name;
+        const traceName = pts.fullData.name || '';
         const x = pts.x.toFixed(6);
         const y = pts.y.toFixed(6);
         const z = pts.z !== undefined ? pts.z.toFixed(6) : "N/A";
-        const idx = pts.customdata;
+        const idx = pts.customdata !== null && pts.customdata !== undefined ? pts.customdata : "-";
+        const motionType = pts.text || '';
 
-        document.getElementById('pointType').innerText = `${type} [ID: ${idx}]`;
+        document.getElementById('pointType').innerText = `${traceName}  [Idx: ${idx}]  ${motionType}`;
         const valStr = `[${x}, ${y}, ${z}]`;
         document.getElementById('pointData').innerText = valStr;
         lastSelectedValue = valStr;
@@ -237,14 +361,22 @@
     }
 
     function refreshView() { drawCharts(globalData); }
-    function processScript() { globalData = parseTrajectoryData(document.getElementById('scriptInput').value); drawCharts(globalData); }
+    function processScript() {
+        const txt = document.getElementById('scriptInput').value;
+        globalData = parseTrajectoryData(txt);
+        drawCharts(globalData);
+    }
     function processFile() {
         const file = document.getElementById('fileInput').files[0];
         if (!file) return;
         const reader = new FileReader();
-        reader.onload = (e) => { globalData = parseTrajectoryData(e.target.result); drawCharts(globalData); };
+        reader.onload = (e) => {
+            globalData = parseTrajectoryData(e.target.result);
+            drawCharts(globalData);
+        };
         reader.readAsText(file);
     }
 </script>
+
 </body>
 </html>
