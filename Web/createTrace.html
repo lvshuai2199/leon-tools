@@ -89,6 +89,12 @@
                 
                 <div class="data-label">坐标数组 [X, Y, Z]:</div>
                 <div id="pointData" class="data-display">在图中点击点位或轨迹</div>
+
+                <div class="data-label" style="margin-top:12px;">姿态 [Rx, Ry, Rz]:</div>
+                <div id="pointOrientation" class="data-display">未选择点位</div>
+
+                <div class="data-label" style="margin-top:12px;">与水平面夹角:</div>
+                <div id="pointAngle" class="data-display">未选择点位</div>
                 
                 <button class="btn-copy" onclick="copyData()">复制坐标</button>
                 <div id="copyHint" style="font-size:11px; color:green; margin-top:5px; text-align:center; display:none;">复制成功！</div>
@@ -99,7 +105,8 @@
                     • 橙色虚线代表 <code>movej</code> 关节接近移动。<br>
                     • 绿色圆点代表焊接路径 <code>movep/movel/movec</code>。<br>
                     • 红色菱形代表 <code>full_tracking_frame</code> 基准。<br>
-                    • 连线断开处表示机器人发生了大幅度抬升。
+                    • 连线断开处表示机器人发生了大幅度抬升。<br>
+                    • 点击点位可在右侧查看姿态与水平面夹角。
                 </div>
             </div>
         </div>
@@ -279,6 +286,7 @@
 
             // --- movej 接近点单独显示（虚线） ---
             const movejPts = data.main.filter(p => p.type === 'movej');
+            const movejIdx = data.main.map((p, i) => i).filter(i => data.main[i].type === 'movej');
             if (movejPts.length > 0) {
                 traces3D.push({
                     x: movejPts.map(p => p.x),
@@ -287,19 +295,23 @@
                     name: 'movej 接近点', mode: 'markers+lines', type: 'scatter3d',
                     line: { color: '#e67e22', width: 2, dash: 'dash' },
                     marker: { size: 4, color: '#e67e22', symbol: 'circle-open' },
-                    hovertemplate: 'movej<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>'
+                    customdata: movejIdx,
+                    hovertemplate: 'Idx: %{customdata}<br>movej<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>'
                 });
                 traces2D.push({
                     x: movejPts.map(p => p.x),
                     y: movejPts.map(p => p.y),
                     name: 'movej 接近点', mode: 'markers+lines', type: 'scatter',
                     line: { color: '#e67e22', width: 2, dash: 'dash' },
-                    marker: { size: 6, color: '#e67e22', symbol: 'circle-open' }
+                    marker: { size: 6, color: '#e67e22', symbol: 'circle-open' },
+                    customdata: movejIdx,
+                    hovertemplate: 'Idx: %{customdata}<br>movej<br>X: %{x:.6f}<br>Y: %{y:.6f}<extra></extra>'
                 });
             }
 
             // --- 焊接路径点 (movep + movel + movec) 单独高亮 ---
             const weldPts = data.main.filter(p => ['movep','movel','movec','movec_end'].includes(p.type));
+            const weldIdx = data.main.map((p, i) => i).filter(i => ['movep','movel','movec','movec_end'].includes(data.main[i].type));
             if (weldPts.length > 0) {
                 traces3D.push({
                     x: weldPts.map(p => p.x),
@@ -307,14 +319,17 @@
                     z: weldPts.map(p => p.z),
                     name: '焊道路径 (movep/movel/movec)', mode: 'markers', type: 'scatter3d',
                     marker: { size: 3, color: '#27ae60', symbol: 'circle' },
-                    hovertemplate: '%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>',
+                    customdata: weldIdx,
+                    hovertemplate: 'Idx: %{customdata}<br>%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>',
                     text: weldPts.map(p => p.type)
                 });
                 traces2D.push({
                     x: weldPts.map(p => p.x),
                     y: weldPts.map(p => p.y),
                     name: '焊接路径', mode: 'markers', type: 'scatter',
-                    marker: { size: 6, color: '#27ae60', symbol: 'circle' }
+                    marker: { size: 6, color: '#27ae60', symbol: 'circle' },
+                    customdata: weldIdx,
+                    hovertemplate: 'Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<extra></extra>'
                 });
             }
         }
@@ -422,6 +437,31 @@
         status.className = 'status success';
     }
 
+    // ===== 姿态工具：计算工具 Z 轴与水平面的夹角 =====
+    function angleWithHorizontal(rx, ry, rz) {
+        const dir = eulerToToolZ(rx, ry, rz);
+        const len = Math.sqrt(dir.u * dir.u + dir.v * dir.v + dir.w * dir.w) || 1;
+        const sinAngle = Math.abs(dir.w) / len;
+        return Math.asin(Math.min(1, sinAngle)) * 180 / Math.PI;
+    }
+
+    // 优先通过 trace 中的原始索引找到点位；兜底按坐标反查
+    function findSelectedPoint(pts) {
+        if (pts && Number.isFinite(pts.customdata)) {
+            const idx = pts.customdata;
+            if (idx >= 0 && idx < globalData.main.length) return globalData.main[idx];
+        }
+
+        const eps = 1e-9;
+        const match = p =>
+            Math.abs(p.x - pts.x) <= eps &&
+            Math.abs(p.y - pts.y) <= eps &&
+            Math.abs(p.z - pts.z) <= eps;
+
+        return globalData.main.find(match) ||
+               (pts.z !== undefined ? globalData.markers.find(match) : null);
+    }
+
     // ===== 右侧面板 =====
     function updateInspector(pts) {
         const traceName = pts.fullData.name || '';
@@ -435,6 +475,18 @@
         const valStr = `[${x}, ${y}, ${z}]`;
         document.getElementById('pointData').innerText = valStr;
         lastSelectedValue = valStr;
+
+        const point = findSelectedPoint(pts);
+        if (point && Number.isFinite(point.rx)) {
+            const oriStr = `[${point.rx.toFixed(6)}, ${point.ry.toFixed(6)}, ${point.rz.toFixed(6)}]`;
+            document.getElementById('pointOrientation').innerText = oriStr;
+
+            const angle = angleWithHorizontal(point.rx, point.ry, point.rz);
+            document.getElementById('pointAngle').innerText = `${angle.toFixed(2)}° (工具 Z 轴)`;
+        } else {
+            document.getElementById('pointOrientation').innerText = '该点位无姿态数据';
+            document.getElementById('pointAngle').innerText = '该点位无姿态数据';
+        }
     }
 
     function copyData() {
