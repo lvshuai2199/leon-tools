@@ -1,0 +1,159 @@
+{
+	"pages": [
+	  {
+	    "path": "pages/index/index",
+	    "style": {
+	      "navigationBarTitleText": "首页"
+	    }
+	  },
+	  {
+	  	"path" : "pages/user/user",
+	  	"style" : {
+	  		"navigationBarTitleText" : "用户"
+	  	}
+	  },
+	  {
+	  	"path" : "pages/user/userList",
+	  	"style" : {
+	  		"navigationBarTitleText" : "用户列表"
+	  	}
+	  },
+	  {
+	  	"path" : "pages/user/role",
+	  	"style" : {
+	  		"navigationBarTitleText" : "权限"
+	  	}
+	  },
+	  {
+	  	"path" : "pages/home/home",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : "HOME主页"
+	  	}
+	  },
+	  {
+	  	"path" : "pages/login/register",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : "用户注册"
+	  	}
+	  },
+	  {
+	  	"path" : "pages/task/task",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : "事务"
+	  	}
+	  },
+	  {
+	  	"path" : "pages/login/login",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : ""
+	  	}
+	  },
+	  {
+	  	"path" : "pages/webview/webview",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : ""
+	  	}
+	  },
+	  {
+	  	"path" : "pages/webview/webmarks",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : "网页"
+	  	}
+	  },
+	  {
+	  	"path" : "pages/task/taskEdit",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : ""
+	  	}
+	  },
+	  {
+	  	"path" : "pages/registration/registration",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : ""
+	  	}
+	  },
+	  {
+	  	"path" : "pages/registration/regApply",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : "注册码申请"
+	  	}
+	  },
+	  {
+	  	"path" : "pages/user/messagePage",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : ""
+	  	}
+	  },
+	  {
+	  	"path" : "pages/extern/walletList",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : ""
+	  	}
+	  },
+	  {
+	  	"path" : "pages/extern/walletInfo",
+	  	"style" : 
+	  	{
+	  		"navigationBarTitleText" : ""
+	  	}
+	},
+	{
+		"path": "pages/company/registration/youbo_reg/youbo_reg",
+		"style": {
+			"navigationBarTitleText": ""
+		}
+	},
+	{
+		"path": "pages/company/registration/auboPallet_reg/auboPallet_reg",
+		"style": {
+			"navigationBarTitleText": ""
+		}
+	}
+	],
+	"tabBar": {
+	  "color": "#7A7E83",
+	  "selectedColor": "#3cc51f",
+	  "borderStyle": "black",
+	  "backgroundColor": "#ffffff",
+	  "list": [
+	    {
+	      "pagePath": "pages/index/index",
+	      "text": "首页",
+	      "iconPath": "static/HOME.png",
+	      "selectedIconPath": "static/READ.png"
+	    },
+		{
+	      "pagePath": "pages/webview/webmarks",
+	      "text": "网页",
+	      "iconPath": "static/HOME.png",
+	      "selectedIconPath": "static/READ.png"
+	    },
+	    {
+	      "pagePath": "pages/user/user",
+	      "text": "用户",
+	      "iconPath": "static/USER.png",
+	      "selectedIconPath": "static/READ.png"
+	    }
+	  ]
+	},
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "uni-app",
+		"navigationBarBackgroundColor": "#F8F8F8",
+		"backgroundColor": "#F8F8F8",
+		"app-plus": {
+			"background": "#efeff4"
+		}
+	}
+}

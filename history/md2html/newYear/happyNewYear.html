@@ -1,0 +1,382 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>新年倒计时</title>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow-x: hidden;
+            font-family: 'Arial', sans-serif;
+            text-align: center;
+            color: white;
+            background: radial-gradient(circle at bottom, #2c3e50, #000);
+        }
+
+        .festive-title-container {
+            position: relative;
+            display: inline-block;
+            padding: 20px 40px;
+            background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5);
+            background-size: 400% 400%;
+            animation: gradientBG 15s ease infinite;
+            border-radius: 15px;
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+        }
+
+        .festive-title {
+            font-size: 3em;
+            font-weight: bold;
+            color: #ffffff;
+            text-shadow: 3px 3px 8px rgba(0, 0, 0, 0.5);
+            margin: 0;
+            padding: 10px 20px;
+            letter-spacing: 2px;
+            position: relative;
+            z-index: 1;
+        }
+
+        .festive-title::before,
+        .festive-title::after {
+            content: '';
+            position: absolute;
+            top: -10px;
+            left: -10px;
+            right: -10px;
+            bottom: -10px;
+            border: 2px solid #ffd700;
+            border-radius: 15px;
+            animation: borderPulse 1.5s infinite alternate;
+        }
+
+        .festive-title::after {
+            animation-delay: 0.5s;
+        }
+
+        .festive-icon {
+            font-size: 2em;
+            position: absolute;
+            top: 50%;
+            transform: translateY(-50%);
+            animation: bounce 0.6s infinite alternate;
+        }
+
+        .festive-icon.left {
+            left: -30px;
+        }
+
+        .festive-icon.right {
+            right: -30px;
+        }
+
+        .countdown-container {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            background: linear-gradient(135deg, #ff9a9e, #fad0c4, #fad0c4, #ff9a9e);
+            background-size: 300% 300%;
+            animation: gradientAnimation 10s ease infinite;
+            border-radius: 20px;
+            box-shadow: 0 0 25px rgba(0, 0, 0, 0.2);
+            margin: 20px auto;
+            max-width: 600px;
+        }
+
+        .countdown {
+            font-family: 'Arial', sans-serif;
+            font-size: 2em;
+            font-weight: bold;
+            color: #fff;
+            display: flex;
+            gap: 20px; /* Adjusted for better spacing */
+        }
+
+        .time {
+            background-color: rgba(0, 0, 0, 0.2);
+            padding: 10px 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.5);
+            position: relative;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .label {
+            font-size: 0.5em;
+            margin-top: 5px; /* Added margin for better positioning */
+            text-align: center;
+        }
+
+        #carousel {
+            position: relative;
+            width: 50%;
+            max-width: 600px;
+            margin: 15px auto;
+            overflow: hidden;
+            border: 2px solid white;
+            border-radius: 10px;
+        }
+
+        .slides {
+            display: flex;
+            transition: transform 0.5s ease-in-out;
+        }
+
+        .slide {
+            flex: 0 0 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .slide img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .carousel-controls {
+            position: absolute;
+            top: 50%;
+            width: 100%;
+            display: flex;
+            justify-content: space-between;
+            transform: translateY(-50%);
+        }
+
+        .carousel-control {
+            background-color: rgba(0, 0, 0, 0.5);
+            color: white;
+            border: none;
+            font-size: 1.5em;
+            cursor: pointer;
+            padding: 5px;
+            z-index: 10;
+        }
+
+        #fireworks, #stars {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+
+        .festive-wishes {
+            background: linear-gradient(45deg, #ff0000, #ff7300, #fffb00, #48ff00, #00ffd5, #002bff, #7a00ff, #ff00c8, #ff0000);
+            background-size: 400% 400%;
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            animation: rainbow 15s ease infinite;
+            font-weight: bold;
+            font-size: 1.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(255,255,255,0.3);
+            margin: 20px auto;
+            max-width: 600px;
+        }
+
+        @keyframes gradientBG {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        @keyframes borderPulse {
+            0% { transform: scale(1); opacity: 0.7; }
+            100% { transform: scale(1.05); opacity: 1; }
+        }
+
+        @keyframes bounce {
+            0% { transform: translateY(-50%) scale(1); }
+            100% { transform: translateY(-50%) scale(1.1); }
+        }
+
+        @keyframes gradientAnimation {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        @keyframes rainbow { 
+            0%{background-position:0% 50%}
+            50%{background-position:100% 50%}
+            100%{background-position:0% 50%}
+        }
+
+        @media (max-width: 768px) {
+            .festive-title {
+                font-size: 2em;
+            }
+            .countdown {
+                font-size: 1.5em;
+            }
+            #carousel {
+                width: 95%;
+            }
+            .festive-wishes {
+                font-size: 1.2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="festive-title-container">
+        <span class="festive-icon left">🎉</span>
+        <h1 class="festive-title">新年倒计时</h1>
+        <span class="festive-icon right">✨</span>
+    </div>
+
+    <div class="countdown-container">
+        <div class="countdown">
+            <div class="time">
+                <span id="days">00</span><span class="label">天</span>
+            </div>
+            <div class="time">
+                <span id="hours">00</span><span class="label">小时</span>
+            </div>
+            <div class="time">
+                <span id="minutes">00</span><span class="label">分钟</span>
+            </div>
+            <div class="time">
+                <span id="seconds">00</span><span class="label">秒</span>
+            </div>
+        </div>
+    </div>
+
+    <div id="carousel">
+        <div class="slides">
+            <div class="slide"><img src="pics/hh/hh%20(1).jpg" alt="新年快乐"></div>
+            <div class="slide"><img src="pics/hh/hh%20(2).jpg" alt="新年快乐"></div>
+            <div class="slide"><img src="pics/hh/hh (3).jpg" alt="新年快乐"></div>
+            <div class="slide"><img src="pics/hh/hh%20(5).jpg" alt="新年快乐"></div>
+            <div class="slide"><img src="pics/hh/hh%20(6).jpg" alt="新年快乐"></div>
+            <div class="slide"><img src="pics/hh/hh%20(7).jpg" alt="新年快乐"></div>
+        </div>
+        <div class="carousel-controls">
+            <button id="prev" class="carousel-control">‹</button>
+            <button id="next" class="carousel-control">›</button>
+        </div>
+    </div>
+
+    <div class="festive-wishes">✨ 愿新年带来幸福健康！✨</div>
+    <div class="festive-wishes">✨ 也住我的鹤鹤永远健康快乐，没烦恼！！！✨</div>
+
+    <div class="festive-wishes">✨ 超级爱你！！！✨</div>
+
+    <canvas id="stars"></canvas>
+    <canvas id="fireworks"></canvas>
+
+    <script>
+        // 倒计时逻辑
+        function updateCountdown() {
+            const now = new Date();
+            const currentYear = now.getFullYear();
+            const nextYear = currentYear + 1;
+            const targetDate = new Date(`January 1, ${nextYear} 00:00:00`).getTime();
+            const timeLeft = targetDate - now;
+
+            const days = Math.floor(timeLeft / (1000 * 60 * 60 * 24));
+            const hours = Math.floor((timeLeft % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+            const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+            const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+
+            document.getElementById('days').textContent = String(days).padStart(2, '0');
+            document.getElementById('hours').textContent = String(hours).padStart(2, '0');
+            document.getElementById('minutes').textContent = String(minutes).padStart(2, '0');
+            document.getElementById('seconds').textContent = String(seconds).padStart(2, '0');
+
+            if (timeLeft < 0) {
+                clearInterval(countdownInterval);
+                document.querySelector('.countdown').textContent = "新年快乐！";
+            }
+        }
+        const countdownInterval = setInterval(updateCountdown, 1000);
+        updateCountdown();
+
+        // 轮播图逻辑
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+        let currentIndex = 0;
+
+        function showSlide(index) {
+            document.querySelector('.slides').style.transform = `translateX(-${index * 100}%)`;
+        }
+
+        function nextSlide() {
+            currentIndex = (currentIndex + 1) % totalSlides;
+            showSlide(currentIndex);
+        }
+
+        setInterval(nextSlide, 3000);
+
+        document.getElementById('prev').addEventListener('click', () => {
+            currentIndex = (currentIndex - 1 + totalSlides) % totalSlides;
+            showSlide(currentIndex);
+        });
+
+        document.getElementById('next').addEventListener('click', nextSlide);
+
+        showSlide(currentIndex);
+
+        // 星星背景与烟花效果初始化逻辑
+        function initCanvas(canvasId) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+            return { canvas, ctx };
+        }
+
+        const { canvas: starCanvas, ctx: starCtx } = initCanvas('stars');
+        const { canvas: fireworksCanvas, ctx: fireworksCtx } = initCanvas('fireworks');
+
+        // 绘制星星
+        function drawStars() {
+            starCtx.clearRect(0, 0, starCanvas.width, starCanvas.height);
+            for (let i = 0; i < 100; i++) {
+                const x = Math.random() * starCanvas.width;
+                const y = Math.random() * starCanvas.height;
+                const radius = Math.random() * 2;
+                starCtx.beginPath();
+                starCtx.arc(x, y, radius, 0, Math.PI * 2);
+                starCtx.fillStyle = 'white';
+                starCtx.fill();
+            }
+        }
+        drawStars();
+
+        // 响应窗口变化
+        function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+                const later = () => {
+                    clearTimeout(timeout);
+                    func(...args);
+                };
+                clearTimeout(timeout);
+                timeout = setTimeout(later, wait);
+            };
+        }
+
+        const handleResize = debounce(() => {
+            starCanvas.width = window.innerWidth;
+            starCanvas.height = window.innerHeight;
+            fireworksCanvas.width = window.innerWidth;
+            fireworksCanvas.height = window.innerHeight;
+            drawStars();
+        }, 250);
+
+        window.addEventListener('resize', handleResize);
+    </script>
+</body>
+</html>

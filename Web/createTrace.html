@@ -38,7 +38,7 @@
 <body>
 
 <div class="container">
-    <h1>机器人轨迹交互分析工具</h1>
+    <h1>机器人轨迹交互分析工具 <span style="color:#e67e22;font-size:14px;">v6</span></h1>
 
     <div class="main-layout">
         <div class="left-column">
@@ -93,8 +93,20 @@
                 <div class="data-label" style="margin-top:12px;">姿态 [Rx, Ry, Rz]:</div>
                 <div id="pointOrientation" class="data-display">未选择点位</div>
 
-                <div class="data-label" style="margin-top:12px;">与水平面夹角:</div>
-                <div id="pointAngle" class="data-display">未选择点位</div>
+                <div class="data-label" style="margin-top:12px;">枪轴与 XY 平面夹角:</div>
+                <div id="pointAngleXY" class="data-display">未选择点位</div>
+
+                <div class="data-label" style="margin-top:12px;">枪轴与 YZ 平面夹角:</div>
+                <div id="pointAngleYZ" class="data-display">未选择点位</div>
+
+                <div class="data-label" style="margin-top:12px;">枪轴与 XZ 平面夹角:</div>
+                <div id="pointAngleXZ" class="data-display">未选择点位</div>
+
+                <div class="data-label" style="margin-top:12px;">前进角:</div>
+                <div id="pointAngleForward" class="data-display">未选择点位</div>
+
+                <div class="data-label" style="margin-top:12px;">工作角 (X旋转):</div>
+                <div id="pointAngleWork" class="data-display">未选择点位</div>
                 
                 <button class="btn-copy" onclick="copyData()">复制坐标</button>
                 <div id="copyHint" style="font-size:11px; color:green; margin-top:5px; text-align:center; display:none;">复制成功！</div>
@@ -106,7 +118,7 @@
                     • 绿色圆点代表焊接路径 <code>movep/movel/movec</code>。<br>
                     • 红色菱形代表 <code>full_tracking_frame</code> 基准。<br>
                     • 连线断开处表示机器人发生了大幅度抬升。<br>
-                    • 点击点位可在右侧查看姿态与水平面夹角。
+                    • 点击点位可在右侧查看姿态、水平面夹角及前进角。
                 </div>
             </div>
         </div>
@@ -170,6 +182,15 @@
             data.markers.push({ x, y, z, rx, ry, rz });
         }
 
+        // 按“道”分组：每个 movej 视为一道的起点，后续焊接点属于当前道
+        let beadId = 0;
+        let prevType = null;
+        data.main.forEach((p, i) => {
+            if (p.type === 'movej' && i > 0 && prevType !== 'movej') beadId++;
+            p.beadId = beadId;
+            prevType = p.type;
+        });
+
         // 兜底：CSV 格式（至少 3 列数值，可选 6 列含姿态）
         if (data.main.length === 0 && data.markers.length === 0) {
             const csv = Papa.parse(text.trim(), { dynamicTyping: true, skipEmptyLines: true });
@@ -195,9 +216,10 @@
     function preparePath(points) {
         if (!points || points.length === 0) return { x: [], y: [], z: [], idx: [], types: [] };
         let res = { x: [], y: [], z: [], idx: [], types: [] };
+
         for (let i = 0; i < points.length; i++) {
             // Z 突变 > 5mm 则自动断开连线（机器人提刀）
-            if (i > 0 && Math.abs(points[i].z - points[i-1].z) > 0.005) {
+            if (i > 0 && Math.abs(points[i].z - points[i - 1].z) > 0.005) {
                 res.x.push(null); res.y.push(null); res.z.push(null);
                 res.idx.push(null); res.types.push(null);
             }
@@ -437,12 +459,111 @@
         status.className = 'status success';
     }
 
-    // ===== 姿态工具：计算工具 Z 轴与水平面的夹角 =====
-    function angleWithHorizontal(rx, ry, rz) {
+    // ===== 姿态工具：计算工具 Z 轴与指定坐标平面的夹角 =====
+    // normalAxis: 'x' -> YZ 平面, 'y' -> XZ 平面, 'z' -> XY 平面
+    function angleWithPlane(rx, ry, rz, normalAxis) {
         const dir = eulerToToolZ(rx, ry, rz);
         const len = Math.sqrt(dir.u * dir.u + dir.v * dir.v + dir.w * dir.w) || 1;
-        const sinAngle = Math.abs(dir.w) / len;
+        const normal = normalAxis === 'x' ? dir.u : (normalAxis === 'y' ? dir.v : dir.w);
+        const sinAngle = Math.abs(normal) / len;
         return Math.asin(Math.min(1, sinAngle)) * 180 / Math.PI;
+    }
+
+    // 前进角：工具 Z 轴与当前前进方向法平面的夹角
+    // 前进方向取轨迹切线在水平面的投影；路径沿 X 轴时，法平面就是 YZ 平面
+    function forwardAngle(rx, ry, rz, tangent) {
+        const dir = eulerToToolZ(rx, ry, rz);
+        const lenDir = Math.sqrt(dir.u * dir.u + dir.v * dir.v + dir.w * dir.w) || 1;
+        const hLen = Math.hypot(tangent[0], tangent[1]);
+
+        if (hLen < 1e-9) {
+            // 轨迹几乎竖直，退化时按工具轴与竖直方向的夹角处理
+            return Math.asin(Math.min(1, Math.abs(dir.w) / lenDir)) * 180 / Math.PI;
+        }
+
+        const dotAbs = Math.abs(dir.u * (tangent[0] / hLen) + dir.v * (tangent[1] / hLen));
+        return Math.asin(Math.min(1, dotAbs / lenDir)) * 180 / Math.PI;
+    }
+
+    // 工作角（X 旋转/左右旋转）：在垂直于前进方向的平面内，工具 Z 轴相对侧向基准的角度
+    function workAngle(rx, ry, rz, tangent) {
+        const dir = eulerToToolZ(rx, ry, rz);
+        const lenDir = Math.sqrt(dir.u * dir.u + dir.v * dir.v + dir.w * dir.w) || 1;
+        const hLen = Math.hypot(tangent[0], tangent[1]);
+
+        if (hLen < 1e-9) {
+            // 轨迹几乎竖直，退化时按工具轴与竖直方向的夹角处理
+            return Math.asin(Math.min(1, Math.abs(dir.w) / lenDir)) * 180 / Math.PI;
+        }
+
+        // 水平面内垂直于前进方向的方向（侧向）
+        const lx = -tangent[1] / hLen;
+        const ly = tangent[0] / hLen;
+        // 工具 Z 轴在“侧向-竖直”平面内的两个分量
+        const lateral = dir.u * lx + dir.v * ly;
+        const vertical = dir.w;
+        // 工作角：从侧向(0°)到竖直(90°)
+        return Math.atan2(Math.abs(vertical), Math.abs(lateral)) * 180 / Math.PI;
+    }
+
+    // 计算指定点在轨迹中的前进方向
+    // 焊接点只在同一道内取相邻焊接点，避免跨道计算
+    // movej 接近点取程序顺序上的相邻点，反映真实的进退刀方向
+    function forwardDirectionAt(idx) {
+        const pts = globalData.main;
+        if (!Number.isFinite(idx) || idx < 0 || idx >= pts.length) return null;
+
+        const kind = pts[idx].type;
+        const isWeld = ['movep', 'movel', 'movec', 'movec_end'].includes(kind);
+
+        let prevIdx, nextIdx;
+        if (isWeld) {
+            prevIdx = idx - 1;
+            while (prevIdx >= 0 &&
+                   (pts[prevIdx].type !== kind || pts[prevIdx].beadId !== pts[idx].beadId)) prevIdx--;
+            nextIdx = idx + 1;
+            while (nextIdx < pts.length &&
+                   (pts[nextIdx].type !== kind || pts[nextIdx].beadId !== pts[idx].beadId)) nextIdx++;
+        } else {
+            prevIdx = idx - 1;
+            nextIdx = idx + 1;
+        }
+
+        const prev = prevIdx >= 0 ? pts[prevIdx] : null;
+        const next = nextIdx < pts.length ? pts[nextIdx] : null;
+
+        let dx, dy, dz;
+        if (prev && next) {
+            dx = next.x - prev.x;
+            dy = next.y - prev.y;
+            dz = next.z - prev.z;
+        } else if (next) {
+            dx = next.x - pts[idx].x;
+            dy = next.y - pts[idx].y;
+            dz = next.z - pts[idx].z;
+        } else if (prev) {
+            dx = pts[idx].x - prev.x;
+            dy = pts[idx].y - prev.y;
+            dz = pts[idx].z - prev.z;
+        } else {
+            // 没有同类型相邻点时，退化为找同一道内空间上最近的点
+            let nearest = null;
+            let best = Infinity;
+            for (let i = 0; i < pts.length; i++) {
+                if (i === idx) continue;
+                if (isWeld && pts[i].beadId !== pts[idx].beadId) continue;
+                const dist = Math.hypot(pts[i].x - pts[idx].x, pts[i].y - pts[idx].y, pts[i].z - pts[idx].z);
+                if (dist < best) {
+                    best = dist;
+                    nearest = pts[i];
+                }
+            }
+            if (!nearest) return null;
+            dx = nearest.x - pts[idx].x;
+            dy = nearest.y - pts[idx].y;
+            dz = nearest.z - pts[idx].z;
+        }
+        return [dx, dy, dz];
     }
 
     // 优先通过 trace 中的原始索引找到点位；兜底按坐标反查
@@ -456,10 +577,25 @@
         const match = p =>
             Math.abs(p.x - pts.x) <= eps &&
             Math.abs(p.y - pts.y) <= eps &&
-            Math.abs(p.z - pts.z) <= eps;
+            (pts.z === undefined || Math.abs(p.z - pts.z) <= eps);
 
         return globalData.main.find(match) ||
-               (pts.z !== undefined ? globalData.markers.find(match) : null);
+               globalData.markers.find(match);
+    }
+
+    // 找到被点击点在 globalData.main 中的索引（用于计算前进方向）
+    function findMainIndex(pts) {
+        if (pts && Number.isFinite(pts.customdata)) {
+            const idx = pts.customdata;
+            if (idx >= 0 && idx < globalData.main.length) return idx;
+        }
+
+        const eps = 1e-9;
+        return globalData.main.findIndex(p =>
+            Math.abs(p.x - pts.x) <= eps &&
+            Math.abs(p.y - pts.y) <= eps &&
+            (pts.z === undefined || Math.abs(p.z - pts.z) <= eps)
+        );
     }
 
     // ===== 右侧面板 =====
@@ -481,11 +617,35 @@
             const oriStr = `[${point.rx.toFixed(6)}, ${point.ry.toFixed(6)}, ${point.rz.toFixed(6)}]`;
             document.getElementById('pointOrientation').innerText = oriStr;
 
-            const angle = angleWithHorizontal(point.rx, point.ry, point.rz);
-            document.getElementById('pointAngle').innerText = `${angle.toFixed(2)}° (工具 Z 轴)`;
+            const angleXY = angleWithPlane(point.rx, point.ry, point.rz, 'z');
+            const angleYZ = angleWithPlane(point.rx, point.ry, point.rz, 'x');
+            const angleXZ = angleWithPlane(point.rx, point.ry, point.rz, 'y');
+            document.getElementById('pointAngleXY').innerText = `${angleXY.toFixed(2)}°`;
+            document.getElementById('pointAngleYZ').innerText = `${angleYZ.toFixed(2)}°`;
+            document.getElementById('pointAngleXZ').innerText = `${angleXZ.toFixed(2)}°`;
+
+            const mainIdx = findMainIndex(pts);
+            const tangent = forwardDirectionAt(mainIdx);
+            const forwardAngleValue = tangent
+                ? forwardAngle(point.rx, point.ry, point.rz, tangent)
+                : null;
+            document.getElementById('pointAngleForward').innerText = forwardAngleValue !== null
+                ? `${forwardAngleValue.toFixed(2)}°`
+                : '无法计算前进方向';
+
+            const workAngleValue = tangent
+                ? workAngle(point.rx, point.ry, point.rz, tangent)
+                : null;
+            document.getElementById('pointAngleWork').innerText = workAngleValue !== null
+                ? `${workAngleValue.toFixed(2)}°`
+                : '无法计算前进方向';
         } else {
             document.getElementById('pointOrientation').innerText = '该点位无姿态数据';
-            document.getElementById('pointAngle').innerText = '该点位无姿态数据';
+            document.getElementById('pointAngleXY').innerText = '该点位无姿态数据';
+            document.getElementById('pointAngleYZ').innerText = '该点位无姿态数据';
+            document.getElementById('pointAngleXZ').innerText = '该点位无姿态数据';
+            document.getElementById('pointAngleForward').innerText = '该点位无姿态数据';
+            document.getElementById('pointAngleWork').innerText = '该点位无姿态数据';
         }
     }
 

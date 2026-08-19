@@ -1,0 +1,33 @@
+# 数据库 Druid 连接配置
+spring:
+  datasource:
+    url: jdbc:mysql://106.12.12.111/leonpro?useSSL=false&useUnicode=true&characterEncoding=utf-8&autoReconnect=true&serverTimezone=Asia/Shanghai
+    username: root
+    password: leon-sql-pw  # 请确保在生产环境中妥善管理此密码
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
+  jpa:
+    hibernate:
+      ddl-auto: update  # 数据库表更新模式
+    show-sql: true  # 是否在控制台显示 SQL 语句
+
+  session:
+    store-type: redis  # 使用 Redis 存储会话
+
+  servlet:
+    multipart:
+      max-file-size: 10MB  # 最大文件大小
+      max-request-size: 10MB  # 最大请求大小
+
+  data:
+    redis:
+      url: redis://106.12.12.111:6379
+
+# 端口号设置
+server:
+  port: 8089  # 应用运行端口
+
+# MyBatis-Plus 配置
+mybatis-plus:
+  configuration:
+    map-underscore-to-camel-case: true  # 驼峰转下划线

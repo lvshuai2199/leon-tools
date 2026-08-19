@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="springboot.mapper.SysTasksMapper">
+
+    <resultMap id="BaseResultMap" type="springboot.domain.SysTasks">
+            <id property="id" column="id" jdbcType="VARCHAR"/>
+            <result property="createTime" column="create_time" jdbcType="TIMESTAMP"/>
+            <result property="description" column="description" jdbcType="VARCHAR"/>
+            <result property="handlerId" column="handler_id" jdbcType="VARCHAR"/>
+            <result property="publisherId" column="publisher_id" jdbcType="VARCHAR"/>
+            <result property="taskLevel" column="task_level" jdbcType="VARCHAR"/>
+            <result property="taskName" column="task_name" jdbcType="VARCHAR"/>
+            <result property="customerName" column="customer_name" jdbcType="VARCHAR"/>
+            <result property="customerPlace" column="customer_place" jdbcType="VARCHAR"/>
+            <result property="industry" column="industry" jdbcType="VARCHAR"/>
+            <result property="robotNum" column="robot_num" jdbcType="VARCHAR"/>
+            <result property="robotType" column="robot_type" jdbcType="VARCHAR"/>
+            <result property="scenario" column="scenario" jdbcType="VARCHAR"/>
+            <result property="taskType" column="task_type" jdbcType="VARCHAR"/>
+            <result property="taskStatus" column="task_status" jdbcType="VARCHAR"/>
+            <result property="remarks" column="remarks" jdbcType="VARCHAR"/>
+            <result property="isDelete" column="is_delete" jdbcType="INTEGER"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,create_time,description,
+        handler_id,publisher_id,task_level,
+        task_name,customer_name,
+        customer_place,industry,robot_num,
+        robot_type,scenario,task_type,
+        task_status,remarks,is_delete
+    </sql>
+</mapper>

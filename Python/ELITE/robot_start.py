@@ -109,7 +109,7 @@ end
 """
     #发送30001执行
     ok, ret = send_script_30001(script)
-    print(f"30001发送结果 ok={ok}, response:\n{ret}")
+    # print(f"30001发送结果 ok={ok}, response:\n{ret}")
 
     # play()
     # task()

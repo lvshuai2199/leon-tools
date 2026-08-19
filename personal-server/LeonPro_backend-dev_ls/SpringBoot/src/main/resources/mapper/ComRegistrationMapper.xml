@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper
+        PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+<mapper namespace="springboot.mapper.ComRegistrationMapper">
+
+    <resultMap id="BaseResultMap" type="springboot.domain.ComRegistration">
+            <id property="id" column="id" jdbcType="VARCHAR"/>
+            <result property="applyName" column="apply_name" jdbcType="VARCHAR"/>
+            <result property="applyPhone" column="apply_phone" jdbcType="VARCHAR"/>
+            <result property="company" column="company" jdbcType="VARCHAR"/>
+            <result property="longTimeValid" column="long_time_valid" jdbcType="VARCHAR"/>
+            <result property="oneMonthValid" column="one_month_valid" jdbcType="VARCHAR"/>
+            <result property="regCode" column="reg_code" jdbcType="VARCHAR"/>
+            <result property="remarks" column="remarks" jdbcType="VARCHAR"/>
+            <result property="salesName" column="sales_name" jdbcType="VARCHAR"/>
+            <result property="applyId" column="apply_id" jdbcType="VARCHAR"/>
+            <result property="createTime" column="create_time" jdbcType="TIMESTAMP"/>
+            <result property="applyStatus" column="apply_status" jdbcType="INTEGER"/>
+    </resultMap>
+
+    <sql id="Base_Column_List">
+        id,apply_name,apply_phone,
+        company,long_time_valid,one_month_valid,
+        reg_code,remarks,sales_name,
+        apply_id,create_time,apply_status
+    </sql>
+</mapper>

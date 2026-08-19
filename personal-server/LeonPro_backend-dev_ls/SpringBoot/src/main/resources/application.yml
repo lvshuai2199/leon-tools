@@ -1,0 +1,6 @@
+#设置项目名称
+spring:
+  application:
+    name: myApp
+  profiles:
+    active: dev  # 只在这里设置一次

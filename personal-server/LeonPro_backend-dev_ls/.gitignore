@@ -1,0 +1,5 @@
+# 忽略 frontend_phone/unpackage/ 文件夹及其所有内容
+# frontend_phone/unpackage/
+
+# 忽略 backend/SpringBoot/logs/ 文件夹及其所有内容
+SpringBoot/logs/
