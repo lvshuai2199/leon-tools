@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#0e1820">
+  <title>LeonTools 工具工作台</title>
+  <link rel="stylesheet" href="./app.css">
+  <script src="https://unpkg.com/lucide@latest"></script>
+  <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12.0.2/marked.min.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <div class="brand-mark">L</div>
+        <div>
+          <strong>LeonTools</strong>
+          <span>个人工具工作台</span>
+        </div>
+      </div>
+
+      <nav class="nav-list" aria-label="工具导航">
+        <button class="nav-item is-active" data-tool="overview"><i data-lucide="layout-dashboard"></i><span>总览</span></button>
+        <button class="nav-item" data-tool="trace"><i data-lucide="route"></i><span>机器人轨迹</span></button>
+        <button class="nav-item" data-tool="files"><i data-lucide="files"></i><span>文件工具</span></button>
+        <button class="nav-item" data-tool="documents"><i data-lucide="file-text"></i><span>文档工具</span></button>
+      </nav>
+
+      <div class="sidebar-foot">
+        <div class="status-dot"></div>
+        <span>浏览器本地运行</span>
+      </div>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">LOCAL TOOLBOX / 2026</p>
+          <h1 id="page-title">工具工作台</h1>
+        </div>
+        <div class="topbar-actions">
+          <span class="privacy-note"><i data-lucide="shield-check"></i> 文件只在本机处理</span>
+          <button class="icon-button" id="reset-workspace" title="清空当前工作区"><i data-lucide="rotate-ccw"></i></button>
+        </div>
+      </header>
+
+      <section class="page-section is-visible" data-panel="overview">
+        <div class="hero-row">
+          <div>
+            <p class="section-kicker">LeonTools / Utility Desk</p>
+            <h2>把常用脚本，收进一个顺手的页面。</h2>
+            <p class="muted hero-copy">从 history 整理出的文件、文档与机器人轨迹工具。选取文件后直接在浏览器中预览和导出结果，不触碰原始文件。</p>
+          </div>
+          <div class="hero-stamp">
+            <span>AVAILABLE</span>
+            <strong>06</strong>
+            <small>browser tools</small>
+          </div>
+        </div>
+
+        <div class="metric-grid">
+          <div class="metric"><span>已整理</span><strong>06</strong><small>个可直接使用的工具</small></div>
+          <div class="metric"><span>本地优先</span><strong>100%</strong><small>文件不上传服务器</small></div>
+          <div class="metric"><span>原文件</span><strong>保留</strong><small>结果以下载文件导出</small></div>
+        </div>
+
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">QUICK ACCESS</p>
+            <h3>从这里开始</h3>
+          </div>
+        </div>
+        <div class="tool-grid">
+          <button class="tool-card accent-blue" data-open-tool="trace">
+            <span class="tool-icon"><i data-lucide="route"></i></span>
+            <span class="tool-card-title">轨迹分析</span>
+            <span class="tool-card-copy">查看 EliScript / CSV 的三维轨迹与点位。</span>
+            <span class="tool-card-link">打开工具 <i data-lucide="arrow-up-right"></i></span>
+          </button>
+          <button class="tool-card accent-orange" data-open-tool="rename">
+            <span class="tool-icon"><i data-lucide="case-sensitive"></i></span>
+            <span class="tool-card-title">批量改名</span>
+            <span class="tool-card-copy">预览前缀与序号，导出改名后的 ZIP。</span>
+            <span class="tool-card-link">开始处理 <i data-lucide="arrow-up-right"></i></span>
+          </button>
+          <button class="tool-card accent-green" data-open-tool="dedupe">
+            <span class="tool-icon"><i data-lucide="copy-check"></i></span>
+            <span class="tool-card-title">文件去重</span>
+            <span class="tool-card-copy">按 SHA-256 找出重复文件并生成报告。</span>
+            <span class="tool-card-link">开始扫描 <i data-lucide="arrow-up-right"></i></span>
+          </button>
+          <button class="tool-card accent-purple" data-open-tool="pdf">
+            <span class="tool-icon"><i data-lucide="files"></i></span>
+            <span class="tool-card-title">PDF 合并</span>
+            <span class="tool-card-copy">按选择顺序合并 PDF，结果直接下载。</span>
+            <span class="tool-card-link">合并文件 <i data-lucide="arrow-up-right"></i></span>
+          </button>
+          <button class="tool-card accent-cyan" data-open-tool="markdown">
+            <span class="tool-icon"><i data-lucide="file-code-2"></i></span>
+            <span class="tool-card-title">Markdown 转 HTML</span>
+            <span class="tool-card-copy">编辑、预览并导出独立 HTML 文档。</span>
+            <span class="tool-card-link">打开编辑器 <i data-lucide="arrow-up-right"></i></span>
+          </button>
+          <button class="tool-card accent-red" data-open-tool="image-check">
+            <span class="tool-icon"><i data-lucide="image-off"></i></span>
+            <span class="tool-card-title">图片引用检查</span>
+            <span class="tool-card-copy">检查 Markdown 图片引用与未使用图片。</span>
+            <span class="tool-card-link">检查目录 <i data-lucide="arrow-up-right"></i></span>
+          </button>
+        </div>
+
+        <div class="notice">
+          <i data-lucide="info"></i>
+          <div><strong>硬件脚本已保留在 history</strong><span>机器人 SDK、树莓派 GPIO、打印和桌面 UI 依赖本机环境，暂不伪装成网页按钮；后续可接入本地 Python 服务。</span></div>
+        </div>
+      </section>
+
+      <section class="page-section" data-panel="trace">
+        <div class="panel-heading">
+          <div><p class="section-kicker">ROBOTICS / VISUALIZER</p><h2>机器人轨迹分析</h2><p class="muted">沿用现有的 3D 轨迹解析器，支持 EliScript 与 CSV。</p></div>
+          <a class="primary-button" href="./createTrace.html" target="_blank" rel="noreferrer"><i data-lucide="external-link"></i>打开轨迹工具</a>
+        </div>
+        <div class="embed-preview">
+          <div class="embed-graphic"><i data-lucide="route"></i><span>3D / XY / POINT INSPECTOR</span></div>
+          <div><strong>createTrace.html</strong><p class="muted">点击右上角打开完整轨迹分析页面。它可以解析 `movep()` 点位、识别 `full_tracking_frame`，并支持点击点位查看坐标。</p></div>
+        </div>
+      </section>
+
+      <section class="page-section" data-panel="files">
+        <div class="panel-heading"><div><p class="section-kicker">FILE OPERATIONS</p><h2>文件工具</h2><p class="muted">把原先的桌面脚本变成浏览器内的可预览导出流程。</p></div></div>
+        <div class="subnav">
+          <button class="subnav-item is-active" data-subtool="rename"><i data-lucide="case-sensitive"></i>批量改名</button>
+          <button class="subnav-item" data-subtool="dedupe"><i data-lucide="copy-check"></i>文件去重</button>
+          <button class="subnav-item" data-subtool="filter"><i data-lucide="list-filter"></i>文件筛选</button>
+        </div>
+        <div class="tool-panel is-visible" data-tool-panel="rename">
+          <div class="form-grid">
+            <label class="field wide"><span>选择要处理的文件</span><input type="file" id="rename-files" multiple></label>
+            <label class="field"><span>文件名前缀</span><input id="rename-prefix" value="file-" placeholder="例如 weld-"></label>
+            <label class="field"><span>起始序号</span><input id="rename-start" type="number" value="1" min="0"></label>
+          </div>
+          <div class="action-row"><button class="primary-button" id="rename-preview"><i data-lucide="eye"></i>生成预览</button><button class="secondary-button" id="rename-export" disabled><i data-lucide="download"></i>导出 ZIP</button></div>
+          <div class="result-box" id="rename-result"><span class="empty-state">选择文件后生成改名预览。</span></div>
+        </div>
+        <div class="tool-panel" data-tool-panel="dedupe">
+          <label class="field"><span>选择文件或文件夹内文件</span><input type="file" id="dedupe-files" multiple webkitdirectory></label>
+          <div class="action-row"><button class="primary-button" id="dedupe-run"><i data-lucide="scan-search"></i>扫描重复文件</button><button class="secondary-button" id="dedupe-report" disabled><i data-lucide="download"></i>下载报告</button></div>
+          <div class="result-box" id="dedupe-result"><span class="empty-state">浏览器会按文件内容计算 SHA-256，不修改源文件。</span></div>
+        </div>
+        <div class="tool-panel" data-tool-panel="filter">
+          <label class="field"><span>选择文件</span><input type="file" id="filter-files" multiple webkitdirectory></label>
+          <label class="field"><span>文件名关键词或正则表达式</span><input id="filter-pattern" value="video|wx|VID" placeholder="例如 pdf$ 或 video|wx"></label>
+          <div class="action-row"><button class="primary-button" id="filter-run"><i data-lucide="filter"></i>筛选文件</button><button class="secondary-button" id="filter-report" disabled><i data-lucide="download"></i>导出清单</button></div>
+          <div class="result-box" id="filter-result"><span class="empty-state">从 history 的“文件筛选”脚本迁移而来，网页端只做清单筛选。</span></div>
+        </div>
+      </section>
+
+      <section class="page-section" data-panel="documents">
+        <div class="panel-heading"><div><p class="section-kicker">DOCUMENT OPERATIONS</p><h2>文档工具</h2><p class="muted">常见文档处理在本地完成，结果使用下载方式交付。</p></div></div>
+        <div class="subnav">
+          <button class="subnav-item is-active" data-subtool="pdf"><i data-lucide="files"></i>PDF 合并</button>
+          <button class="subnav-item" data-subtool="markdown"><i data-lucide="file-code-2"></i>Markdown 转 HTML</button>
+          <button class="subnav-item" data-subtool="image-check"><i data-lucide="image-off"></i>图片引用检查</button>
+        </div>
+        <div class="tool-panel is-visible" data-tool-panel="pdf">
+          <label class="field"><span>选择 PDF（顺序即合并顺序）</span><input type="file" id="pdf-files" accept="application/pdf,.pdf" multiple></label>
+          <div class="action-row"><button class="primary-button" id="pdf-run"><i data-lucide="merge"></i>合并 PDF</button></div>
+          <div class="result-box" id="pdf-result"><span class="empty-state">基于 history 中的 PyPDF2 合并脚本，浏览器端使用 pdf-lib。</span></div>
+        </div>
+        <div class="tool-panel" data-tool-panel="markdown">
+          <div class="markdown-layout">
+            <div class="editor-column"><label class="field"><span>Markdown 内容</span><textarea id="markdown-input" spellcheck="false"># LeonTools 笔记
+
+这是一个可以直接预览的 **Markdown** 文档。
+
+- 选择左侧工具
+- 在本地处理文件
+- 导出 HTML 结果</textarea></label></div>
+            <div class="markdown-preview markdown-body" id="markdown-preview"></div>
+          </div>
+          <div class="action-row"><button class="secondary-button" id="markdown-load"><i data-lucide="file-up"></i>载入 .md</button><input class="hidden-input" type="file" id="markdown-file" accept=".md,.markdown,text/markdown"><button class="primary-button" id="markdown-export"><i data-lucide="download"></i>导出 HTML</button></div>
+        </div>
+        <div class="tool-panel" data-tool-panel="image-check">
+          <label class="field"><span>选择 Markdown 与图片文件（可选择文件夹）</span><input type="file" id="image-check-files" multiple webkitdirectory></label>
+          <div class="action-row"><button class="primary-button" id="image-check-run"><i data-lucide="scan-search"></i>检查引用</button><button class="secondary-button" id="image-check-report" disabled><i data-lucide="download"></i>下载报告</button></div>
+          <div class="result-box" id="image-check-result"><span class="empty-state">从 history 的 Markdown 图片链接工具迁移而来，会检查文件名匹配并给出报告。</span></div>
+        </div>
+      </section>
+
+      <footer class="footer"><span>LeonTools · browser-first utility desk</span><span>所有导出均由当前浏览器生成</span></footer>
+    </main>
+  </div>
+  <script src="./app.js"></script>
+</body>
+</html>
