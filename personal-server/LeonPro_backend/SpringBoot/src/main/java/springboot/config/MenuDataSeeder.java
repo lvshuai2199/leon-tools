@@ -30,6 +30,8 @@ public class MenuDataSeeder implements CommandLineRunner {
     public void run(String... args) {
         // 幂等修复：保证默认菜单的排序与关键字段在每次启动时对齐
         ensureSeedSortOrder();
+        // 幂等补插：新增的种子菜单在已有库中自动补齐
+        ensureSeedMenu();
 
         long count = sysMenusService.count();
         if (count > 0) {
@@ -48,6 +50,8 @@ public class MenuDataSeeder implements CommandLineRunner {
                 "Files", "document", 2, 1, 1, 0, 0, null, now));
         menus.add(build("menu_documents", "menu_tool", "文档工具", "documents", "tool/documents/index", null,
                 "Documents", "file", 3, 1, 1, 0, 0, null, now));
+        menus.add(build("menu_mindmap", "menu_tool", "思维导图", "mindmap", "tool/mindmap/index", null,
+                "Mindmap", "share", 4, 1, 1, 0, 0, null, now));
 
         // ============ 业务管理（2） ============
         menus.add(build("menu_work", "0", "业务管理", "/work", "Layout", "/work/tasks", null,
@@ -81,11 +85,25 @@ public class MenuDataSeeder implements CommandLineRunner {
         updateSort("menu_trace", 1);
         updateSort("menu_files", 2);
         updateSort("menu_documents", 3);
+        updateSort("menu_mindmap", 4);
         updateSort("menu_tasks", 1);
         updateSort("menu_registration", 2);
         updateSort("menu_user", 1);
         updateSort("menu_role", 2);
         updateSort("menu_menu", 3);
+    }
+
+    /**
+     * 幂等补插：后续版本新增的种子菜单，在已初始化的库中自动补齐
+     */
+    private void ensureSeedMenu() {
+        SysMenus mindmap = sysMenusService.getById("menu_mindmap");
+        if (mindmap == null) {
+            mindmap = build("menu_mindmap", "menu_tool", "思维导图", "mindmap",
+                    "tool/mindmap/index", null, "Mindmap", "share", 4, 1, 1, 0, 0, null, new Date());
+            sysMenusService.save(mindmap);
+            log.info("已补插种子菜单 menu_mindmap（思维导图）。");
+        }
     }
 
     private void updateSort(String id, Integer sortOrder) {
