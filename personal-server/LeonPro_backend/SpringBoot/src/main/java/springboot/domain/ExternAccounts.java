@@ -1,9 +1,8 @@
 package springboot.domain;
 
-import com.baomidou.mybatisplus.annotation.IdType;
-import com.baomidou.mybatisplus.annotation.TableField;
-import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import java.io.Serializable;
 import lombok.Data;
 
@@ -12,7 +11,9 @@ import lombok.Data;
  */
 @TableName(value ="extern_accounts")
 @Data
+@Entity
 public class ExternAccounts implements Serializable {
+    @Id
     private String id;
 
     private String accountName;

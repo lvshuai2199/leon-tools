@@ -1,6 +1,8 @@
 package springboot.domain;
 
 import com.baomidou.mybatisplus.annotation.TableName;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import java.io.Serializable;
 import lombok.Data;
 
@@ -9,7 +11,9 @@ import lombok.Data;
  */
 @TableName(value ="extern_wallet")
 @Data
+@Entity
 public class ExternWallet implements Serializable {
+    @Id
     private String id;
 
     private String walletName;
