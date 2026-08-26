@@ -59,6 +59,15 @@
               编辑
             </el-button>
             <el-button
+              type="warning"
+              size="small"
+              link
+              icon="Lock"
+              @click="handleOpenPermission(scope.row)"
+            >
+              权限
+            </el-button>
+            <el-button
               type="danger"
               size="small"
               link
@@ -116,6 +125,36 @@
         </div>
       </template>
     </el-dialog>
+
+    <!-- 角色权限（可访问路由）设置弹窗 -->
+    <el-dialog
+      v-model="permissionDialog.visible"
+      title="分配可访问路由"
+      width="480px"
+    >
+      <el-tree
+        ref="menuTreeRef"
+        :data="menuTreeData"
+        :props="{ label: 'label', children: 'children' }"
+        show-checkbox
+        node-key="id"
+        :default-checked-keys="permissionDialog.checkedKeys"
+        default-expand-all
+        highlight-current
+      />
+      <template #footer>
+        <div class="dialog-footer">
+          <el-button @click="permissionDialog.visible = false">取 消</el-button>
+          <el-button
+            type="primary"
+            :loading="permissionDialog.loading"
+            @click="handlePermissionSubmit"
+          >
+            确 定
+          </el-button>
+        </div>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -126,6 +165,7 @@ defineOptions({
 });
 
 import RoleAPI, { RolePageVO, RoleForm, RolePageQuery } from "@/api/system/role";
+import MenuAPI, { SysMenuVO } from "@/api/system/menu";
 
 const queryFormRef = ref();
 const roleFormRef = ref();
@@ -134,7 +174,21 @@ const loading = ref(false);
 const ids = ref<string[]>([]);
 const total = ref(0);
 
-const queryParams = reactive<RolePageQuery>({
+// 角色权限（可访问路由）设置
+const menuTreeRef = ref<any>();
+const menuTreeData = ref<any[]>([]);
+const permissionDialog = reactive({
+  visible: false,
+  loading: false,
+  roleId: "",
+  checkedKeys: [] as string[],
+});
+
+interface RoleQuery extends RolePageQuery {
+  current: number;
+  size: number;
+}
+const queryParams = reactive<RoleQuery>({
   current: 1,
   size: 10,
 });
@@ -220,6 +274,52 @@ function handleCloseDialog() {
   roleFormRef.value.clearValidate();
   formData.id = undefined;
   Object.assign(formData, initialFormData);
+}
+
+// 打开角色权限设置弹窗
+function handleOpenPermission(row: RolePageVO) {
+  permissionDialog.roleId = row.id!;
+  permissionDialog.visible = true;
+  permissionDialog.loading = true;
+  Promise.all([MenuAPI.getList(), RoleAPI.getRoleMenus(row.id!)])
+    .then(([menus, checked]) => {
+      menuTreeData.value = buildMenuTree(menus || []);
+      permissionDialog.checkedKeys = checked || [];
+    })
+    .finally(() => (permissionDialog.loading = false));
+}
+
+// 提交角色权限（可访问路由）
+function handlePermissionSubmit() {
+  const checkedKeys = [
+    ...(menuTreeRef.value?.getCheckedKeys() || []),
+    ...(menuTreeRef.value?.getHalfCheckedKeys() || []),
+  ];
+  permissionDialog.loading = true;
+  RoleAPI.assignRoleMenus(permissionDialog.roleId, checkedKeys)
+    .then(() => {
+      ElMessage.success("权限分配成功");
+      permissionDialog.visible = false;
+    })
+    .finally(() => (permissionDialog.loading = false));
+}
+
+// 将扁平菜单列表转为 el-tree 所需的树结构（仅目录与菜单，排除按钮）
+function buildMenuTree(menus: SysMenuVO[]): any[] {
+  const nodes = (menus || []).filter((m) => m.menuType !== 2);
+  const map = new Map<string, any>();
+  const roots: any[] = [];
+  nodes.forEach((m) => {
+    map.set(m.id!, { id: m.id, label: m.menuName, children: [] });
+  });
+  nodes.forEach((m) => {
+    const node = map.get(m.id!);
+    const parent =
+      m.parentId && m.parentId !== "0" ? map.get(m.parentId) : undefined;
+    if (parent) parent.children.push(node);
+    else roots.push(node);
+  });
+  return roots;
 }
 
 // 删除角色

@@ -47,6 +47,24 @@ const RoleAPI = {
       data: ids,
     });
   },
+
+  /** 获取角色已分配的菜单（路由）ID 列表 GET /sysRoles/menus?roleId= */
+  getRoleMenus(roleId: string) {
+    return request<any, string[]>({
+      url: `${ROLE_BASE_URL}/menus`,
+      method: "get",
+      params: { roleId },
+    });
+  },
+
+  /** 分配角色可访问的菜单（路由）列表 POST /sysRoles/menus */
+  assignRoleMenus(roleId: string, menuIds: string[]) {
+    return request<any, boolean>({
+      url: `${ROLE_BASE_URL}/menus`,
+      method: "post",
+      data: { roleId, menuIds },
+    });
+  },
 };
 
 export default RoleAPI;

@@ -5,10 +5,14 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
 import springboot.domain.SysRoles;
+import springboot.service.SysRoleMenuService;
 import springboot.service.SysRolesService;
 import springboot.utils.ApiResponse;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.List;
+import java.util.Map;
 
 import java.io.Serializable;
 import java.util.List;
@@ -27,6 +31,9 @@ public class SysRolesController {
      */
     @Autowired
     private SysRolesService sysRolesService;
+
+    @Autowired
+    private SysRoleMenuService sysRoleMenuService;
 
     /**
      * 分页查询所有数据
@@ -90,6 +97,31 @@ public class SysRolesController {
     @PostMapping("del")
     public ApiResponse delete(@RequestBody List<String> idList) {
         return ApiResponse.success(this.sysRolesService.removeByIds(idList));
+    }
+
+    /**
+     * 查询角色已分配的菜单（路由）ID 列表
+     */
+    @GetMapping("menus")
+    public ApiResponse getRoleMenus(@RequestParam String roleId) {
+        return ApiResponse.success(sysRoleMenuService.getMenuIdsByRole(roleId));
+    }
+
+    /**
+     * 分配角色可访问的菜单（路由）列表（先删后插）
+     */
+    @PostMapping("menus")
+    public ApiResponse assignRoleMenus(@RequestBody Map<String, Object> body) {
+        String roleId = (String) body.get("roleId");
+        List<String> menuIds = new java.util.ArrayList<>();
+        Object ids = body.get("menuIds");
+        if (ids instanceof java.util.List) {
+            for (Object o : (java.util.List<?>) ids) {
+                menuIds.add(String.valueOf(o));
+            }
+        }
+        sysRoleMenuService.assignMenus(roleId, menuIds);
+        return ApiResponse.success("OK");
     }
 
 }
