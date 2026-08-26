@@ -11,10 +11,14 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.web.bind.annotation.*;
 
 import java.awt.image.BufferedImage;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("auth")
@@ -44,6 +48,9 @@ public class SysGeneralController {
 
     @Autowired
     private SysMenusService sysMenusService;
+
+    @Autowired
+    private SysRolesService sysRolesService;
 
     @PostMapping("captcha")
     public ApiResponse getCaptcha() {
@@ -122,20 +129,66 @@ public class SysGeneralController {
     /**
      * 获取菜单路由列表
      *
-     * 当前未接入权限体系，直接返回全部菜单（按钮类型除外），
-     * 后续接入登录态后可基于当前用户的角色过滤。
+     * 根据当前用户角色过滤：用户名非空时，按「用户 → 角色 → sys_role_menu」返回其可访问的菜单
+     * （并补全被分配菜单的祖先目录，保证树结构完整）；超级管理员（root）与未携带用户名时返回全部菜单。
+     *
+     * @param username 当前登录用户名（可选）
      * */
     @GetMapping("getMenuList")
-    public ApiResponse getMenuList() {
+    public ApiResponse getMenuList(@RequestParam(value = "username", required = false) String username) {
+        // 未携带用户名（兼容旧调用）：返回全部菜单
+        if (username == null || username.isEmpty()) {
+            return ApiResponse.success(listAllMenus());
+        }
+
+        // 用户 → 角色
+        LambdaQueryWrapper<SysUsers> userWrapper = new LambdaQueryWrapper<>();
+        userWrapper.eq(SysUsers::getUsername, username);
+        SysUsers user = sysUsersService.getOne(userWrapper);
+        if (user == null || user.getRoleId() == null || user.getRoleId().isEmpty()) {
+            return ApiResponse.success(Collections.emptyList());
+        }
+
+        SysRoles role = sysRolesService.getById(user.getRoleId());
+        // 超级管理员（root）放行全部菜单
+        if (role != null && "root".equalsIgnoreCase(role.getRoleName())) {
+            return ApiResponse.success(listAllMenus());
+        }
+
+        // 角色已分配的菜单
+        List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(user.getRoleId());
+        if (menuIds == null || menuIds.isEmpty()) {
+            return ApiResponse.success(Collections.emptyList());
+        }
+
+        // 补全被分配菜单的所有祖先目录，保证目录与子菜单树结构完整
+        Set<String> visibleIds = new HashSet<>(menuIds);
+        List<SysMenus> allMenus = sysMenusService.list();
+        Map<String, SysMenus> menuMap = allMenus.stream()
+                .collect(Collectors.toMap(SysMenus::getId, m -> m, (a, b) -> a));
+        for (String id : menuIds) {
+            SysMenus cur = menuMap.get(id);
+            while (cur != null && cur.getParentId() != null && !"0".equals(cur.getParentId())) {
+                visibleIds.add(cur.getParentId());
+                cur = menuMap.get(cur.getParentId());
+            }
+        }
 
         LambdaQueryWrapper<SysMenus> queryWrapper = new LambdaQueryWrapper<>();
         // 0目录 1菜单 2按钮：路由只取目录与菜单
         queryWrapper.ne(SysMenus::getMenuType, 2);
+        queryWrapper.in(SysMenus::getId, visibleIds);
         queryWrapper.orderByAsc(SysMenus::getSortOrder);
 
-        List<SysMenus> menuList = sysMenusService.list(queryWrapper);
+        return ApiResponse.success(sysMenusService.list(queryWrapper));
+    }
 
-        return ApiResponse.success(menuList);
+    /** 查询全部目录与菜单（按钮除外），按排序返回 */
+    private List<SysMenus> listAllMenus() {
+        LambdaQueryWrapper<SysMenus> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.ne(SysMenus::getMenuType, 2);
+        queryWrapper.orderByAsc(SysMenus::getSortOrder);
+        return sysMenusService.list(queryWrapper);
     }
 
 

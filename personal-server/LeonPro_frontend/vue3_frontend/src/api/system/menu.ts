@@ -12,11 +12,14 @@ const MENU_BASE_URL = "/sysMenus";
 const MenuAPI = {
   /**
    * 获取路由配置树（供 permission store 注册动态路由）
+   *
+   * @param username 当前登录用户名，后端据此按角色过滤可访问菜单
    */
-  getRoutes() {
+  getRoutes(username?: string) {
     return request<any, SysMenuVO[]>({
       url: "/auth/getMenuList",
       method: "get",
+      params: username ? { username } : undefined,
     }).then((list) => buildRouteTree(list || []));
   },
 

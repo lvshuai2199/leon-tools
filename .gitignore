@@ -1,0 +1,20 @@
+# LeonTools dev 临时文件（本次权限修复期间用于绕开日志锁/IDEA target 锁）
+
+# 后端 javac 独立编译输出
+personal-server/LeonPro_backend/SpringBoot/target_new/
+
+# 后端 logback 配置覆盖目录
+personal-server/LeonPro_backend/SpringBoot/logback_override/
+
+# 后端手动生成的依赖 classpath / 临时 java 调试
+personal-server/LeonPro_backend/SpringBoot/cp.txt
+personal-server/LeonPro_backend/SpringBoot/LogTest*.java
+personal-server/LeonPro_backend/SpringBoot/LogTest*.class
+personal-server/LeonPro_backend/SpringBoot/logtest_result.txt
+
+# 后端外部日志目录（LOG_PATH 指向的可写目录）
+leonpro_logs/
+
+# 前端 vite dev 日志 / 验证截图
+personal-server/LeonPro_frontend/_vite.log
+personal-server/LeonPro_frontend/_verify_*.png
