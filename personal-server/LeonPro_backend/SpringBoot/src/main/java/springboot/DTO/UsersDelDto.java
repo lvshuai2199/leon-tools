@@ -5,5 +5,5 @@ import java.util.List;
 
 @Data
 public class UsersDelDto {
-    private List<Long> userIds; // 假设用户 ID 是 Long 类型
+    private List<String> userIds; // 与 SysUsers 的 String 类型 UUID 主键一致
 }

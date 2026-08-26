@@ -1,7 +1,7 @@
 package springboot.controller.web;
 
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
 import springboot.domain.SysRoles;
@@ -37,7 +37,15 @@ public class SysRolesController {
      */
     @GetMapping("getAll")
     public ApiResponse selectAll(Page<SysRoles> page, SysRoles sysRoles) {
-        return ApiResponse.success(this.sysRolesService.page(page, new QueryWrapper<>(sysRoles)));
+        LambdaQueryWrapper<SysRoles> queryWrapper = new LambdaQueryWrapper<>();
+        if (sysRoles.getRoleName() != null && !sysRoles.getRoleName().isEmpty()) {
+            queryWrapper.like(SysRoles::getRoleName, sysRoles.getRoleName());
+        }
+        if (sysRoles.getIsDisabled() != null) {
+            queryWrapper.eq(SysRoles::getIsDisabled, sysRoles.getIsDisabled());
+        }
+        queryWrapper.orderByAsc(SysRoles::getCreateTime);
+        return ApiResponse.success(this.sysRolesService.page(page, queryWrapper));
     }
 
     /**
@@ -80,7 +88,7 @@ public class SysRolesController {
      * @return 删除结果
      */
     @PostMapping("del")
-    public ApiResponse delete(@RequestBody List<Long> idList) {
+    public ApiResponse delete(@RequestBody List<String> idList) {
         return ApiResponse.success(this.sysRolesService.removeByIds(idList));
     }
 

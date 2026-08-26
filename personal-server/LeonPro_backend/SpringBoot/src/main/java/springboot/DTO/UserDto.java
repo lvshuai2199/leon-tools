@@ -16,11 +16,22 @@ public class UserDto {
     @Size(min = 3, max = 20, message = "Username must be between 3 and 20 characters")
     private String username;
 
-    @NotBlank(message = "Password cannot be empty")
+    /**
+     * 密码：新增用户时必填，编辑时留空表示不修改密码
+     */
     @Size(min = 6, message = "Password must be at least 6 characters")
     private String password;
 
-    @NotBlank(message = "Email cannot be empty")
     @Email(message = "Invalid email format")
     private String email;
+
+    /**
+     * 昵称
+     */
+    private String nickname;
+
+    /**
+     * 角色ID（对应 sys_roles.id）
+     */
+    private String roleId;
 }

@@ -70,6 +70,31 @@ public class SysMenus implements Serializable {
     private String permission;
 
     /**
+     * 组件路径（菜单类型填写，如 tool/trace/index；目录类型固定为 Layout）
+     */
+    private String component;
+
+    /**
+     * 路由名称（如 Trace，需与页面 defineOptions.name 一致以便 keep-alive 生效）
+     */
+    private String routeName;
+
+    /**
+     * 是否开启页面缓存 1开启 0关闭
+     */
+    private Integer keepAlive;
+
+    /**
+     * 始终显示 1是 0否
+     */
+    private Integer alwaysShow;
+
+    /**
+     * 目录跳转地址（目录类型填写）
+     */
+    private String redirect;
+
+    /**
      * 创建时间
      */
     private Date createTime;

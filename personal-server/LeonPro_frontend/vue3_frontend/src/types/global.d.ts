@@ -10,10 +10,16 @@ declare global {
 
   /**
    * 分页查询参数
+   *
+   * 兼容两种约定：
+   * - pageNum / pageSize：模板默认
+   * - current / size：LeonPro_backend MyBatis-Plus Page 绑定
    */
   interface PageQuery {
-    pageNum: number;
-    pageSize: number;
+    pageNum?: number;
+    pageSize?: number;
+    current?: number;
+    size?: number;
   }
 
   /**

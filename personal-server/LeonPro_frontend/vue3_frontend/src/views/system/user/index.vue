@@ -35,9 +35,18 @@
       <el-table v-loading="loading" :data="userList" border>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="username" label="用户名" width="140" />
-        <el-table-column prop="nickname" label="昵称" width="140" />
+        <el-table-column prop="nickname" label="昵称" width="140">
+          <template #default="{ row }">
+            <span>{{ row.nickname || "-" }}</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="roleId" label="角色ID" width="280" align="center" show-overflow-tooltip />
+        <el-table-column label="角色" width="140" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="getRoleName(row.roleId)" type="primary">{{ getRoleName(row.roleId) }}</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="160" align="center" />
         <el-table-column label="操作" width="140" align="center" fixed="right">
           <template #default="{ row }">
@@ -68,16 +77,29 @@
         <el-form-item label="用户名" prop="username">
           <el-input v-model="formData.username" placeholder="用户名（3-20个字符）" />
         </el-form-item>
-        <el-form-item v-if="!formData.id" label="密码" prop="password">
+        <el-form-item label="密码" prop="password">
           <el-input
             v-model="formData.password"
             type="password"
             show-password
-            placeholder="密码（至少6位）"
+            :placeholder="formData.id ? '留空表示不修改密码' : '密码（至少6位）'"
           />
+        </el-form-item>
+        <el-form-item label="昵称" prop="nickname">
+          <el-input v-model="formData.nickname" placeholder="昵称" />
         </el-form-item>
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="formData.email" placeholder="邮箱" />
+        </el-form-item>
+        <el-form-item label="角色" prop="roleId">
+          <el-select v-model="formData.roleId" placeholder="请选择角色" clearable style="width: 100%">
+            <el-option
+              v-for="role in roleOptions"
+              :key="role.id"
+              :label="role.roleName"
+              :value="role.id!"
+            />
+          </el-select>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -90,6 +112,7 @@
 
 <script setup lang="ts">
 import UserAPI, { type UserPageVO, type UserForm } from "@/api/system/user";
+import RoleAPI, { type RolePageVO } from "@/api/system/role";
 
 defineOptions({
   name: "User",
@@ -100,6 +123,7 @@ const loading = ref(false);
 const submitLoading = ref(false);
 const userList = ref<UserPageVO[]>([]);
 const total = ref(0);
+const roleOptions = ref<RolePageVO[]>([]);
 
 const queryParams = reactive({
   current: 1,
@@ -117,6 +141,8 @@ const formData = reactive<UserForm>({
   username: "",
   password: "",
   email: "",
+  nickname: "",
+  roleId: undefined,
 });
 
 const rules = {
@@ -125,17 +151,46 @@ const rules = {
     { min: 3, max: 20, message: "用户名长度须为 3-20 个字符", trigger: "blur" },
   ],
   password: [
-    { required: true, message: "请输入密码", trigger: "blur" },
-    { min: 6, message: "密码长度不能少于6位", trigger: "blur" },
+    {
+      validator: (_rule: unknown, value: string, callback: (err?: Error) => void) => {
+        if (!formData.id && !value) {
+          callback(new Error("请输入密码"));
+          return;
+        }
+        if (value && value.length < 6) {
+          callback(new Error("密码长度不能少于6位"));
+          return;
+        }
+        callback();
+      },
+      trigger: "blur",
+    },
   ],
   email: [{ type: "email", message: "邮箱格式不正确", trigger: "blur" }],
 };
+
+/** 加载角色列表（供下拉选择） */
+function loadRoles() {
+  RoleAPI.getPage({ current: 1, size: 999 }).then((data) => {
+    roleOptions.value = data.records || [];
+  });
+}
+
+/** 根据角色ID返回角色名称 */
+function getRoleName(roleId?: string) {
+  if (!roleId) return "";
+  const role = roleOptions.value.find((item) => item.id === roleId);
+  return role?.roleName || "";
+}
 
 function loadUsers() {
   loading.value = true;
   UserAPI.getPage(queryParams)
     .then((data) => {
-      userList.value = data.records || [];
+      userList.value = (data.records || []).map((item) => ({
+        ...item,
+        roleName: getRoleName(item.roleId),
+      }));
       total.value = data.total || 0;
     })
     .catch((error) => {
@@ -162,7 +217,10 @@ function openDialog(row?: UserPageVO) {
     Object.assign(formData, {
       id: row.id,
       username: row.username,
+      nickname: row.nickname,
       email: row.email,
+      roleId: row.roleId || undefined,
+      password: "",
     });
   } else {
     dialog.title = "新增用户";
@@ -176,6 +234,8 @@ function resetForm() {
   formData.username = "";
   formData.password = "";
   formData.email = "";
+  formData.nickname = "";
+  formData.roleId = undefined;
 }
 
 function handleSubmit() {
@@ -214,6 +274,7 @@ function handleDelete(row: UserPageVO) {
 }
 
 onMounted(() => {
+  loadRoles();
   loadUsers();
 });
 </script>

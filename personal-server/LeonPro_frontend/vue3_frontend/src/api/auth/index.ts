@@ -93,7 +93,8 @@ export interface LoginUserVO {
   avatarUrl?: string;
   email?: string;
   createTime?: string;
-  roleId?: number;
+  /** 角色ID（对应 sys_roles.id） */
+  roleId?: string;
 }
 
 /** 验证码信息 */

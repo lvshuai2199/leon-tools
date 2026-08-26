@@ -42,6 +42,9 @@ public class SysGeneralController {
     @Autowired
     private SysInfoService sysInfoService;
 
+    @Autowired
+    private SysMenusService sysMenusService;
+
     @PostMapping("captcha")
     public ApiResponse getCaptcha() {
         // 生成验证码文本
@@ -118,16 +121,21 @@ public class SysGeneralController {
     }
     /**
      * 获取菜单路由列表
+     *
+     * 当前未接入权限体系，直接返回全部菜单（按钮类型除外），
+     * 后续接入登录态后可基于当前用户的角色过滤。
      * */
     @GetMapping("getMenuList")
     public ApiResponse getMenuList() {
 
-        String roleid = "8b69d138f8ca6f527d816e20fa76f29e";
+        LambdaQueryWrapper<SysMenus> queryWrapper = new LambdaQueryWrapper<>();
+        // 0目录 1菜单 2按钮：路由只取目录与菜单
+        queryWrapper.ne(SysMenus::getMenuType, 2);
+        queryWrapper.orderByAsc(SysMenus::getSortOrder);
 
+        List<SysMenus> menuList = sysMenusService.list(queryWrapper);
 
-        List<SysMenus> menuListByRoleId = sysGeneralService.getMenuListByRoleId(roleid);
-
-        return ApiResponse.success(menuListByRoleId);
+        return ApiResponse.success(menuList);
     }
 
 

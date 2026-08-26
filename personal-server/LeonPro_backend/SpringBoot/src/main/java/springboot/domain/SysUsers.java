@@ -52,9 +52,9 @@ public class SysUsers implements Serializable {
     private Date createTime;
 
     /**
-     * 角色ID
+     * 角色ID（对应 sys_roles.id）
      */
-    private Integer roleId;
+    private String roleId;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;

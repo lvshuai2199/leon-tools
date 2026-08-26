@@ -1,6 +1,7 @@
 package springboot.controller.web;
 
 
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +39,18 @@ public class SysMenusController {
     @GetMapping("getAll")
     public ApiResponse selectAll(Page<SysMenus> page, SysMenus sysMenus) {
         return ApiResponse.success(this.sysMenusService.page(page, new QueryWrapper<>(sysMenus)));
+    }
+
+    /**
+     * 查询全部菜单（按排序字段升序），供前端路由配置模块使用
+     *
+     * @return 全量菜单列表
+     */
+    @GetMapping("list")
+    public ApiResponse list() {
+        LambdaQueryWrapper<SysMenus> queryWrapper = new LambdaQueryWrapper<>();
+        queryWrapper.orderByAsc(SysMenus::getSortOrder);
+        return ApiResponse.success(this.sysMenusService.list(queryWrapper));
     }
 
     /**
@@ -80,7 +93,7 @@ public class SysMenusController {
      * @return 删除结果
      */
     @PostMapping("del")
-    public ApiResponse delete(@RequestBody List<Long> idList) {
+    public ApiResponse delete(@RequestBody List<String> idList) {
         return ApiResponse.success(this.sysMenusService.removeByIds(idList));
     }
 

@@ -27,18 +27,19 @@ const UserAPI = {
 
   /**
    * 获取当前登录用户信息
-   * 后端目前硬编码返回用户名 "leon" 的数据
+   * 后端按用户名查询，默认 admin
    */
-  getInfo() {
+  getInfo(username?: string) {
     return request<any, UserInfo>({
       url: `${USER_BASE_URL}/getMyInfo`,
       method: "get",
+      params: username ? { username } : undefined,
     });
   },
 
   /**
    * 新增 / 更新用户
-   * 有 id 时更新（仅 username/email），无 id 时注册（密码必填）
+   * 有 id 时更新（密码留空表示不修改），无 id 时注册（密码必填）
    */
   saveOrUpdate(data: UserForm) {
     return request<any, string>({
@@ -77,7 +78,7 @@ export interface UserInfo {
   /** 创建时间 */
   createTime?: string;
   /** 角色ID */
-  roleId?: number;
+  roleId?: string;
 
   /** 兼容模板原有字段（提供默认值避免报错） */
   userId?: number;
@@ -100,7 +101,10 @@ export interface UserPageVO {
   avatarUrl?: string;
   email?: string;
   createTime?: string;
-  roleId?: number;
+  /** 角色ID（对应 sys_roles.id） */
+  roleId?: string;
+  /** 角色名称（前端根据角色列表映射） */
+  roleName?: string;
 }
 
 /** 用户表单 */
@@ -108,7 +112,9 @@ export interface UserForm {
   /** 用户ID（更新时必传） */
   id?: string;
   username: string;
-  /** 密码（新增必填） */
+  /** 密码（新增必填，编辑时留空表示不修改） */
   password?: string;
   email?: string;
+  nickname?: string;
+  roleId?: string;
 }

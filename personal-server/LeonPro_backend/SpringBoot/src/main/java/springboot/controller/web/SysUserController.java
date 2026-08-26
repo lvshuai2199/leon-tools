@@ -57,7 +57,7 @@ public class SysUserController {
         }
         // 添加条件
         if (sysUsers.getUsername() != null) {
-            queryWrapper.eq(SysUsers::getUsername, sysUsers.getUsername());
+            queryWrapper.like(SysUsers::getUsername, sysUsers.getUsername());
         }
         // 其他条件可以继续添加
 
@@ -72,10 +72,16 @@ public class SysUserController {
         SysUsers sysUsers = new SysUsers();
         sysUsers.setUsername(userDto.getUsername());
         sysUsers.setEmail(userDto.getEmail());
+        sysUsers.setNickname(userDto.getNickname());
+        sysUsers.setRoleId(userDto.getRoleId());
 
         // 如果存在 ID，则更新用户
         if (userDto.getId() != null) {
             sysUsers.setId(userDto.getId());
+            // 编辑时若填写了新密码则一并更新，留空表示不修改密码
+            if (userDto.getPassword() != null && !userDto.getPassword().isEmpty()) {
+                sysUsers.setPassword(userDto.getPassword());
+            }
             boolean updated = this.sysUsersService.updateById(sysUsers);
             return ApiResponse.success(updated ? "User updated successfully." : "User update failed.");
         }
@@ -124,7 +130,7 @@ public class SysUserController {
 
     @PostMapping("delUsers")
     public ApiResponse delUsers(@RequestBody UsersDelDto request) {
-        List<Long> userIds = request.getUserIds();
+        List<String> userIds = request.getUserIds();
 
         if (userIds == null || userIds.isEmpty()) {
             return ApiResponse.failure("User ID list cannot be empty");
@@ -141,13 +147,12 @@ public class SysUserController {
     }
 
     @GetMapping("getMyInfo")
-    public ApiResponse getMyInfo() {
-        SysUsers sysUsers = new SysUsers();
-        sysUsers.setUsername("leon");
+    public ApiResponse getMyInfo(@RequestParam(required = false) String username) {
+        String name = (username == null || username.isEmpty()) ? "admin" : username;
 
-        // 通过用户名和密码检索数据库中是否存在对应的数据项
+        // 通过用户名检索数据库中是否存在对应的数据项
         LambdaQueryWrapper<SysUsers> lambdaQueryWrapper = new LambdaQueryWrapper<>();
-        lambdaQueryWrapper.eq(SysUsers::getUsername, sysUsers.getUsername());
+        lambdaQueryWrapper.eq(SysUsers::getUsername, name);
         SysUsers user = this.sysUsersService.getOne(lambdaQueryWrapper);
         return ApiResponse.success(user);
     }
