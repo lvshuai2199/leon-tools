@@ -20,7 +20,7 @@ CREATE TABLE `sys_users` (
   `password`    VARCHAR(255) NOT NULL COMMENT '密码',
   `email`       VARCHAR(150) DEFAULT NULL COMMENT '邮箱',
   `created_at`  DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
-  `role_id`     INT          DEFAULT NULL COMMENT '角色ID',
+  `role_id`     VARCHAR(64)  DEFAULT NULL COMMENT '角色ID (sys_roles.id)',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
@@ -164,7 +164,7 @@ CREATE TABLE `extern_accounts` (
 -- 初始数据: 默认管理员用户与角色
 -- ============================================================
 INSERT INTO `sys_roles` (`id`, `role_name`, `description`, `is_disabled`)
-VALUES (REPLACE(UUID(), '-', ''), 'ROOT', '超级管理员', 0);
+VALUES ('role_root', 'ROOT', '超级管理员', 0);
 
 INSERT INTO `sys_users` (`id`, `username`, `nickname`, `password`, `email`, `role_id`)
-VALUES (REPLACE(UUID(), '-', ''), 'admin', '管理员', 'admin123', 'admin@leonpro.local', 1);
+VALUES (REPLACE(UUID(), '-', ''), 'admin', '管理员', 'admin123', 'admin@leonpro.local', 'role_root');
