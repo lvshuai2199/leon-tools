@@ -151,7 +151,8 @@ const MenuAPI = {
       },
     ];
 
-    return jsonData;
+    // 注意：必须返回 Promise，permission store 会对返回值调用 .then()
+    return Promise.resolve(jsonData);
   },
 };
 

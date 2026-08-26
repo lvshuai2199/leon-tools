@@ -7,7 +7,7 @@ spring:
 #    password: 123456
     url: jdbc:mysql://106.12.12.111/leonpro_db_dev?useSSL=false&useUnicode=true&characterEncoding=utf-8&autoReconnect=true&serverTimezone=Asia/Shanghai&allowPublicKeyRetrieval=true&createDatabaseIfNotExist=true
     username: root
-    password: leon-sql-pw  # 请确保在生产环境中妥善管理此密码
+    password: Root@123456  # 请确保在生产环境中妥善管理此密码
     driver-class-name: com.mysql.cj.jdbc.Driver
     druid:
       initial-size: 5

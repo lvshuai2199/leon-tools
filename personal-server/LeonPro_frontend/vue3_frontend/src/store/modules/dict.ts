@@ -1,5 +1,5 @@
 import { store } from "@/store";
-import DictionaryAPI, { type DictVO, type DictData } from "@/api/system/dict";
+import { type DictVO, type DictData } from "@/api/system/dict";
 
 export const useDictStore = defineStore("dict", () => {
   const dictionary = useStorage<Record<string, DictData[]>>("dictionary", {});
@@ -11,18 +11,16 @@ export const useDictStore = defineStore("dict", () => {
   /**
    * 加载字典数据
    *
-   * LeonPro_backend 暂未提供字典接口，
-   * 加载失败时静默跳过，不影响登录流程
+   * LeonPro_backend 暂未提供字典接口（/api/v1/dict/list 会 404），
+   * 直接跳过不发请求，避免登录时弹出错误提示。
+   * 后端提供字典接口后，恢复 DictionaryAPI.getList() 调用即可。
    */
   const loadDictionaries = async () => {
-    try {
-      const dictList = await DictionaryAPI.getList();
-      if (Array.isArray(dictList)) {
-        dictList.forEach(setDictionary);
-      }
-    } catch (error) {
-      console.warn("字典数据加载失败（后端暂未提供字典接口，已跳过）:", error);
-    }
+    // const dictList = await DictionaryAPI.getList();
+    // if (Array.isArray(dictList)) {
+    //   dictList.forEach(setDictionary);
+    // }
+    return Promise.resolve();
   };
 
   const getDictionary = (dictCode: string): DictData[] => {

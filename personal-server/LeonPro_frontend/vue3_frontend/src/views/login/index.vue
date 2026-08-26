@@ -143,6 +143,7 @@ async function handleLoginSubmit() {
         })
         .catch((error) => {
           console.error("登录失败", error);
+          ElMessage.error(typeof error === "string" ? error : "登录失败，请重试");
         })
         .finally(() => {
           loading.value = false;
