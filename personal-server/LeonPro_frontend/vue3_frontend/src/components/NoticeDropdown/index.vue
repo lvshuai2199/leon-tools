@@ -129,9 +129,14 @@ watch(
  * 获取我的通知公告
  */
 function featchMyNotice() {
-  NoticeAPI.getMyNoticePage({ pageNum: 1, pageSize: 5, isRead: 0 }).then((data) => {
-    noticeList.value = data.list;
-  });
+  NoticeAPI.getMyNoticePage({ pageNum: 1, pageSize: 5, isRead: 0 })
+    .then((data) => {
+      noticeList.value = data.list;
+    })
+    .catch(() => {
+      // 后端未实现 /notices/my-page 时静默降级，避免未捕获异常
+      noticeList.value = [];
+    });
 }
 
 // 阅读通知公告

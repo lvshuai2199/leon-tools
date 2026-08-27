@@ -81,6 +81,7 @@ defineOptions({
   inheritAttrs: false,
 });
 
+import { markRaw } from "vue";
 import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar } from "@element-plus/icons-vue";
 import { useUserStore } from "@/store/modules/user";
 
@@ -115,21 +116,21 @@ const toolCards = ref<ToolCard[]>([
     title: "轨迹分析",
     desc: "EliScript / CSV 轨迹可视化，3D 与 2D 投影、姿态解算",
     path: "/tool/trace",
-    icon: TrendCharts,
+    icon: markRaw(TrendCharts),
     color: "#4080FF",
   },
   {
     title: "文件工具",
     desc: "批量改名、SHA-256 文件去重、正则筛选",
     path: "/tool/files",
-    icon: Folder,
+    icon: markRaw(Folder),
     color: "#67C23A",
   },
   {
     title: "文档工具",
     desc: "PDF 合并、Markdown 编辑预览、图片引用检查",
     path: "/tool/documents",
-    icon: Document,
+    icon: markRaw(Document),
     color: "#FF9A2E",
   },
 ]);
@@ -139,14 +140,14 @@ const workCards = ref<ToolCard[]>([
     title: "任务管理",
     desc: "焊接任务派发与进度跟踪（对接后端 SysTasks）",
     path: "/work/tasks",
-    icon: Tickets,
+    icon: markRaw(Tickets),
     color: "#4080FF",
   },
   {
     title: "注册申请",
     desc: "客户注册审核与注册码生成（对接后端 ComRegistration）",
     path: "/work/registration",
-    icon: Postcard,
+    icon: markRaw(Postcard),
     color: "#F76560",
   },
 ]);
@@ -156,14 +157,14 @@ const systemCards = ref<ToolCard[]>([
     title: "用户管理",
     desc: "系统用户的增删改查（对接后端 SysUsers）",
     path: "/system/user",
-    icon: User,
+    icon: markRaw(User),
     color: "#67C23A",
   },
   {
     title: "角色管理",
     desc: "角色维护与权限描述（对接后端 SysRoles）",
     path: "/system/role",
-    icon: Avatar,
+    icon: markRaw(Avatar),
     color: "#FF9A2E",
   },
 ]);

@@ -34,9 +34,7 @@ export function useStomp(options: UseStompOptions = {}) {
    */
   const initializeClient = () => {
     if (!brokerURL.value) {
-      console.warn(
-        "brokerURL is required. Please set the WebSocket URL in your .env file (VITE_APP_WS_ENDPOINT)."
-      );
+      // 未配置 VITE_APP_WS_ENDPOINT 时视为关闭实时消息，静默跳过
       return;
     }
 
@@ -54,17 +52,16 @@ export function useStomp(options: UseStompOptions = {}) {
 
       client.value.onConnect = (frame) => {
         isConnected.value = true;
-        console.log("STOMP connected", frame);
+        console.debug("STOMP connected", frame);
       };
 
       client.value.onStompError = (frame) => {
-        console.error("Broker reported error: " + frame.headers["message"]);
-        console.error("Additional details: " + frame.body);
+        console.debug("Broker reported error: " + frame.headers["message"]);
       };
 
       client.value.onWebSocketClose = (evt) => {
         isConnected.value = false;
-        console.warn("WebSocket closed", evt);
+        console.debug("WebSocket closed", evt);
       };
     }
   };
@@ -84,8 +81,11 @@ export function useStomp(options: UseStompOptions = {}) {
 
   // 在组件挂载时检查并初始化客户端
   onMounted(() => {
-    console.log("useStomp onMounted initializeClient");
     initializeClient();
+    // 配置了端点则立即激活连接，开启实时消息；未配置（VITE_APP_WS_ENDPOINT 为空）则保持关闭
+    if (brokerURL.value) {
+      connect();
+    }
   });
 
   /**

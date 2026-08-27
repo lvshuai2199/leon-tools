@@ -4,7 +4,6 @@ import { useUserStoreHook } from "@/store/modules/user";
 import { ResultEnum } from "@/enums/ResultEnum";
 import { getAccessToken } from "@/utils/auth";
 import router from "@/router";
-import { log } from "console";
 
 // 创建 axios 实例
 const service = axios.create({
@@ -32,21 +31,23 @@ service.interceptors.request.use(
 // 响应拦截器
 service.interceptors.response.use(
   (response: AxiosResponse) => {
-    console.log(response);
     // 如果响应是二进制流，则直接返回，用于下载文件、Excel 导出等
     if (response.config.responseType === "blob") {
       return response;
     }
 
-    const { status, data, message } = response.data;
-    // console.log(data);
-    // console.log(message);
-    // console.log(ResultEnum.SUCCESS);
-    // console.log("status 类型:", typeof status);
-    // console.log("ResultEnum.SUCCESS 类型:", typeof ResultEnum.SUCCESS);
+    const res = response.data;
 
-    if (status.toString() === ResultEnum.SUCCESS) {
-      console.log("拦截器校验完成 , To Next Step!");
+    // 响应体不是标准业务结构（后端返回 HTML 错误页、空响应等）时，
+    // 避免 status.toString() 因 status 为 undefined 而崩溃
+    if (!res || typeof res !== "object" || !("status" in res)) {
+      ElMessage.error("服务器返回数据格式异常，请联系管理员");
+      return Promise.reject(new Error("Invalid response: 非预期的数据结构"));
+    }
+
+    const { status, data, message } = res;
+
+    if (String(status) === ResultEnum.SUCCESS) {
       return data;
     }
 
@@ -54,19 +55,21 @@ service.interceptors.response.use(
     return Promise.reject(new Error(message || "Error"));
   },
   async (error) => {
-    console.error("request error", error); // for debug
     // 非 2xx 状态码处理 401、403、500 等
     const { config, response } = error;
-    if (response) {
+    if (response && response.data && typeof response.data === "object" && "status" in response.data) {
       const { status, message } = response.data;
-      if (status.toString() === ResultEnum.ACCESS_TOKEN_INVALID) {
+      if (String(status) === ResultEnum.ACCESS_TOKEN_INVALID) {
         // Token 过期，刷新 Token
         return handleTokenRefresh(config);
-      } else if (status.toString() === ResultEnum.REFRESH_TOKEN_INVALID) {
+      } else if (String(status) === ResultEnum.REFRESH_TOKEN_INVALID) {
         return Promise.reject(new Error(message || "Error"));
       } else {
         ElMessage.error(message || "系统出错-报错");
       }
+    } else {
+      // 网络错误 / 后端未返回业务结构
+      ElMessage.error(error?.message || "网络请求失败，请稍后重试");
     }
     return Promise.reject(error.message);
   }
