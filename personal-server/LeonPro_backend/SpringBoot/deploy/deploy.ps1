@@ -52,16 +52,21 @@ if ($SKIP_BUILD -ne "1") {
     Write-Host "Maven 打包..."
     Push-Location $SpringBootDir
     try {
+        $mvnArgs = @('-B', 'clean', 'package', '-DskipTests')
         if (Test-Path ".\mvnw.cmd") {
-            & .\mvnw.cmd -B clean package -Dmaven.test.skip=true
+            & .\mvnw.cmd @mvnArgs
         } else {
-            & mvn -B clean package -Dmaven.test.skip=true
+            & mvn @mvnArgs
         }
-        if ($LASTEXITCODE -ne 0) { throw "Maven 打包失败" }
+        if ($LASTEXITCODE -ne 0) {
+            Write-Host "Maven 打包失败" -ForegroundColor Red
+            exit 1
+        }
     } finally {
         Pop-Location
     }
 }
+
 
 if (-not (Test-Path $JarPath)) {
     Write-Error "未找到 $JarPath ，请先成功执行 mvn package"
