@@ -31,3 +31,7 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### Deploy ###
+deploy/dist/
+deploy/deploy.env
