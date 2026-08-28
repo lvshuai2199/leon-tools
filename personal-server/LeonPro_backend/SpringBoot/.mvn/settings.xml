@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 本仓库只用到公开依赖。公司 Nexus 对 Spring Boot 4.1.1 会 504，Maven 还会把本机已缓存的 4.1.1 标成 unavailable，IDE 里就会大片找不到类。 -->
+<settings xmlns="http://maven.apache.org/SETTINGS/1.2.0">
+  <mirrors>
+    <mirror>
+      <id>aliyun-public</id>
+      <mirrorOf>*</mirrorOf>
+      <url>https://maven.aliyun.com/repository/public</url>
+    </mirror>
+  </mirrors>
+</settings>

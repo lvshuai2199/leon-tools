@@ -18,7 +18,7 @@
 
 1. 复制 `deploy.env.example` 为 `deploy.env`，填 `DEPLOY_PASSWORD` 或 `DEPLOY_SSH_KEY`。
 2. 保持 `DOCKER_UP=1`，上传后会在服务器执行 `docker compose up -d --build`。
-3. 打包需要 **JDK 21**。`deploy.ps1` 会自动尝试 `%USERPROFILE%\.jdks\` 下的 21。
+3. 打包需要 **JDK 21**。`deploy.ps1` 会自动尝试 `%USERPROFILE%\.jdks\` 下的 21。Maven 使用项目内 `.mvn/settings.xml`（阿里云），避免公司 Nexus 拉不到 Spring Boot 4。
 
 ## 一键部署
 
