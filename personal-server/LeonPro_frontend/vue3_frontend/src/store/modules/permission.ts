@@ -80,19 +80,18 @@ export const usePermissionStore = defineStore("permission", () => {
 /**
  * 解析后端返回的路由数据并转换为 Vue Router 兼容的路由配置
  *
- * 1. 遍历 `rawRoutes` 并转换为 `RouteRecordRaw` 格式。
- * 2. 若 `component` 为 `"Layout"`，则替换为 `Layout` 组件。
- * 3. 若 `component` 为字符串路径，则动态加载对应的 Vue 组件，找不到则默认 `404.vue`。
- * 4. 递归解析 `children`，确保子路由也被正确转换。
- *
- * @param rawRoutes 后端返回的原始路由数据
- * @returns 解析后的路由配置数组
+ * 顶级路由的 path 必须以 `/` 开头；子路由保持相对路径（如 menu、user）。
+ * 在路由管理里把子菜单拖到顶级后，会自动补上 `/`，避免登录时 addRoute 失败。
  */
-const parseDynamicRoutes = (rawRoutes: RouteVO[]): RouteRecordRaw[] => {
+const parseDynamicRoutes = (rawRoutes: RouteVO[], isRoot = true): RouteRecordRaw[] => {
   const parsedRoutes: RouteRecordRaw[] = [];
 
   rawRoutes.forEach((route) => {
     const normalizedRoute = { ...route } as RouteRecordRaw;
+
+    if (isRoot) {
+      normalizedRoute.path = ensureAbsolutePath(normalizedRoute.path);
+    }
 
     // 处理组件路径
     normalizedRoute.component =
@@ -103,7 +102,7 @@ const parseDynamicRoutes = (rawRoutes: RouteVO[]): RouteRecordRaw[] => {
 
     // 递归解析子路由
     if (normalizedRoute.children) {
-      normalizedRoute.children = parseDynamicRoutes(route.children);
+      normalizedRoute.children = parseDynamicRoutes(route.children, false);
     }
 
     parsedRoutes.push(normalizedRoute);
@@ -111,6 +110,13 @@ const parseDynamicRoutes = (rawRoutes: RouteVO[]): RouteRecordRaw[] => {
 
   return parsedRoutes;
 };
+
+function ensureAbsolutePath(path: unknown): string {
+  const raw = String(path ?? "").trim();
+  if (!raw) return "/";
+  if (/^https?:\/\//.test(raw)) return raw;
+  return raw.startsWith("/") ? raw : `/${raw}`;
+}
 /**
  * 在组件外使用 Pinia store 实例 @see https://pinia.vuejs.org/core-concepts/outside-component-usage.html
  */

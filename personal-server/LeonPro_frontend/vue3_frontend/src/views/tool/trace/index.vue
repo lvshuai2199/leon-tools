@@ -111,13 +111,31 @@
 </template>
 
 <script setup lang="ts">
-import Plotly from "plotly.js-dist-min";
 import Papa from "papaparse";
 
 defineOptions({
   name: "Trace",
   inheritAttrs: false,
 });
+
+type PlotlyApi = {
+  newPlot: (el: HTMLElement, data: unknown, layout: unknown) => Promise<unknown> | void;
+  purge: (el: HTMLElement) => void;
+};
+
+async function getPlotly(): Promise<PlotlyApi> {
+  const w = window as Window & { Plotly?: PlotlyApi };
+  if (w.Plotly) return w.Plotly;
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/lib/plotly.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Plotly 加载失败"));
+    document.head.appendChild(script);
+  });
+  if (!w.Plotly) throw new Error("Plotly 未挂载");
+  return w.Plotly;
+}
 
 interface TrajPoint {
   x: number;
@@ -422,7 +440,7 @@ function updateInspector(pts: any) {
 }
 
 /** 绘图 */
-function drawCharts() {
+async function drawCharts() {
   const data = globalData;
   if (!data.main.length && !data.markers.length) {
     ElMessage.warning("未能识别到有效的轨迹坐标数据（movej/movel/movep/movec），请检查格式。");
@@ -569,6 +587,7 @@ function drawCharts() {
     legend: { x: 0.01, y: 1, font: { size: 10 } },
   };
 
+  const Plotly = await getPlotly();
   if (chart3D.value) Plotly.newPlot(chart3D.value, traces3D, layout3D);
   if (chart2D.value) Plotly.newPlot(chart2D.value, traces2D, layout2D);
 
@@ -623,8 +642,9 @@ function copyData() {
 }
 
 onBeforeUnmount(() => {
-  Plotly.purge(chart3D.value!);
-  Plotly.purge(chart2D.value!);
+  const Plotly = (window as Window & { Plotly?: PlotlyApi }).Plotly;
+  if (Plotly && chart3D.value) Plotly.purge(chart3D.value);
+  if (Plotly && chart2D.value) Plotly.purge(chart2D.value);
 });
 </script>
 

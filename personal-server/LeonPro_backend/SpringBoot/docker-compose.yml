@@ -1,15 +1,23 @@
 services:
+  redis:
+    image: redis:7-alpine
+    container_name: leonpro-redis
+    network_mode: host
+    command: ["redis-server", "--bind", "127.0.0.1", "--protected-mode", "yes"]
+    restart: unless-stopped
+
   leonpro-backend:
     build:
       context: .
       dockerfile: Dockerfile
     image: leonpro-backend:latest
     container_name: leonpro-backend
-    ports:
-      - "8089:8089"
+    # 与本机已有的 MySQL / 本 compose 的 Redis 共用宿主机网络
+    network_mode: host
     environment:
       SPRING_PROFILES_ACTIVE: prod
+      MYSQL_HOST: 127.0.0.1
+      REDIS_HOST: 127.0.0.1
+    depends_on:
+      - redis
     restart: unless-stopped
-    # MySQL/Redis 若与容器同机且只监听 127.0.0.1，可改为：
-    # network_mode: host
-    # 并去掉 ports

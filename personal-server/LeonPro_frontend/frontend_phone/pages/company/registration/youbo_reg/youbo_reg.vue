@@ -113,6 +113,7 @@ export default {
 			isExpanded: false,
 			password: '',
 			loading: false,
+			userId: '',
 			selectedRegistrationType: 0,
 			correctPassword: 'uber1802810', // 设置正确的密码
 			regData: {
@@ -145,6 +146,15 @@ export default {
 		// 页面显示时也重置授权状态
 		this.isAuthorized = false;
 		this.password = '';
+		uni.getStorage({
+			key: 'userId',
+			success: (res) => {
+				this.userId = res.data || '';
+			},
+			fail: () => {
+				this.userId = '';
+			}
+		});
 	},
 
 	methods: {
@@ -210,7 +220,10 @@ export default {
 			this.regData.regCodeType = 3;
 			this.loading = true;
 			try {
-				const response = await this.$api.genTempRegCode(this.regData);
+				const response = await this.$api.genTempRegCode({
+					...this.regData,
+					applyId: this.userId
+				});
 				if (response.status === 200) {
 					uni.showToast({
 						title: '生成成功！',

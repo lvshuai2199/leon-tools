@@ -95,6 +95,8 @@ export interface LoginUserVO {
   createTime?: string;
   /** 角色ID（对应 sys_roles.id） */
   roleId?: string;
+  /** 角色名称（登录时由后端回填） */
+  roleName?: string;
 }
 
 /** 验证码信息 */

@@ -346,8 +346,14 @@ function handleSubmit() {
       return;
     }
     // 目录类型固定使用 Layout 组件
+    let menuUrl = formData.menuUrl?.trim() || "";
+    const isTop = !formData.parentId || formData.parentId === "0";
+    if (isTop && menuUrl && !menuUrl.startsWith("/") && !/^https?:\/\//.test(menuUrl)) {
+      menuUrl = `/${menuUrl}`;
+    }
     const payload = {
       ...formData,
+      menuUrl,
       component: formData.menuType === 0 ? "Layout" : formData.component,
       alwaysShow: formData.alwaysShow ?? 0,
     };

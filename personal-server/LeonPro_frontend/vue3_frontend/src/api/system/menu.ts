@@ -97,11 +97,19 @@ function buildRouteTree(menus: SysMenuVO[]): RouteVO[] {
 
   nodes.forEach((menu) => {
     const node = map.get(menu.id!);
-    const parent = menu.parentId && map.get(menu.parentId);
+    const parent = menu.parentId && menu.parentId !== "0" && map.get(menu.parentId);
     if (parent) {
       parent.children!.push(node!);
     } else {
       roots.push(node!);
+    }
+  });
+
+  // 顶级路由必须是绝对路径，否则 vue-router addRoute 会直接抛错导致无法登录
+  roots.forEach((route) => {
+    const path = (route.path || "").trim();
+    if (path && !path.startsWith("/") && !/^https?:\/\//.test(path)) {
+      route.path = `/${path}`;
     }
   });
 

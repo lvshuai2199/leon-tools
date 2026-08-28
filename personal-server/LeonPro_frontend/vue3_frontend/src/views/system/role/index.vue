@@ -34,8 +34,13 @@
         border
         @selection-change="handleSelectionChange"
       >
-        <el-table-column type="selection" width="55" align="center" />
-        <el-table-column label="角色名称" prop="roleName" min-width="120" />
+        <el-table-column type="selection" width="55" align="center" :selectable="(row: RolePageVO) => !isRootRole(row)" />
+        <el-table-column label="角色名称" prop="roleName" min-width="120">
+          <template #default="{ row }">
+            <span>{{ row.roleName }}</span>
+            <el-tag v-if="isRootRole(row)" type="danger" size="small" class="ml-1">系统默认</el-tag>
+          </template>
+        </el-table-column>
         <el-table-column label="角色描述" prop="description" min-width="180" show-overflow-tooltip />
 
         <el-table-column label="状态" align="center" width="100">
@@ -47,35 +52,40 @@
 
         <el-table-column label="创建时间" prop="createTime" width="180" align="center" />
 
-        <el-table-column fixed="right" label="操作" width="150">
+        <el-table-column fixed="right" label="操作" width="180">
           <template #default="scope">
-            <el-button
-              type="primary"
-              size="small"
-              link
-              icon="edit"
-              @click="handleOpenDialog(scope.row)"
-            >
-              编辑
-            </el-button>
-            <el-button
-              type="warning"
-              size="small"
-              link
-              icon="Lock"
-              @click="handleOpenPermission(scope.row)"
-            >
-              权限
-            </el-button>
-            <el-button
-              type="danger"
-              size="small"
-              link
-              icon="delete"
-              @click="handleDelete(scope.row.id)"
-            >
-              删除
-            </el-button>
+            <template v-if="isRootRole(scope.row)">
+              <el-text type="info" size="small">拥有全部权限，不可配置</el-text>
+            </template>
+            <template v-else>
+              <el-button
+                type="primary"
+                size="small"
+                link
+                icon="edit"
+                @click="handleOpenDialog(scope.row)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                type="warning"
+                size="small"
+                link
+                icon="Lock"
+                @click="handleOpenPermission(scope.row)"
+              >
+                权限
+              </el-button>
+              <el-button
+                type="danger"
+                size="small"
+                link
+                icon="delete"
+                @click="handleDelete(scope.row.id)"
+              >
+                删除
+              </el-button>
+            </template>
           </template>
         </el-table-column>
       </el-table>
@@ -166,6 +176,7 @@ defineOptions({
 
 import RoleAPI, { RolePageVO, RoleForm, RolePageQuery } from "@/api/system/role";
 import MenuAPI, { SysMenuVO } from "@/api/system/menu";
+import { isRootRole } from "@/utils/role";
 
 const queryFormRef = ref();
 const roleFormRef = ref();
@@ -241,6 +252,10 @@ function handleSelectionChange(selection: any) {
 
 // 打开角色弹窗
 function handleOpenDialog(row?: RolePageVO) {
+  if (row && isRootRole(row)) {
+    ElMessage.warning("系统默认角色 ROOT 不允许修改");
+    return;
+  }
   dialog.visible = true;
   if (row) {
     dialog.title = "修改角色";
@@ -278,6 +293,10 @@ function handleCloseDialog() {
 
 // 打开角色权限设置弹窗
 function handleOpenPermission(row: RolePageVO) {
+  if (isRootRole(row)) {
+    ElMessage.warning("ROOT 默认拥有全部路由权限，无需配置");
+    return;
+  }
   permissionDialog.roleId = row.id!;
   permissionDialog.visible = true;
   permissionDialog.loading = true;
@@ -324,9 +343,17 @@ function buildMenuTree(menus: SysMenuVO[]): any[] {
 
 // 删除角色
 function handleDelete(roleId?: string) {
-  const roleIds = roleId ? [roleId] : ids.value;
-  if (roleIds.length === 0) {
+  const selected = roleId ? [roleId] : ids.value;
+  if (selected.length === 0) {
     ElMessage.warning("请勾选删除项");
+    return;
+  }
+  const roleIds = selected.filter((id) => {
+    const row = roleList.value.find((item) => item.id === id);
+    return !isRootRole(row);
+  });
+  if (roleIds.length === 0) {
+    ElMessage.warning("系统默认角色 ROOT 不允许删除");
     return;
   }
 

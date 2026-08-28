@@ -79,6 +79,8 @@ export interface UserInfo {
   createTime?: string;
   /** 角色ID */
   roleId?: string;
+  /** 角色名称 */
+  roleName?: string;
 
   /** 兼容模板原有字段（提供默认值避免报错） */
   userId?: number;

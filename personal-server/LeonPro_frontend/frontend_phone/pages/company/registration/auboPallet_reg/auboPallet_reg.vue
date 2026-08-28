@@ -118,6 +118,7 @@ export default {
 			isAuthorized: false,
 			password: '',
 			loading: false,
+			userId: '',
 			correctPassword: 'ssnb666',
 			regData: {
 				regCode: '',
@@ -139,6 +140,15 @@ export default {
 	onShow() {
 		this.isAuthorized = false;
 		this.password = '';
+		uni.getStorage({
+			key: 'userId',
+			success: (res) => {
+				this.userId = res.data || '';
+			},
+			fail: () => {
+				this.userId = '';
+			}
+		});
 	},
 
 	methods: {
@@ -189,7 +199,10 @@ export default {
 			
 			this.loading = true;
 			try {
-				const response = await this.$api.genTempRegCode(this.regData);
+				const response = await this.$api.genTempRegCode({
+					...this.regData,
+					applyId: this.userId
+				});
 				if (response.status === 200) {
 					uni.showToast({
 						title: '生成成功！',

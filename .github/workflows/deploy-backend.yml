@@ -1,0 +1,55 @@
+name: Deploy backend
+
+on:
+  # 需要部署时：GitHub → Actions → Deploy backend → Run workflow
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+
+      - name: Package
+        working-directory: personal-server/LeonPro_backend/SpringBoot
+        run: chmod +x mvnw && ./mvnw -B clean package -Dmaven.test.skip=true
+
+      - name: Stage files
+        run: |
+          mkdir -p deploy-upload
+          cp personal-server/LeonPro_backend/SpringBoot/deploy/dist/app.jar deploy-upload/app.jar
+          cp personal-server/LeonPro_backend/SpringBoot/Dockerfile deploy-upload/
+          cp personal-server/LeonPro_backend/SpringBoot/docker-compose.yml deploy-upload/
+          cp personal-server/LeonPro_backend/SpringBoot/.dockerignore deploy-upload/
+
+      - name: Upload to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          source: deploy-upload/*
+          target: ${{ secrets.DEPLOY_REMOTE_DIR }}
+          strip_components: 1
+
+      - name: Restart Java container
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          script: |
+            set -euo pipefail
+            cd "${{ secrets.DEPLOY_REMOTE_DIR }}"
+            docker compose up -d --build
+            docker compose ps

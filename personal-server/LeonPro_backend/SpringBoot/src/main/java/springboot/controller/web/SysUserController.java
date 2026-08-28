@@ -8,7 +8,9 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
 import springboot.DTO.UsersDelDto;
 import springboot.DTO.UserDto;
+import springboot.domain.SysRoles;
 import springboot.domain.SysUsers;
+import springboot.service.SysRolesService;
 import springboot.service.SysUsersService;
 import springboot.utils.ApiResponse;
 import jakarta.annotation.Resource;
@@ -33,6 +35,9 @@ public class SysUserController {
      */
     @Autowired
     private SysUsersService sysUsersService;
+
+    @Autowired
+    private SysRolesService sysRolesService;
 
 
     /**
@@ -154,6 +159,12 @@ public class SysUserController {
         LambdaQueryWrapper<SysUsers> lambdaQueryWrapper = new LambdaQueryWrapper<>();
         lambdaQueryWrapper.eq(SysUsers::getUsername, name);
         SysUsers user = this.sysUsersService.getOne(lambdaQueryWrapper);
+        if (user != null && user.getRoleId() != null && !user.getRoleId().isEmpty()) {
+            SysRoles role = this.sysRolesService.getById(user.getRoleId());
+            if (role != null) {
+                user.setRoleName(role.getRoleName());
+            }
+        }
         return ApiResponse.success(user);
     }
 

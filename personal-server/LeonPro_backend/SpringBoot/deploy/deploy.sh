@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# LeonPro 后端一键部署。用法见同目录 README.md
 set -euo pipefail
 
 DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"

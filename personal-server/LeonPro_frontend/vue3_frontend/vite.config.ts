@@ -9,6 +9,7 @@ import mockDevServerPlugin from "vite-plugin-mock-dev-server";
 
 import UnoCSS from "unocss/vite";
 import { resolve } from "path";
+import { copyFileSync, mkdirSync } from "fs";
 import { name, version, engines, dependencies, devDependencies } from "./package.json";
 
 // 平台的名称、版本、运行所需的 node 版本、依赖、构建时间的类型提示
@@ -57,6 +58,15 @@ export default defineConfig(({ mode }: ConfigEnv) => {
       vue(),
       env.VITE_MOCK_DEV_SERVER === "true" ? mockDevServerPlugin() : null,
       UnoCSS(),
+      {
+        name: "copy-plotly",
+        buildStart() {
+          const src = resolve(__dirname, "node_modules/plotly.js-dist-min/plotly.min.js");
+          const destDir = resolve(__dirname, "public/lib");
+          mkdirSync(destDir, { recursive: true });
+          copyFileSync(src, resolve(destDir, "plotly.min.js"));
+        },
+      },
       // 自动导入配置 https://github.com/sxzz/element-plus-best-practices/blob/main/vite.config.ts
       AutoImport({
         // 导入 Vue 函数，如：ref, reactive, toRef 等
@@ -182,25 +192,19 @@ export default defineConfig(({ mode }: ConfigEnv) => {
         "element-plus/es/components/timeline-item/style/css",
       ],
     },
+    esbuild: {
+      drop: ["console", "debugger"],
+      legalComments: "none",
+    },
     // 构建配置
     build: {
-      chunkSizeWarningLimit: 2000, // 消除打包大小超过500kb警告
-      minify: "terser", // Vite 2.6.x 以上需要配置 minify: "terser", terserOptions 才能生效
-      terserOptions: {
-        compress: {
-          keep_infinity: true, // 防止 Infinity 被压缩成 1/0，这可能会导致 Chrome 上的性能问题
-          drop_console: true, // 生产环境去除 console
-          drop_debugger: true, // 生产环境去除 debugger
-        },
-        format: {
-          comments: false, // 删除注释
-        },
-      },
+      chunkSizeWarningLimit: 2000,
+      minify: "esbuild",
+      reportCompressedSize: false,
+      sourcemap: false,
       rollupOptions: {
+        maxParallelFileOps: 1,
         output: {
-          // manualChunks: {
-          //   "vue-i18n": ["vue-i18n"],
-          // },
           // 用于从入口点创建的块的打包输出格式[name]表示文件名,[hash]表示该文件内容hash值
           entryFileNames: "js/[name].[hash].js",
           // 用于命名代码拆分时创建的共享块的输出命名

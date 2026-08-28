@@ -48,6 +48,9 @@ public class ComRegistration implements Serializable {
 
     private String applyId;
 
+    /** 操作人员（用户 ID；无用户 ID 时记为「未知人员」） */
+    private String operator;
+
     private Date createTime;
 
     private Integer applyStatus;

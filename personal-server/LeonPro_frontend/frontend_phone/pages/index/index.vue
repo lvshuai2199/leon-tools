@@ -13,11 +13,6 @@
 				<uni-icons type="list" size="1"></uni-icons>
 				<text class="text">查看任务清单</text>
 			</navigator>
-			<!-- 跳转到任务清单的按钮 -->
-			<navigator url="/pages/registration/regApply" hover-class="navigator-hover" class="navigate-button">
-				<uni-icons type="list" size="1"></uni-icons>
-				<text class="text">注册码申请</text>
-			</navigator>
 		</view>
 
 		<view class="additional-info">

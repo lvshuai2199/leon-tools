@@ -1,18 +1,15 @@
 package springboot.controller.web;
 
 
-import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
 import springboot.domain.ComRegistration;
-import springboot.domain.SysInfo;
-import springboot.enums.RegCodeType;
-import springboot.enums.SysInfoType;
 import springboot.service.ComRegistrationService;
 import org.springframework.web.bind.annotation.*;
-import springboot.service.SysInfoService;
 import springboot.utils.ApiResponse;
 import springboot.utils.DateUtils;
+import springboot.utils.OperatorUtils;
 
 import java.io.Serializable;
 import java.util.List;
@@ -32,9 +29,6 @@ public class ComRegistrationController {
     @Autowired
     private ComRegistrationService comRegistrationService;
 
-    @Autowired
-    private SysInfoService sysInfoService;
-
     /**
      * 分页查询所有数据
      *
@@ -43,8 +37,21 @@ public class ComRegistrationController {
      * @return 所有数据
      */
     @GetMapping("getAll")
-    public ApiResponse selectAll(Page<ComRegistration> page, ComRegistration comRegistration) {
-        return ApiResponse.success(this.comRegistrationService.page(page, new QueryWrapper<>(comRegistration)));
+    public ApiResponse selectAll(Page<ComRegistration> page, ComRegistration query) {
+        LambdaQueryWrapper<ComRegistration> queryWrapper = new LambdaQueryWrapper<>();
+        if (query != null) {
+            if (query.getOperator() != null && !query.getOperator().isBlank()) {
+                queryWrapper.like(ComRegistration::getOperator, query.getOperator());
+            }
+            if (query.getCompany() != null && !query.getCompany().isBlank()) {
+                queryWrapper.like(ComRegistration::getCompany, query.getCompany());
+            }
+            if (query.getApplyName() != null && !query.getApplyName().isBlank()) {
+                queryWrapper.like(ComRegistration::getApplyName, query.getApplyName());
+            }
+        }
+        queryWrapper.orderByDesc(ComRegistration::getCreateTime);
+        return ApiResponse.success(this.comRegistrationService.page(page, queryWrapper));
     }
 
     /**
@@ -67,23 +74,16 @@ public class ComRegistrationController {
     @PostMapping("add")
     public ApiResponse insert(@RequestBody ComRegistration comRegistration) {
         comRegistration.setCreateTime(DateUtils.getNow());
-
-
-        boolean save = this.comRegistrationService.save(comRegistration);
-        if (save){
-            SysInfo sysInfo = new SysInfo();
-            sysInfo.setInfoDes("您的申请已提交，申请编码为：" + comRegistration.getId() + "\\n" +
-                    "类型：" + RegCodeType.getDescriptionByCode(comRegistration.getRegCodeType()));
-            sysInfo.setInfoStatus(0);
-            sysInfo.setUserId(comRegistration.getApplyId());
-            sysInfo.setInfoType(2);
-            sysInfo.setCreateTime(DateUtils.getNow());
-            this.sysInfoService.save(sysInfo);
-            return ApiResponse.success("申请提交成功");
-        }else {
-            return ApiResponse.failure("申请提交失败！！！");
-
+        comRegistration.setOperator(OperatorUtils.resolve(
+                comRegistration.getOperator() != null ? comRegistration.getOperator() : comRegistration.getApplyId()));
+        if (comRegistration.getRemarks() == null || comRegistration.getRemarks().isBlank()) {
+            comRegistration.setRemarks("注册码操作");
         }
+        boolean save = this.comRegistrationService.save(comRegistration);
+        if (save) {
+            return ApiResponse.success("已写入操作日志");
+        }
+        return ApiResponse.failure("写入操作日志失败");
     }
 
     /**

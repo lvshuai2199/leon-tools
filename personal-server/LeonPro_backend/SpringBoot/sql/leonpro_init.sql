@@ -129,10 +129,28 @@ CREATE TABLE `com_registration` (
   `one_month_valid`  VARCHAR(255) DEFAULT NULL COMMENT '一个月有效期注册码',
   `long_time_valid`  VARCHAR(255) DEFAULT NULL COMMENT '永久有效注册码',
   `apply_id`         VARCHAR(64)  DEFAULT NULL COMMENT '申请人ID',
+  `operator`         VARCHAR(100) DEFAULT NULL COMMENT '操作人员（用户ID，无则未知人员）',
   `create_time`      DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `apply_status`     INT          DEFAULT 0 COMMENT '申请状态',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='注册申请表';
+
+-- ============================================================
+-- 7b. reg_code_config - 注册码生成配置
+-- ============================================================
+DROP TABLE IF EXISTS `reg_code_config`;
+CREATE TABLE `reg_code_config` (
+  `id`             VARCHAR(64)  NOT NULL COMMENT '主键',
+  `company`        VARCHAR(100) DEFAULT NULL COMMENT '公司',
+  `name`           VARCHAR(100) DEFAULT NULL COMMENT '名称',
+  `component_name` VARCHAR(100) DEFAULT NULL COMMENT '组件名称',
+  `encrypt_type`   VARCHAR(50)  DEFAULT 'MD5' COMMENT '加密方式',
+  `encrypt_suffix` VARCHAR(200) DEFAULT NULL COMMENT '加密字符后缀',
+  `sort_order`     INT          DEFAULT 0 COMMENT '排序',
+  `create_time`    DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time`    DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='注册码生成配置';
 
 -- ============================================================
 -- 8. extern_wallet - 外部钱包表
@@ -168,3 +186,9 @@ VALUES ('role_root', 'ROOT', '超级管理员', 0);
 
 INSERT INTO `sys_users` (`id`, `username`, `nickname`, `password`, `email`, `role_id`)
 VALUES (REPLACE(UUID(), '-', ''), 'admin', '管理员', 'admin123', 'admin@leonpro.local', 'role_root');
+
+INSERT INTO `reg_code_config` (`id`, `company`, `name`, `component_name`, `encrypt_type`, `encrypt_suffix`, `sort_order`)
+VALUES
+  ('rcc_weld', '通用', '焊接专机', 'weld', 'MD5', 'auboweld', 1),
+  ('rcc_pallet', '通用', '码垛专机', 'pallet', 'MD5', 'aubo', 2),
+  ('rcc_youbo', '友博', 'CNC插件', 'cnc', 'MD5', 'youbo_leon', 3);

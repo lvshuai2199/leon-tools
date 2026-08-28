@@ -56,6 +56,12 @@ public class SysUsers implements Serializable {
      */
     private String roleId;
 
+    /**
+     * 角色名称（非表字段，登录时回填）
+     */
+    @TableField(exist = false)
+    private String roleName;
+
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 

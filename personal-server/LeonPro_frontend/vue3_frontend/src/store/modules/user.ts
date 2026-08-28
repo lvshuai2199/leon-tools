@@ -6,6 +6,7 @@ import AuthAPI, { type LoginFormData } from "@/api/auth";
 import UserAPI, { type UserInfo } from "@/api/system/user";
 
 import { setAccessToken, clearToken } from "@/utils/auth";
+import { resolveLoginRoles } from "@/utils/role";
 
 export const useUserStore = defineStore("user", () => {
   const userInfo = useStorage<UserInfo>("userInfo", {} as UserInfo);
@@ -26,11 +27,12 @@ export const useUserStore = defineStore("user", () => {
           }
           // LeonPro_backend 未启用 JWT，写入会话标记维持登录态
           setAccessToken(`session-${Date.now()}`);
+          const roles = resolveLoginRoles(data.roleId, data.roleName);
           userInfo.value = {
             ...data,
             avatar: data.avatarUrl,
-            roles: ["ROOT"], // 默认给予全部权限（个人后台）
-            perms: ["*"],
+            roles,
+            perms: roles.includes("ROOT") ? ["*"] : [],
           };
           resolve();
         })
@@ -60,11 +62,12 @@ export const useUserStore = defineStore("user", () => {
             reject("Verification failed, please Login again.");
             return;
           }
+          const roles = resolveLoginRoles(data.roleId, data.roleName);
           userInfo.value = {
             ...data,
             avatar: data.avatarUrl,
-            roles: ["ROOT"],
-            perms: ["*"],
+            roles,
+            perms: roles.includes("ROOT") ? ["*"] : [],
           };
           resolve(userInfo.value);
         })

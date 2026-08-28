@@ -3,10 +3,10 @@ import request from "@/utils/request";
 const REG_BASE_URL = "/comRegistration";
 
 /**
- * 注册申请 API（对接 LeonPro_backend ComRegistrationController）
+ * 注册码操作日志 API（对接 LeonPro_backend ComRegistrationController）
  */
 const RegistrationAPI = {
-  /** 获取注册申请分页列表 */
+  /** 获取操作日志分页列表 */
   getPage(queryParams: RegistrationPageQuery) {
     return request<any, IPageResult<RegistrationPageVO>>({
       url: `${REG_BASE_URL}/getAll`,
@@ -18,6 +18,7 @@ const RegistrationAPI = {
         company: queryParams.company || undefined,
         applyPhone: queryParams.applyPhone || undefined,
         applyStatus: queryParams.applyStatus,
+        operator: queryParams.operator || undefined,
       },
     });
   },
@@ -70,12 +71,13 @@ const RegistrationAPI = {
 
   /**
    * 临时生成多种有效期注册码（1/2/4/6/13个月/永久）
+   * applyId 为当前操作人用户 ID，空则后端记为「未知人员」
    */
-  genTempRegCode(applyName: string, company: string) {
+  genTempRegCode(data: TempRegCodeForm) {
     return request<any, TempRegCodeVO>({
       url: `/auth/genTempRegCode`,
       method: "post",
-      data: { applyName, company },
+      data,
     });
   },
 };
@@ -87,6 +89,8 @@ export interface RegistrationPageQuery extends PageQuery {
   applyName?: string;
   company?: string;
   applyPhone?: string;
+  /** 操作人员（用户 ID / 未知人员） */
+  operator?: string;
   /** 0-待处理 1-已生成注册码 */
   applyStatus?: number;
 }
@@ -104,6 +108,8 @@ export interface RegistrationPageVO {
   oneMonthValid?: string;
   longTimeValid?: string;
   applyId?: string;
+  /** 操作人员（用户 ID；无则「未知人员」） */
+  operator?: string;
   createTime?: string;
   applyStatus?: number;
 }
@@ -119,6 +125,19 @@ export interface RegistrationForm {
   regCodeType?: number;
   remarks?: string;
   applyStatus?: number;
+  operator?: string;
+}
+
+/** 临时注册码生成请求 */
+export interface TempRegCodeForm {
+  regCode?: string;
+  regCodeType?: number;
+  /** 注册码配置 ID（PC 生成页走配置） */
+  configId?: string;
+  applyName?: string;
+  company?: string;
+  /** 当前操作人用户 ID */
+  applyId?: string;
 }
 
 /** 临时注册码生成结果（RegCode DTO 映射） */

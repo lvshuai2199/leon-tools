@@ -1,5 +1,5 @@
-# 使用国内镜像源的 JDK 21
-FROM docker.mirrors.ustc.edu.cn/library/openjdk:21-jdk-slim
+# 使用官方镜像名，由服务器 Docker 加速器拉取
+FROM eclipse-temurin:21-jre-jammy
 
 WORKDIR /app
 

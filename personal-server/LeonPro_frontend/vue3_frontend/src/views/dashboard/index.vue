@@ -82,7 +82,7 @@ defineOptions({
 });
 
 import { markRaw } from "vue";
-import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar } from "@element-plus/icons-vue";
+import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar, Key, Setting } from "@element-plus/icons-vue";
 import { useUserStore } from "@/store/modules/user";
 
 const router = useRouter();
@@ -133,6 +133,20 @@ const toolCards = ref<ToolCard[]>([
     icon: markRaw(Document),
     color: "#FF9A2E",
   },
+  {
+    title: "注册码生成",
+    desc: "按公司与名称生成临时注册码，结果写入操作日志",
+    path: "/tool/regcode",
+    icon: markRaw(Key),
+    color: "#F76560",
+  },
+  {
+    title: "注册码配置",
+    desc: "公司、名称、组件、加密方式与后缀，后期在此增删",
+    path: "/tool/regcode-config",
+    icon: markRaw(Setting),
+    color: "#9B59B6",
+  },
 ]);
 
 const workCards = ref<ToolCard[]>([
@@ -144,8 +158,8 @@ const workCards = ref<ToolCard[]>([
     color: "#4080FF",
   },
   {
-    title: "注册申请",
-    desc: "客户注册审核与注册码生成（对接后端 ComRegistration）",
+    title: "操作日志",
+    desc: "注册码生成记录：公司、名称、操作人员与时间",
     path: "/work/registration",
     icon: markRaw(Postcard),
     color: "#F76560",
@@ -162,7 +176,7 @@ const systemCards = ref<ToolCard[]>([
   },
   {
     title: "角色管理",
-    desc: "角色维护与权限描述（对接后端 SysRoles）",
+    desc: "角色维护与路由权限（ROOT 默认全权限，不可配置）",
     path: "/system/role",
     icon: markRaw(Avatar),
     color: "#FF9A2E",

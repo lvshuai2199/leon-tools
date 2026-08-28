@@ -64,6 +64,18 @@ export const constantRoutes: RouteRecordRaw[] = [
         component: () => import("@/views/system/notice/components/MyNotice.vue"),
         meta: { title: "我的通知", icon: "user", hidden: true },
       },
+      {
+        path: "tool/regcode",
+        name: "RegCode",
+        component: () => import("@/views/tool/regcode/index.vue"),
+        meta: { title: "注册码生成", icon: "key", hidden: true, keepAlive: true },
+      },
+      {
+        path: "tool/regcode-config",
+        name: "RegCodeConfig",
+        component: () => import("@/views/tool/regcode-config/index.vue"),
+        meta: { title: "注册码配置", icon: "setting", hidden: true, keepAlive: true },
+      },
     ],
   },
 ];

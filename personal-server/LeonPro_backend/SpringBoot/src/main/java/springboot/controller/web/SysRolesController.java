@@ -8,6 +8,7 @@ import springboot.domain.SysRoles;
 import springboot.service.SysRoleMenuService;
 import springboot.service.SysRolesService;
 import springboot.utils.ApiResponse;
+import springboot.utils.RoleUtils;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 
@@ -74,28 +75,35 @@ public class SysRolesController {
      */
     @PostMapping("add")
     public ApiResponse insert(@RequestBody SysRoles sysRoles) {
+        if (RoleUtils.isRoot(sysRoles)) {
+            return ApiResponse.failure("ROOT 为系统默认角色，不允许新建同名角色");
+        }
+        if (sysRoles.getCreateTime() == null) {
+            sysRoles.setCreateTime(new java.util.Date());
+        }
         return ApiResponse.success(this.sysRolesService.save(sysRoles));
     }
 
-    /**
-     * 修改数据
-     *
-     * @param sysRoles 实体对象
-     * @return 修改结果
-     */
     @PostMapping ("update")
     public ApiResponse update(@RequestBody SysRoles sysRoles) {
+        if (sysRoles.getId() != null && RoleUtils.isRoot(this.sysRolesService.getById(sysRoles.getId()))) {
+            return ApiResponse.failure("系统默认角色 ROOT 不允许修改");
+        }
+        if (RoleUtils.isRoot(sysRoles)) {
+            return ApiResponse.failure("不允许将角色改为 ROOT");
+        }
         return ApiResponse.success(this.sysRolesService.updateById(sysRoles));
     }
 
-    /**
-     * 删除数据
-     *
-     * @param idList 主键结合
-     * @return 删除结果
-     */
     @PostMapping("del")
     public ApiResponse delete(@RequestBody List<String> idList) {
+        if (idList != null) {
+            for (String id : idList) {
+                if (RoleUtils.isRoot(this.sysRolesService.getById(id))) {
+                    return ApiResponse.failure("系统默认角色 ROOT 不允许删除");
+                }
+            }
+        }
         return ApiResponse.success(this.sysRolesService.removeByIds(idList));
     }
 
@@ -113,6 +121,9 @@ public class SysRolesController {
     @PostMapping("menus")
     public ApiResponse assignRoleMenus(@RequestBody Map<String, Object> body) {
         String roleId = (String) body.get("roleId");
+        if (RoleUtils.isRoot(this.sysRolesService.getById(roleId))) {
+            return ApiResponse.failure("系统默认角色 ROOT 拥有全部权限，无需配置");
+        }
         List<String> menuIds = new java.util.ArrayList<>();
         Object ids = body.get("menuIds");
         if (ids instanceof java.util.List) {

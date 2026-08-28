@@ -1,7 +1,37 @@
+# LeonPro 后端一键部署（Windows）
+# 用法：在 SpringBoot 目录执行  .\deploy\deploy.ps1
+# 本机默认若是 Java 8，脚本会改用 %USERPROFILE%\.jdks\ms-21*
+# 详见同目录 README.md
 $ErrorActionPreference = "Stop"
 
 $DeployDir = $PSScriptRoot
 $SpringBootDir = Split-Path $DeployDir -Parent
+
+function Use-Jdk21IfNeeded {
+    $javaHome = $env:JAVA_HOME
+    $needSwitch = $true
+    if ($javaHome -and (Test-Path (Join-Path $javaHome "bin\java.exe"))) {
+        $prev = $ErrorActionPreference
+        $ErrorActionPreference = "Continue"
+        try {
+            $ver = cmd /c "`"$javaHome\bin\java.exe`" -version 2>&1"
+        } finally {
+            $ErrorActionPreference = $prev
+        }
+        if ("$ver" -match 'version "2[1-9]') { $needSwitch = $false }
+    }
+    if ($needSwitch) {
+        $ms21 = Get-ChildItem (Join-Path $env:USERPROFILE ".jdks") -Directory -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match "21" } |
+            Select-Object -First 1
+        if ($ms21) {
+            $env:JAVA_HOME = $ms21.FullName
+            $env:PATH = "$($ms21.FullName)\bin;" + $env:PATH
+            Write-Host "Using JAVA_HOME=$env:JAVA_HOME"
+        }
+    }
+}
+Use-Jdk21IfNeeded
 $EnvFile = Join-Path $DeployDir "deploy.env"
 $JarPath = Join-Path $DeployDir "dist\app.jar"
 

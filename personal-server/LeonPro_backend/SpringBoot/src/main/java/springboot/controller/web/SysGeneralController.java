@@ -52,6 +52,9 @@ public class SysGeneralController {
     @Autowired
     private SysRolesService sysRolesService;
 
+    @Autowired
+    private RegCodeConfigService regCodeConfigService;
+
     @PostMapping("captcha")
     public ApiResponse getCaptcha() {
         // 生成验证码文本
@@ -102,6 +105,7 @@ public class SysGeneralController {
         // 登录成功，生成 Token 或其他逻辑
 //        String token = jwtUtil.generateToken(username);
 //        return ApiResponse.success("登录成功", token);
+        fillRoleName(user);
         return ApiResponse.success(user);
     }
 
@@ -119,11 +123,7 @@ public class SysGeneralController {
         if (user == null) {
             return ApiResponse.failure("用户不存在");
         }
-//        if (!passwordEncoder.matches(password, user.getPassword())) {
-//            return ApiResponse.failure("密码错误");
-//        }
-        // 登录成功，生成 Token 或其他逻辑
-//        String token = jwtUtil.generateToken(username);
+        fillRoleName(user);
         return ApiResponse.success(user);
     }
     /**
@@ -150,8 +150,8 @@ public class SysGeneralController {
         }
 
         SysRoles role = sysRolesService.getById(user.getRoleId());
-        // 超级管理员（root）放行全部菜单
-        if (role != null && "root".equalsIgnoreCase(role.getRoleName())) {
+        // 超级管理员 ROOT：默认拥有全部菜单，不走角色-路由配置
+        if (RoleUtils.isRoot(role)) {
             return ApiResponse.success(listAllMenus());
         }
 
@@ -189,6 +189,16 @@ public class SysGeneralController {
         queryWrapper.ne(SysMenus::getMenuType, 2);
         queryWrapper.orderByAsc(SysMenus::getSortOrder);
         return sysMenusService.list(queryWrapper);
+    }
+
+    private void fillRoleName(SysUsers user) {
+        if (user == null || user.getRoleId() == null || user.getRoleId().isEmpty()) {
+            return;
+        }
+        SysRoles role = sysRolesService.getById(user.getRoleId());
+        if (role != null) {
+            user.setRoleName(role.getRoleName());
+        }
     }
 
 
@@ -245,11 +255,12 @@ public class SysGeneralController {
         one.setLongTimeValid(firstTwelve);
 
         one.setApplyStatus(1);
+        one.setOperator(OperatorUtils.resolve(comRegistration.getOperator()));
 
         this.comRegistrationService.updateById(one);
 
         SysInfo sysInfo = new SysInfo();
-        sysInfo.setInfoDes("您的申请已通过，操作人：" + comRegistration.getId() + "\\n" +
+        sysInfo.setInfoDes("您的申请已通过，操作人：" + one.getOperator() + "\\n" +
                 "类型：" + RegCodeType.getDescriptionByCode(comRegistration.getRegCodeType()) + "\\n"
                 + "注册码：\\n" +
                 "单月：" + one.getOneMonthValid() + "\\n" +
@@ -270,12 +281,29 @@ public class SysGeneralController {
     public ApiResponse genTempRegCode(@RequestBody RegCode regCode){
 
         RegCode one = regCode;
-        if (one.getRegCodeType() == null || one.getRegCodeType() == 0) {
-            return ApiResponse.failure("注册码类型存在问题！");
+        RegCodeConfig config = resolveRegCodeConfig(one);
+        if (config == null && (one.getRegCodeType() == null || one.getRegCodeType() == 0)) {
+            return ApiResponse.failure("请选择注册码配置或类型");
         }
 
+        String suffix;
+        String algorithm = "MD5";
+        if (config != null) {
+            suffix = config.getEncryptSuffix() == null ? "" : config.getEncryptSuffix();
+            if (config.getEncryptType() != null && !config.getEncryptType().isBlank()) {
+                algorithm = config.getEncryptType();
+            }
+            if (one.getCompany() == null || one.getCompany().isBlank()) {
+                one.setCompany(config.getCompany());
+            }
+            if (one.getApplyName() == null || one.getApplyName().isBlank()) {
+                one.setApplyName(config.getName());
+            }
+        } else {
+            suffix = RegCodeType.getDescriptionByCode(one.getRegCodeType());
+        }
 
-        String validCode =  MD5Util.hash(one.getRegCode() + RegCodeType.getDescriptionByCode(one.getRegCodeType()));
+        String validCode = HashUtil.hash(one.getRegCode() + suffix, algorithm);
 
         // 获取前 6 位和前 12 位
         String firstSix = validCode.length() >= 6 ? validCode.substring(0, 6) : validCode;
@@ -292,7 +320,38 @@ public class SysGeneralController {
         one.setThirteenMonthValid(firstTen);
         one.setLongTimeValid(firstTwelve);
 
+        ComRegistration record = new ComRegistration();
+        record.setApplyName(one.getApplyName());
+        record.setCompany(one.getCompany());
+        record.setRegCode(one.getRegCode());
+        record.setRegCodeType(one.getRegCodeType());
+        record.setOneMonthValid(firstSix);
+        record.setLongTimeValid(firstTwelve);
+        record.setApplyId(one.getApplyId());
+        record.setOperator(OperatorUtils.resolve(one.getApplyId()));
+        record.setApplyStatus(1);
+        record.setRemarks(config != null
+                ? "临时注册码生成 / " + config.getCompany() + " / " + config.getName()
+                : "临时注册码生成");
+        record.setCreateTime(DateUtils.getNow());
+        this.comRegistrationService.save(record);
+
         return ApiResponse.success(one);
+    }
+
+    private RegCodeConfig resolveRegCodeConfig(RegCode one) {
+        if (one.getConfigId() != null && !one.getConfigId().isBlank()) {
+            return this.regCodeConfigService.getById(one.getConfigId());
+        }
+        if (one.getCompany() != null && !one.getCompany().isBlank()
+                && one.getApplyName() != null && !one.getApplyName().isBlank()) {
+            LambdaQueryWrapper<RegCodeConfig> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(RegCodeConfig::getCompany, one.getCompany())
+                    .eq(RegCodeConfig::getName, one.getApplyName())
+                    .last("LIMIT 1");
+            return this.regCodeConfigService.getOne(wrapper, false);
+        }
+        return null;
     }
 
 }
