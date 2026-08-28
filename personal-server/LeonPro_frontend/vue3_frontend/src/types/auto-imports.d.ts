@@ -10,6 +10,7 @@ declare global {
   const ElMessage: (typeof import("element-plus/es"))["ElMessage"];
   const ElMessageBox: (typeof import("element-plus/es"))["ElMessageBox"];
   const ElNotification: (typeof import("element-plus/es"))["ElNotification"];
+  const ElLoading: (typeof import("element-plus/es"))["ElLoading"];
   const ElTree: (typeof import("element-plus/es"))["ElTree"];
   const acceptHMRUpdate: (typeof import("pinia"))["acceptHMRUpdate"];
   const asyncComputed: (typeof import("@vueuse/core"))["asyncComputed"];
@@ -331,6 +332,9 @@ declare module "vue" {
     >;
     readonly ElMessageBox: UnwrapRef<
       (typeof import("element-plus/es"))["ElMessageBox"]
+    >;
+    readonly ElLoading: UnwrapRef<
+      (typeof import("element-plus/es"))["ElLoading"]
     >;
     readonly acceptHMRUpdate: UnwrapRef<
       (typeof import("pinia"))["acceptHMRUpdate"]
@@ -1059,6 +1063,9 @@ declare module "@vue/runtime-core" {
     >;
     readonly ElMessageBox: UnwrapRef<
       (typeof import("element-plus/es"))["ElMessageBox"]
+    >;
+    readonly ElLoading: UnwrapRef<
+      (typeof import("element-plus/es"))["ElLoading"]
     >;
     readonly acceptHMRUpdate: UnwrapRef<
       (typeof import("pinia"))["acceptHMRUpdate"]

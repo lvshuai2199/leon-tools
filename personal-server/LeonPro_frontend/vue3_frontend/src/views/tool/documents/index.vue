@@ -110,7 +110,7 @@ const pdfFilesRef = ref<HTMLInputElement>();
 const pdfResult = ref<{ files: number; pages: number } | null>(null);
 
 async function mergePdfs() {
-  const files = [...(pdfFilesRef.value?.files || [])];
+  const files = Array.from(pdfFilesRef.value?.files ?? []);
   if (!files.length) {
     ElMessage.warning("请先选择 PDF 文件");
     return;
@@ -125,9 +125,10 @@ async function mergePdfs() {
       copied.forEach((page) => merged.addPage(page));
       pages += copied.length;
     }
+    const pdfBytes = await merged.save();
     downloadBlob(
       `merged-${new Date().toISOString().slice(0, 10)}.pdf`,
-      new Blob([await merged.save()], { type: "application/pdf" })
+      new Blob([new Uint8Array(pdfBytes)], { type: "application/pdf" })
     );
     pdfResult.value = { files: files.length, pages };
   } catch (error: any) {
@@ -178,7 +179,7 @@ const imageResult = ref<{
 const imageReport = ref("");
 
 async function runImageCheck() {
-  const files = [...(imageCheckFilesRef.value?.files || [])];
+  const files = Array.from(imageCheckFilesRef.value?.files ?? []);
   if (!files.length) {
     ElMessage.warning("请先选择包含 Markdown 和图片的文件夹");
     return;
@@ -195,7 +196,7 @@ async function runImageCheck() {
     const matches = [...content.matchAll(/!\[[^\]]*]\(([^)]+)\)/g)];
     for (const match of matches) {
       const raw = match[1].split("?")[0].split("#")[0].replaceAll("\\", "/");
-      const name = raw.split("/").pop().toLowerCase();
+      const name = (raw.split("/").pop() ?? "").toLowerCase();
       if (imageNames.has(name)) referenced.add(name);
       else missing.push(`${fileLabel(file)} -> ${raw}`);
     }

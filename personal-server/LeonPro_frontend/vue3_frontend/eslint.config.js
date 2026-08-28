@@ -34,7 +34,6 @@ export default [
           PageResult: "readonly",
           OptionType: "readonly",
           ResponseData: "readonly",
-          ExcelResult: "readonly",
           TagView: "readonly",
           AppSettings: "readonly",
           __APP_INFO__: "readonly",

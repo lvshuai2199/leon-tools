@@ -129,7 +129,7 @@ const renameStart = ref(1);
 const renameEntries = ref<{ file: File; name: string }[]>([]);
 
 function renderRenamePreview() {
-  const files = [...(renameFilesRef.value?.files || [])];
+  const files = Array.from(renameFilesRef.value?.files ?? []);
   const prefix = renamePrefix.value || "file-";
   const start = renameStart.value || 0;
   renameEntries.value = files.map((file, index) => {
@@ -171,7 +171,7 @@ const fileLabel = (file: File) =>
   (file as any).webkitRelativePath || file.name;
 
 async function runDedupe() {
-  const files = [...(dedupeFilesRef.value?.files || [])];
+  const files = Array.from(dedupeFilesRef.value?.files ?? []);
   if (!files.length) {
     ElMessage.warning("请先选择文件或文件夹");
     return;
@@ -213,7 +213,7 @@ const filterResult = ref<{ matched: string[]; total: number } | null>(null);
 const filterReport = ref("");
 
 function runFilter() {
-  const files = [...(filterFilesRef.value?.files || [])];
+  const files = Array.from(filterFilesRef.value?.files ?? []);
   const source = filterPattern.value.trim();
   if (!files.length) {
     ElMessage.warning("请先选择文件");

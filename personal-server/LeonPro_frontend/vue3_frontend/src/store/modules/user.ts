@@ -1,6 +1,5 @@
 import { store } from "@/store";
 import { usePermissionStoreHook } from "@/store/modules/permission";
-import { useDictStoreHook } from "@/store/modules/dict";
 
 import AuthAPI, { type LoginFormData } from "@/api/auth";
 import UserAPI, { type UserInfo } from "@/api/system/user";
@@ -104,7 +103,6 @@ export const useUserStore = defineStore("user", () => {
       clearToken();
       userInfo.value = {} as UserInfo;
       usePermissionStoreHook().resetRouter();
-      useDictStoreHook().clearDictionaryCache();
       resolve();
     });
   }

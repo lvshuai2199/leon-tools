@@ -10,7 +10,7 @@ const mediaQueryList = window.matchMedia("(prefers-color-scheme: dark)");
 
 const defaultSettings: AppSettings = {
   // 系统Title
-  title: pkg.name,
+  title: "LeonPro",
   // 系统版本
   version: pkg.version,
   // 是否显示设置
@@ -32,7 +32,7 @@ const defaultSettings: AppSettings = {
   // 是否开启水印
   watermarkEnabled: false,
   // 水印内容
-  watermarkContent: pkg.name,
+  watermarkContent: "LeonPro",
   // 侧边栏配色方案
   sidebarColorScheme: SidebarColorEnum.CLASSIC_BLUE,
 };

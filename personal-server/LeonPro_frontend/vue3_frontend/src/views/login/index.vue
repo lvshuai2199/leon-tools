@@ -84,11 +84,10 @@ import type { FormInstance } from "element-plus";
 
 import { ThemeEnum } from "@/enums/ThemeEnum";
 
-import { useSettingsStore, useUserStore, useDictStore } from "@/store";
+import { useSettingsStore, useUserStore } from "@/store";
 
 const userStore = useUserStore();
 const settingsStore = useSettingsStore();
-const dictStore = useDictStore();
 
 const route = useRoute();
 const loginFormRef = ref<FormInstance>();
@@ -135,8 +134,6 @@ async function handleLoginSubmit() {
         .login(loginFormData.value)
         .then(async () => {
           await userStore.getUserInfo();
-          // 字典加载失败不影响登录（已内部捕获）
-          await dictStore.loadDictionaries();
           // 跳转到登录前的页面
           const { path, queryParams } = parseRedirect();
           router.push({ path: path, query: queryParams });

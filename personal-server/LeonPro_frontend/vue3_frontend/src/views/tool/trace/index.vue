@@ -123,6 +123,10 @@ type PlotlyApi = {
   purge: (el: HTMLElement) => void;
 };
 
+type PlotlyEl = HTMLElement & {
+  on?: (event: string, cb: (ev: any) => void) => void;
+};
+
 async function getPlotly(): Promise<PlotlyApi> {
   const w = window as Window & { Plotly?: PlotlyApi };
   if (w.Plotly) return w.Plotly;
@@ -592,7 +596,7 @@ async function drawCharts() {
   if (chart2D.value) Plotly.newPlot(chart2D.value, traces2D, layout2D);
 
   [chart3D, chart2D].forEach((chart) => {
-    chart.value?.on("plotly_click", (ev: any) => {
+    (chart.value as PlotlyEl | undefined)?.on?.("plotly_click", (ev: any) => {
       if (ev.points?.length > 0) updateInspector(ev.points[0]);
     });
   });

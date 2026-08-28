@@ -98,7 +98,7 @@ const parseDynamicRoutes = (rawRoutes: RouteVO[], isRoot = true): RouteRecordRaw
       normalizedRoute.component?.toString() === "Layout"
         ? Layout
         : modules[`../../views/${normalizedRoute.component}.vue`] ||
-          modules["../../views/error-page/404.vue"];
+          modules["../../views/error/404.vue"];
 
     // 递归解析子路由
     if (normalizedRoute.children) {

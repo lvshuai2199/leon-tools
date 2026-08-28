@@ -2,7 +2,7 @@
   <section class="app-main" :style="{ height: appMainHeight }">
     <router-view>
       <template #default="{ Component, route }">
-        <transition enter-active-class="animate__animated animate__fadeIn" mode="out-in">
+        <transition name="fade-slide" mode="out-in">
           <keep-alive :include="cachedViews">
             <component :is="Component" :key="route.path" />
           </keep-alive>
@@ -32,5 +32,15 @@ const appMainHeight = computed(() => {
   position: relative;
   overflow-y: auto;
   background-color: var(--el-bg-color-page);
+}
+
+.fade-slide-enter-active,
+.fade-slide-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-slide-enter-from,
+.fade-slide-leave-to {
+  opacity: 0;
 }
 </style>
