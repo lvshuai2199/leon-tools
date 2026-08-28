@@ -1,2 +1,13 @@
 nodeLinker: hoisted
 storeDir: C:\Users\admini\.pnpm-store-leon
+
+# pnpm 11 默认 verifyDepsBeforeRun=install，执行 pnpm run 前会先联网装依赖。
+# 代理/镜像异常时会直接挡住启动。本地已有 node_modules 时不应再强制 install。
+verifyDepsBeforeRun: false
+
+# pnpm 11 默认 strictDepBuilds=true，未批准的依赖构建脚本会导致 install 失败。
+strictDepBuilds: false
+allowBuilds:
+  "@parcel/watcher": true
+  es5-ext: true
+  esbuild: true
