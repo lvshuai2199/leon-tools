@@ -4,8 +4,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -13,12 +11,10 @@ import java.util.Date;
 
 @TableName(value ="sys_tasks")
 @Data
-@Entity
 public class SysTasks implements Serializable {
     /**
      *
      */
-    @Id
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 

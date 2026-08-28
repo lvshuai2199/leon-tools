@@ -1,6 +1,6 @@
 package springboot.service.impl;
 
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import springboot.domain.ComRegistration;
 import springboot.service.ComRegistrationService;
 import springboot.mapper.ComRegistrationMapper;

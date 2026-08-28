@@ -32,7 +32,7 @@ public class SysGeneralController {
     @Autowired
     private SysRoleMenuService sysRoleMenuService;
     @Autowired
-    RedisUtil redisUtil = new RedisUtil();
+    private RedisUtil redisUtil;
 
     @Autowired
     private SysGeneralService sysGeneralService;

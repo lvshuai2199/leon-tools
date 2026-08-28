@@ -3,8 +3,6 @@ package springboot.domain;
 import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -18,13 +16,11 @@ import java.util.Date;
  */
 @TableName(value ="com_registration")
 @Data
-@Entity
 public class ComRegistration implements Serializable {
 
     /**
      *
      */
-    @Id
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
     

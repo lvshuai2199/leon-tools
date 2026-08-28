@@ -4,8 +4,6 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -18,13 +16,11 @@ import java.io.Serializable;
  */
 @TableName(value ="sys_role_menu")
 @Data
-@Entity
 public class SysRoleMenu implements Serializable {
 
     /**
      *
      */
-    @Id
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 

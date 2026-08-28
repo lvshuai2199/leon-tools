@@ -8,14 +8,14 @@ import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
 import UnoCSS from "unocss/vite";
 import { resolve } from "path";
 import { copyFileSync, mkdirSync } from "fs";
-import { name, version, engines, dependencies, devDependencies } from "./package.json";
+import { name, version, engines, dependencies, devDependencies } from "./package.json" with { type: "json" };
 
 const __APP_INFO__ = {
   pkg: { name, version, engines, dependencies, devDependencies },
   buildTimestamp: Date.now(),
 };
 
-const pathSrc = resolve(__dirname, "src");
+const pathSrc = resolve(import.meta.dirname, "src");
 
 export default defineConfig(({ mode }: ConfigEnv) => {
   const env = loadEnv(mode, process.cwd());
@@ -53,8 +53,8 @@ export default defineConfig(({ mode }: ConfigEnv) => {
       {
         name: "copy-plotly",
         buildStart() {
-          const src = resolve(__dirname, "node_modules/plotly.js-dist-min/plotly.min.js");
-          const destDir = resolve(__dirname, "public/lib");
+          const src = resolve(import.meta.dirname, "node_modules/plotly.js-dist-min/plotly.min.js");
+          const destDir = resolve(import.meta.dirname, "public/lib");
           mkdirSync(destDir, { recursive: true });
           copyFileSync(src, resolve(destDir, "plotly.min.js"));
         },
@@ -103,8 +103,7 @@ export default defineConfig(({ mode }: ConfigEnv) => {
       minify: "esbuild",
       reportCompressedSize: false,
       sourcemap: false,
-      rollupOptions: {
-        maxParallelFileOps: 1,
+      rolldownOptions: {
         output: {
           entryFileNames: "js/[name].[hash].js",
           chunkFileNames: "js/[name].[hash].js",

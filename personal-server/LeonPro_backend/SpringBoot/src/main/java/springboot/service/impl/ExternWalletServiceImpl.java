@@ -1,6 +1,6 @@
 package springboot.service.impl;
 
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import springboot.domain.ExternWallet;
 import springboot.mapper.ExternWalletMapper;
 import springboot.service.ExternWalletService;

@@ -6,12 +6,7 @@ import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
 import java.io.Serializable;
 import java.util.Date;
-import java.util.UUID;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
-import jakarta.persistence.PrePersist;
-import jakarta.persistence.Table;
 import lombok.Data;
 
 /**
@@ -20,12 +15,10 @@ import lombok.Data;
  */
 @TableName(value ="sys_menus")
 @Data
-@Entity
 public class SysMenus implements Serializable {
     /**
      * 
      */
-    @Id
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 

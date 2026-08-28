@@ -12,7 +12,6 @@ import springboot.service.SysInfoService;
 import org.springframework.web.bind.annotation.*;
 import springboot.utils.ApiResponse;
 
-import javax.annotation.Resource;
 import java.io.Serializable;
 import java.util.List;
 

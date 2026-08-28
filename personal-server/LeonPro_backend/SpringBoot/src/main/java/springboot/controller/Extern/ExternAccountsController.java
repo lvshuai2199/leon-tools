@@ -13,7 +13,6 @@ import springboot.domain.SysTasks;
 import springboot.service.ExternAccountsService;
 import springboot.utils.ApiResponse;
 
-import javax.annotation.Resource;
 import java.io.Serializable;
 import java.util.List;
 

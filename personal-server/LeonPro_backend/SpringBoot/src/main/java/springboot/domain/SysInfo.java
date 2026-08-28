@@ -6,8 +6,6 @@ import com.baomidou.mybatisplus.annotation.TableName;
 import java.io.Serializable;
 import java.util.Date;
 
-import jakarta.persistence.Entity;
-import jakarta.persistence.Id;
 import lombok.Data;
 
 /**
@@ -15,13 +13,11 @@ import lombok.Data;
  */
 @TableName(value ="sys_info")
 @Data
-@Entity
 public class SysInfo implements Serializable {
 
     /**
      *
      */
-    @Id
     @TableId(type = IdType.ASSIGN_UUID)
     private String id;
 

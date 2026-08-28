@@ -1,6 +1,6 @@
 package springboot.service.impl;
 
-import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
+import com.baomidou.mybatisplus.spring.service.impl.ServiceImpl;
 import springboot.domain.SysInfo;
 import springboot.service.SysInfoService;
 import springboot.mapper.SysInfoMapper;
