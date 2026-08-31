@@ -443,6 +443,10 @@ function collectTreePath(nodes: TaskTreeNode[], out: TrajPoint[] = []) {
   return out;
 }
 
+export function collectTreePoses(nodes: TaskTreeNode[]): TrajPoint[] {
+  return collectTreePath(nodes);
+}
+
 function extractMainTask(script: string) {
   const marker = script.lastIndexOf("# Main Task Script.");
   if (marker >= 0) return script.slice(marker);

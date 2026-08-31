@@ -13,6 +13,7 @@ export interface TraceWorkspace {
   showLine: boolean;
   showPoints: boolean;
   showMarkers: boolean;
+  showTreePoses: boolean;
   showArrows: boolean;
 }
 
@@ -28,6 +29,7 @@ export function emptyWorkspace(): TraceWorkspace {
     showLine: true,
     showPoints: false,
     showMarkers: true,
+    showTreePoses: false,
     showArrows: false,
   };
 }

@@ -60,6 +60,9 @@
         <label class="checkbox-item checkbox-divider">
           <input v-model="workspace.showMarkers" type="checkbox" @change="drawCharts" /> 显示参考点
         </label>
+        <label class="checkbox-item">
+          <input v-model="workspace.showTreePoses" type="checkbox" @change="drawCharts" /> 显示任务树点位
+        </label>
         <label class="checkbox-item checkbox-divider checkbox-warn">
           <input v-model="workspace.showArrows" type="checkbox" @change="drawCharts" /> 显示姿态箭头
         </label>
@@ -128,6 +131,7 @@
           <strong>说明：</strong><br />
           • WeldingTools 脚本多为直接 pose 数组；FullFunctionWelding 使用 full_apply_touch_offset。<br />
           • 红色菱形为参考点 / 跟踪坐标系，可通过「显示参考点」开关。<br />
+          • 紫色空心圆为任务树节点点位（带名称），可通过「显示任务树点位」开关。<br />
           • 橙色虚线按程序顺序连接 movej 接近/离开段，不跨焊道。<br />
           • 青色曲线为 movec 圆弧。经过点/结束点标记仅在打开「显示轨迹点位」时出现，摆动密集时会自动缩小。<br />
           • 数据缓存在本机，刷新不会丢失，点「清空数据」后才消失。
@@ -144,6 +148,7 @@ import {
   parseProject,
   buildDisplayPath,
   buildMovejPath,
+  collectTreePoses,
   type PluginKind,
   type TaskTreeNode,
   type TrajData,
@@ -225,6 +230,7 @@ const selected = reactive({
 
 let lastSelectedValue = "";
 let globalData: TrajData = { main: [], markers: [] };
+let treePoseCache: TrajPoint[] = [];
 
 const resolvedPluginLabel = computed(() => {
   if (resolvedPlugin.value === "welding-tools") return "WeldingTools";
@@ -365,6 +371,7 @@ function clearAll() {
   Object.assign(workspace, emptyWorkspace());
   treeData.value = [];
   globalData = { main: [], markers: [] };
+  treePoseCache = [];
   resolvedPlugin.value = "";
   pickedTreePose.value = null;
   statusMsg.value = "";
@@ -487,7 +494,7 @@ function findSelectedPoint(pts: any): TrajPoint | undefined {
     Math.abs(p.x - pts.x) <= eps &&
     Math.abs(p.y - pts.y) <= eps &&
     (pts.z === undefined || Math.abs(p.z - pts.z) <= eps);
-  return globalData.main.find(match) || globalData.markers.find(match);
+  return globalData.main.find(match) || globalData.markers.find(match) || treePoseCache.find(match);
 }
 
 function findMainIndex(pts: any): number {
@@ -765,6 +772,41 @@ async function drawCharts() {
     });
   }
 
+  if (workspace.showTreePoses) {
+    treePoseCache = collectTreePoses(treeData.value);
+    if (treePoseCache.length > 0) {
+      const labels = treePoseCache.map((p) => p.name || "树节点");
+      const showText = treePoseCache.length <= 40;
+      traces3D.push({
+        x: treePoseCache.map((p) => p.x),
+        y: treePoseCache.map((p) => p.y),
+        z: treePoseCache.map((p) => p.z),
+        name: "任务树点位",
+        mode: showText ? "markers+text" : "markers",
+        type: "scatter3d",
+        marker: { color: "#6c5ce7", size: 6, symbol: "circle-open" },
+        text: labels,
+        textposition: "top center",
+        textfont: { size: 9, color: "#6c5ce7" },
+        hovertemplate: "%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
+      });
+      traces2D.push({
+        x: treePoseCache.map((p) => p.x),
+        y: treePoseCache.map((p) => p.y),
+        name: "任务树点位",
+        mode: showText ? "markers+text" : "markers",
+        type: "scatter",
+        marker: { color: "#6c5ce7", size: 8, symbol: "circle-open" },
+        text: labels,
+        textposition: "top center",
+        textfont: { size: 10, color: "#6c5ce7" },
+        hovertemplate: "%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<extra></extra>",
+      });
+    }
+  } else {
+    treePoseCache = [];
+  }
+
   if (pickedTreePose.value) {
     const p = pickedTreePose.value;
     traces3D.push({
@@ -868,7 +910,7 @@ async function drawCharts() {
 
   statusMsg.value = `点位: ${data.main.length} (${parts.join(", ") || "无"})${
     data.markers.length ? ` | 参考点: ${data.markers.length}` : ""
-  }`;
+  }${workspace.showTreePoses && treePoseCache.length ? ` | 任务树点位: ${treePoseCache.length}` : ""}`;
 }
 
 function copyData() {
@@ -884,6 +926,7 @@ watch(
     showLine: workspace.showLine,
     showPoints: workspace.showPoints,
     showMarkers: workspace.showMarkers,
+    showTreePoses: workspace.showTreePoses,
     showArrows: workspace.showArrows,
   }),
   () => persistNow()
