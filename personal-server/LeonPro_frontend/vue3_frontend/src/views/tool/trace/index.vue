@@ -128,7 +128,8 @@
           <strong>说明：</strong><br />
           • WeldingTools 脚本多为直接 pose 数组；FullFunctionWelding 使用 full_apply_touch_offset。<br />
           • 红色菱形为参考点 / 跟踪坐标系，可通过「显示参考点」开关。<br />
-          • 橙色虚线为 movej 接近，绿色为焊接路径 movep/movel/movec。<br />
+          • 橙色虚线按程序顺序连接 movej 接近/离开段，不跨焊道。<br />
+          • 青色曲线为 movec 圆弧。经过点/结束点标记仅在打开「显示轨迹点位」时出现，摆动密集时会自动缩小。<br />
           • 数据缓存在本机，刷新不会丢失，点「清空数据」后才消失。
         </div>
       </aside>
@@ -141,6 +142,8 @@ import { ArrowDown, Back } from "@element-plus/icons-vue";
 import {
   classifyProjectFile,
   parseProject,
+  buildDisplayPath,
+  buildMovejPath,
   type PluginKind,
   type TaskTreeNode,
   type TrajData,
@@ -382,28 +385,7 @@ function clearAll() {
 }
 
 function preparePath(points: TrajPoint[]) {
-  const res: {
-    x: (number | null)[];
-    y: (number | null)[];
-    z: (number | null)[];
-    idx: (number | null)[];
-    types: (string | null)[];
-  } = { x: [], y: [], z: [], idx: [], types: [] };
-  for (let i = 0; i < points.length; i++) {
-    if (i > 0 && Math.abs(points[i].z - points[i - 1].z) > 0.005) {
-      res.x.push(null);
-      res.y.push(null);
-      res.z.push(null);
-      res.idx.push(null);
-      res.types.push(null);
-    }
-    res.x.push(points[i].x);
-    res.y.push(points[i].y);
-    res.z.push(points[i].z);
-    res.idx.push(i);
-    res.types.push(points[i].type || "?");
-  }
-  return res;
+  return buildDisplayPath(points);
 }
 
 function eulerToToolZ(rx: number, ry: number, rz: number) {
@@ -604,6 +586,8 @@ async function drawCharts() {
       const name = typeof path.idx[i] === "number" ? data.main[path.idx[i] as number]?.name : "";
       return [t ? `Type: ${t}` : "", name ? `Node: ${name}` : ""].filter(Boolean).join(" · ");
     });
+    const weldCount = data.main.filter((p) => ["movep", "movel", "movec", "movec_end"].includes(p.type)).length;
+    const denseWeld = weldCount > 24 || data.main.filter((p) => p.type === "movec").length > 6;
 
     traces3D.push({
       x: path.x,
@@ -612,8 +596,8 @@ async function drawCharts() {
       name: "完整轨迹 (all)",
       mode,
       type: "scatter3d",
-      line: { color: "#3498db", width: 4 },
-      marker: { size: 2, color: "#2980b9" },
+      line: { color: "#3498db", width: denseWeld ? 2 : 4 },
+      marker: { size: denseWeld ? 1.5 : 2, color: "#2980b9" },
       customdata: path.idx,
       text: hoverText,
       hovertemplate: "Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<br>%{text}<extra></extra>",
@@ -624,8 +608,8 @@ async function drawCharts() {
       name: "平面投影 (all)",
       mode,
       type: "scatter",
-      line: { color: "#3498db", width: 2 },
-      marker: { size: 4 },
+      line: { color: "#3498db", width: denseWeld ? 1.5 : 2 },
+      marker: { size: denseWeld ? 3 : 4 },
       customdata: path.idx,
       text: hoverText,
       hovertemplate: "Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>%{text}<extra></extra>",
@@ -639,9 +623,8 @@ async function drawCharts() {
         y: movejPts.map((p) => p.y),
         z: movejPts.map((p) => p.z),
         name: "movej 接近点",
-        mode: "markers+lines",
+        mode: "markers",
         type: "scatter3d",
-        line: { color: "#e67e22", width: 2, dash: "dash" },
         marker: { size: 4, color: "#e67e22", symbol: "circle-open" },
         customdata: movejIdx,
         hovertemplate: "Idx: %{customdata}<br>movej<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
@@ -650,42 +633,108 @@ async function drawCharts() {
         x: movejPts.map((p) => p.x),
         y: movejPts.map((p) => p.y),
         name: "movej 接近点",
-        mode: "markers+lines",
+        mode: "markers",
         type: "scatter",
-        line: { color: "#e67e22", width: 2, dash: "dash" },
         marker: { size: 6, color: "#e67e22", symbol: "circle-open" },
         customdata: movejIdx,
         hovertemplate: "Idx: %{customdata}<br>movej<br>X: %{x:.6f}<br>Y: %{y:.6f}<extra></extra>",
       });
+
+      if (workspace.showLine) {
+        const movejPath = buildMovejPath(data.main);
+        traces3D.push({
+          x: movejPath.x,
+          y: movejPath.y,
+          z: movejPath.z,
+          name: "movej 接近路径",
+          mode: "lines",
+          type: "scatter3d",
+          line: { color: "#e67e22", width: 2, dash: "dash" },
+          hoverinfo: "skip",
+        });
+        traces2D.push({
+          x: movejPath.x,
+          y: movejPath.y,
+          name: "movej 接近路径",
+          mode: "lines",
+          type: "scatter",
+          line: { color: "#e67e22", width: 2, dash: "dash" },
+          hoverinfo: "skip",
+        });
+      }
     }
 
-    const weldPts = data.main.filter((p) => ["movep", "movel", "movec", "movec_end"].includes(p.type));
-    const weldIdx = data.main.map((_, i) => i).filter((i) =>
-      ["movep", "movel", "movec", "movec_end"].includes(data.main[i].type)
-    );
-    if (weldPts.length > 0) {
+    const weldLinear = data.main
+      .map((p, i) => ({ p, i }))
+      .filter(({ p }) => p.type === "movep" || p.type === "movel");
+    const viaPts = data.main.map((p, i) => ({ p, i })).filter(({ p }) => p.type === "movec");
+    const endPts = data.main.map((p, i) => ({ p, i })).filter(({ p }) => p.type === "movec_end");
+
+    if (path.arcX.length > 0 && workspace.showLine) {
+      const arcW3 = denseWeld ? 3 : 5;
+      const arcW2 = denseWeld ? 2 : 3;
       traces3D.push({
-        x: weldPts.map((p) => p.x),
-        y: weldPts.map((p) => p.y),
-        z: weldPts.map((p) => p.z),
-        name: "焊道路径 (movep/movel/movec)",
+        x: path.arcX,
+        y: path.arcY,
+        z: path.arcZ,
+        name: "圆弧 (movec)",
+        mode: "lines",
+        type: "scatter3d",
+        line: { color: "#16a085", width: arcW3 },
+        hoverinfo: "skip",
+      });
+      traces2D.push({
+        x: path.arcX,
+        y: path.arcY,
+        name: "圆弧 (movec)",
+        mode: "lines",
+        type: "scatter",
+        line: { color: "#16a085", width: arcW2 },
+        hoverinfo: "skip",
+      });
+    }
+
+    const pushMarkers = (
+      list: { p: TrajPoint; i: number }[],
+      name: string,
+      color: string,
+      symbol: string,
+      size3d: number,
+      size2d: number
+    ) => {
+      if (!list.length) return;
+      traces3D.push({
+        x: list.map(({ p }) => p.x),
+        y: list.map(({ p }) => p.y),
+        z: list.map(({ p }) => p.z),
+        name,
         mode: "markers",
         type: "scatter3d",
-        marker: { size: 3, color: "#27ae60", symbol: "circle" },
-        customdata: weldIdx,
-        text: weldPts.map((p) => p.type),
+        marker: { size: size3d, color, symbol },
+        customdata: list.map(({ i }) => i),
+        text: list.map(({ p }) => p.type),
         hovertemplate: "Idx: %{customdata}<br>%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
       });
       traces2D.push({
-        x: weldPts.map((p) => p.x),
-        y: weldPts.map((p) => p.y),
-        name: "焊接路径",
+        x: list.map(({ p }) => p.x),
+        y: list.map(({ p }) => p.y),
+        name,
         mode: "markers",
         type: "scatter",
-        marker: { size: 6, color: "#27ae60", symbol: "circle" },
-        customdata: weldIdx,
+        marker: { size: size2d, color, symbol: symbol === "diamond" ? "diamond" : symbol === "square" ? "square" : "circle" },
+        customdata: list.map(({ i }) => i),
         hovertemplate: "Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<extra></extra>",
       });
+    };
+
+    if (workspace.showPoints) {
+      const weld3 = denseWeld ? 2 : 3;
+      const weld2 = denseWeld ? 3 : 5;
+      const via3 = denseWeld ? 2 : 4;
+      const via2 = denseWeld ? 4 : 7;
+      pushMarkers(weldLinear, "焊道路径 (movep/movel)", "#27ae60", "circle", weld3, weld2);
+      pushMarkers(viaPts, "圆弧经过点", "#16a085", "diamond", via3, via2);
+      pushMarkers(endPts, "圆弧结束点", "#1abc9c", "square", via3, via2);
     }
   }
 

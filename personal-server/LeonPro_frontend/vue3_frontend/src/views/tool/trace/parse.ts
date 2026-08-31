@@ -87,6 +87,156 @@ export function isZeroPose(p: TrajPoint, eps = 1e-9) {
   return Math.abs(p.x) < eps && Math.abs(p.y) < eps && Math.abs(p.z) < eps;
 }
 
+type Vec3 = { x: number; y: number; z: number };
+
+function vSub(a: Vec3, b: Vec3): Vec3 {
+  return { x: a.x - b.x, y: a.y - b.y, z: a.z - b.z };
+}
+function vAdd(a: Vec3, b: Vec3): Vec3 {
+  return { x: a.x + b.x, y: a.y + b.y, z: a.z + b.z };
+}
+function vScale(a: Vec3, s: number): Vec3 {
+  return { x: a.x * s, y: a.y * s, z: a.z * s };
+}
+function vDot(a: Vec3, b: Vec3) {
+  return a.x * b.x + a.y * b.y + a.z * b.z;
+}
+function vCross(a: Vec3, b: Vec3): Vec3 {
+  return { x: a.y * b.z - a.z * b.y, y: a.z * b.x - a.x * b.z, z: a.x * b.y - a.y * b.x };
+}
+function vNorm(a: Vec3) {
+  return Math.hypot(a.x, a.y, a.z);
+}
+function vNormalize(a: Vec3): Vec3 {
+  const n = vNorm(a) || 1;
+  return vScale(a, 1 / n);
+}
+
+function wrap2pi(a: number) {
+  let x = a;
+  const twoPi = Math.PI * 2;
+  while (x < 0) x += twoPi;
+  while (x >= twoPi) x -= twoPi;
+  return x;
+}
+
+/** movec：起点 A（圆弧前一点）+ 经过点 B + 结束点 C，沿过 B 的劣/优弧插值 */
+export function interpolateCircleArc(a: Vec3, b: Vec3, c: Vec3, steps = 40): Vec3[] {
+  const u = vSub(b, a);
+  const v = vSub(c, a);
+  const n = vCross(u, v);
+  const n2 = vDot(n, n);
+  if (n2 < 1e-18) return [a, b, c];
+
+  const u2 = vDot(u, u);
+  const v2 = vDot(v, v);
+  const offset = vScale(vSub(vScale(vCross(v, n), u2), vScale(vCross(u, n), v2)), 1 / (2 * n2));
+  const origin = vAdd(a, offset);
+  const radius = vNorm(vSub(a, origin));
+  if (radius < 1e-9) return [a, b, c];
+
+  const e1 = vNormalize(vSub(a, origin));
+  const e2 = vNormalize(vCross(n, e1));
+  const angleOf = (p: Vec3) => {
+    const d = vSub(p, origin);
+    return Math.atan2(vDot(d, e2), vDot(d, e1));
+  };
+  const angB = wrap2pi(angleOf(b));
+  const angC = wrap2pi(angleOf(c));
+  let end = angC;
+  if (!(angB <= angC + 1e-8)) end = angC - Math.PI * 2;
+  if (Math.abs(end) < 1e-6) end = angB > Math.PI ? -Math.PI * 2 : Math.PI * 2;
+
+  const count = Math.max(24, Math.min(80, Math.round((Math.abs(end) / Math.PI) * 48) || steps));
+  const pts: Vec3[] = [];
+  for (let i = 0; i <= count; i++) {
+    const th = (end * i) / count;
+    pts.push(vAdd(origin, vAdd(vScale(e1, radius * Math.cos(th)), vScale(e2, radius * Math.sin(th)))));
+  }
+  return pts;
+}
+
+export interface DisplayPath {
+  x: (number | null)[];
+  y: (number | null)[];
+  z: (number | null)[];
+  idx: (number | null)[];
+  types: (string | null)[];
+  arcX: (number | null)[];
+  arcY: (number | null)[];
+  arcZ: (number | null)[];
+}
+
+/** 将 movec 段展开为圆弧采样；起点为该圆弧前一个运动点 */
+export function buildDisplayPath(points: TrajPoint[], zBreak = 0.005): DisplayPath {
+  const res: DisplayPath = { x: [], y: [], z: [], idx: [], types: [], arcX: [], arcY: [], arcZ: [] };
+  const push = (x: number | null, y: number | null, z: number | null, idx: number | null, type: string | null) => {
+    res.x.push(x);
+    res.y.push(y);
+    res.z.push(z);
+    res.idx.push(idx);
+    res.types.push(type);
+  };
+  const pushArc = (x: number | null, y: number | null, z: number | null) => {
+    res.arcX.push(x);
+    res.arcY.push(y);
+    res.arcZ.push(z);
+  };
+
+  for (let i = 0; i < points.length; i++) {
+    const prev = i > 0 ? points[i - 1] : null;
+    const isVia = points[i].type === "movec";
+    const hasEnd = i + 1 < points.length && points[i + 1].type === "movec_end";
+    if (prev && isVia && hasEnd) {
+      const arc = interpolateCircleArc(prev, points[i], points[i + 1]);
+      arc.forEach((p) => pushArc(p.x, p.y, p.z));
+      pushArc(null, null, null);
+      push(null, null, null, null, null);
+      push(points[i + 1].x, points[i + 1].y, points[i + 1].z, i + 1, "movec_end");
+      i += 1;
+      continue;
+    }
+    if (i > 0 && Math.abs(points[i].z - points[i - 1].z) > zBreak) {
+      push(null, null, null, null, null);
+    }
+    push(points[i].x, points[i].y, points[i].z, i, points[i].type || "?");
+  }
+  return res;
+}
+
+/** movej 虚线只连接程序中相邻的接近段，不把各焊道的接近点串成一条 */
+export function buildMovejPath(points: TrajPoint[]): Pick<DisplayPath, "x" | "y" | "z" | "idx"> {
+  const x: (number | null)[] = [];
+  const y: (number | null)[] = [];
+  const z: (number | null)[] = [];
+  const idx: (number | null)[] = [];
+  const pushPt = (i: number) => {
+    x.push(points[i].x);
+    y.push(points[i].y);
+    z.push(points[i].z);
+    idx.push(i);
+  };
+  const gap = () => {
+    if (x.length && x[x.length - 1] !== null) {
+      x.push(null);
+      y.push(null);
+      z.push(null);
+      idx.push(null);
+    }
+  };
+
+  for (let i = 0; i < points.length; i++) {
+    if (points[i].type !== "movej") continue;
+    if (i === 0 || points[i - 1].type !== "movej") gap();
+    pushPt(i);
+    if (i + 1 < points.length && points[i + 1].type !== "movej") {
+      pushPt(i + 1);
+      gap();
+    }
+  }
+  return { x, y, z, idx };
+}
+
 function parseNums(raw: string): number[] | null {
   const parts = raw.split(",").map((s) => parseFloat(s.trim()));
   if (parts.length < 6 || parts.slice(0, 6).some((n) => !Number.isFinite(n))) return null;
