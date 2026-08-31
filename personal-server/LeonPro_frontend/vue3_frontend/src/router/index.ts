@@ -24,6 +24,18 @@ export const constantRoutes: RouteRecordRaw[] = [
   },
 
   {
+    path: "/trace",
+    name: "TraceAnalysis",
+    component: () => import("@/views/tool/trace/index.vue"),
+    meta: { title: "轨迹分析", hidden: true },
+  },
+  {
+    path: "/tool/trace",
+    redirect: "/trace",
+    meta: { hidden: true },
+  },
+
+  {
     path: "/",
     name: "/",
     component: Layout,

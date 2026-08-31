@@ -1,0 +1,952 @@
+def weldingtoolsliner():
+  # Preamble Script.
+  # Test Preamble Script To Be Added In The Future.
+  set_safety_mode_transition_hardness(1)
+  # Configuration Preamble Script.
+  # Configuration variables.
+  # 
+  global cleaner_gun_count_value
+  cleaner_gun_count_value = [0.38408, -0.1475, 0.57917, 3.14159, 0, -1.5708]
+  # 
+  global movej_cut_wire_safety_p
+  movej_cut_wire_safety_p = [0, -1.35532, -1.54174, -1.81533, 1.5708, 0]
+  # 
+  global movej_cut_wire_safety_q
+  movej_cut_wire_safety_q = [0.38408, -0.1475, 0.47531, -3.14159, 0, -1.5708]
+  # 
+  global movej_cut_wire_approach_p
+  movej_cut_wire_approach_p = [0, -1.32751, -1.83103, -1.55385, 1.5708, 0]
+  # 
+  global movej_cut_wire_approach_q
+  movej_cut_wire_approach_q = [0.38408, 0.0694, 0.47531, -3.14159, 0, -1.5708]
+  # 
+  global movel_cut_wire_p
+  movel_cut_wire_p = [0.5663, -1.27213, -1.8702, -1.57006, 1.5708, 0.5663]
+  # 
+  global movel_cut_wire_q
+  movel_cut_wire_q = [0.81243, -1.02675, -1.98868, -1.69696, 1.5708, 0.81243]
+  # 
+  global movel_cut_wire_back_p
+  movel_cut_wire_back_p = [0.28787, 0.0894, 0.48199, -3.14159, 0, -1.57079]
+  # 
+  global movel_cut_wire_back_q
+  movel_cut_wire_back_q = [0.81243, -1.02675, -1.98868, -1.69696, 1.5708, 0.81243]
+  set_tool_analog_io_work_mode(3)
+  set_tool_digital_io_work_mode(0)
+  set_tool_analog_input_domain(0)
+  set_tool_analog_output_domain(0)
+  set_tool_digital_io_config(0,0,False,False)
+  set_tool_digital_io_config(1,0,False,False)
+  set_tool_digital_io_config(2,0,False,False)
+  set_tool_digital_io_config(3,0,False,False)
+  tool_serial_config(False,115200,0,1,modbus_rtu = False,usage = 0)
+  set_tool_voltage(0)
+  set_tcp([0.0, 0.0, 0.1, 3.141592653589793, 0.0, 0.0])
+  set_payload(0.0, [0.0, 0.0, 0.0], [0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+  set_standard_analog_input_domain(0, 1)
+  set_standard_analog_input_domain(1, 1)
+  set_standard_analog_output_domain(0, 0)
+  set_standard_analog_output_domain(1, 0)
+  set_input_actions_to_default()
+  set_gravity([0.0, 0.0, 9.82])
+  # Frame variables.
+  # Temporary frame variables.
+  # Conveyor Config
+  #--------------- Start WeldingTools -----------------
+  global referenceCurrent
+  referenceCurrent = 0
+  global tracking_thread_id
+  tracking_thread_id = 0
+  global firstArc
+  firstArc = 0
+  global recordCurrent
+  recordCurrent = float('-inf')
+  global recordVoltage
+  recordVoltage = float('-inf')
+  def weldingIndicator(b):
+      set_standard_digital_out(-1,b)
+  end
+  def repeatable(i):
+     global firstArc
+     if firstArc>>i & 1 == 1:
+         halt()
+  end
+  def setRepeatable(i):
+     global firstArc
+     firstArc |= (1<<i)
+  end
+  def touchSenseOffset(org,dir1,dir2,length):
+     pose = elicopy.deepcopy(org)
+     pose_diff = [0,0,0]
+     pose_diff[0] = dir2[0] - dir1[0]
+     pose_diff[1] = dir2[1] - dir1[1]
+     pose_diff[2] = dir2[2] - dir1[2]
+     pose_diff = normalize(pose_diff)
+     pose[0] = pose[0] + pose_diff[0] * length
+     pose[1] = pose[1] + pose_diff[1] * length
+     pose[2] = pose[2] + pose_diff[2] * length
+     return pose
+  end
+  global touchSenseOffsetValue
+  touchSenseOffsetValue = [0,0,0,0,0,0]
+  global touchReferencePoint
+  touchReferencePoint = [0,0,0,0,0,0]
+  def pose_trans_local(world_pnt,frame):
+    return pose_trans(pose_inv(frame),world_pnt)
+  end
+  def pose_trans_world(local_pnt,frame):
+    return pose_trans(frame,local_pnt)
+  end
+  def two_point_get_vec(vec1,vec2):
+    result=[0,0,0]
+    result[0]=vec2[0]-vec1[0]
+    result[1]=vec2[1]-vec1[1]
+    result[2]=vec2[2]-vec1[2]
+    return result
+  end
+  def vector_o_product(vec1,vec2):
+    return vec1[0]*vec2[0]+vec1[1]*vec2[1]+vec1[2]*vec2[2]
+  end
+  def vector_v_product(vec1,vec2):
+    res_vec=[0,0,0]
+    res_vec[0]=vec1[1]*vec2[2]-vec1[2]*vec2[1]
+    res_vec[1]=vec1[2]*vec2[0]-vec1[0]*vec2[2]
+    res_vec[2]=vec1[0]*vec2[1]-vec1[1]*vec2[0]
+    return res_vec
+  end
+  def get_vertical_vec_by_three_point(pnt1,pnt2,vec_pnt):
+    vec1=[0,0,0]
+    vec1[0]=pnt2[0]-pnt1[0]
+    vec1[1]=pnt2[1]-pnt1[1]
+    vec1[2]=pnt2[2]-pnt1[2]
+    vec1=normalize(vec1)
+    vec2=[0,0,0]
+    vec2[0]=vec_pnt[0]-((pnt1[0]+pnt2[0])/2.0)
+    vec2[1]=vec_pnt[1]-((pnt1[1]+pnt2[1])/2.0)
+    vec2[2]=vec_pnt[2]-((pnt1[2]+pnt2[2])/2.0)
+    vec2=normalize(vec2)
+    ver_vec=vector_v_product(vec1,vec2)
+    return ver_vec
+  end
+  def two_point_touch_offset(pnt1,pnt2,vec_pnt,touch1,touch2,frame):
+    final_change=[0,0,0,0,0,0]
+    pnt1_local=pose_trans_local(pnt1,frame)
+    pnt2_local=pose_trans_local(pnt2,frame)
+    vec_pnt_local=pose_trans_local(vec_pnt,frame)
+    touch1_local=pose_trans_local(touch1,frame)
+    touch2_local=pose_trans_local(touch2,frame)
+    ver_vec=get_vertical_vec_by_three_point(pnt1_local,pnt2_local,vec_pnt_local)
+    if abs(norm(ver_vec))<0.0001:
+      return final_change
+    end
+    if (abs(ver_vec[0])>abs(ver_vec[1]))&(abs(ver_vec[0])>abs(ver_vec[2])):
+      pnt1_local[0]=0
+      pnt2_local[0]=0
+      touch1_local[0]=0
+      touch2_local[0]=0
+    elif (abs(ver_vec[1])>abs(ver_vec[0]))&(abs(ver_vec[1])>abs(ver_vec[2])):
+      pnt1_local[1]=0
+      pnt2_local[1]=0
+      touch1_local[1]=0
+      touch2_local[1]=0
+    elif (abs(ver_vec[2])>abs(ver_vec[0]))&(abs(ver_vec[2])>abs(ver_vec[1])):
+      pnt1_local[2]=0
+      pnt2_local[2]=0
+      touch1_local[2]=0
+      touch2_local[2]=0
+    else:
+      return final_change
+    end
+    final_change[0]=touch1_local[0]-pnt1_local[0]
+    final_change[1]=touch1_local[1]-pnt1_local[1]
+    final_change[2]=touch1_local[2]-pnt1_local[2]
+    new_vec1=two_point_get_vec(pnt1_local,pnt2_local)
+    new_vec1=normalize(new_vec1)
+    if abs(norm(new_vec1))<0.0001:
+      return final_change
+    end
+    new_vec2=two_point_get_vec(touch1_local,touch2_local)
+    new_vec2=normalize(new_vec2)
+    if abs(norm(new_vec2))<0.0001:
+      return final_change
+    end
+    angle=vector_o_product(new_vec1,new_vec2)/(norm(new_vec1)*norm(new_vec2))
+    if angle>1.0:
+      angle=1.0
+    end
+    if angle<-1.0:
+      angle=-1.0
+    end
+    angle=acos(angle)
+    if abs(angle)<0.0001:
+      return final_change
+    end
+    judge_vec=vector_v_product(new_vec1,new_vec2)
+    if abs(norm(judge_vec))<0.0001:
+      return final_change
+    end
+    judge_vec=normalize(judge_vec)
+    if abs(judge_vec[0])>0.9999:
+      if judge_vec[0]>0:
+        final_change[3]=angle
+      else:
+        final_change[3]=-angle
+      end
+      return final_change
+    end
+    if abs(judge_vec[1])>0.9999:
+      if judge_vec[1]>0:
+        final_change[4]=angle
+      else:
+        final_change[4]=-angle
+      end
+      return final_change
+    end
+    if abs(judge_vec[2])>0.9999:
+      if judge_vec[2]>0:
+        final_change[5]=angle
+      else:
+        final_change[5]=-angle
+      end
+      return final_change
+    end
+    return final_change
+  end
+  def last_point_touch_offset(pnt1,pnt2,vec_pnt,touch1,touch2,pnt3,touch3,frame):
+    final_change=[0,0,0,0,0,0]
+    pnt3_local=pose_trans_local(pnt3,frame)
+    touch3_local=pose_trans_local(touch3,frame)
+    touch1_local=pose_trans_local(touch1,frame)
+    touch2_local=pose_trans_local(touch2,frame)
+    pnt1_local=pose_trans_local(pnt1,frame)
+    pnt2_local=pose_trans_local(pnt2,frame)
+    vec_pnt_local=pose_trans_local(vec_pnt,frame)
+    ver_vec=get_vertical_vec_by_three_point(pnt1_local,pnt2_local,vec_pnt_local)
+    if abs(norm(ver_vec))<0.0001:
+      return final_change
+    end
+    if (abs(ver_vec[0])>abs(ver_vec[1]))&(abs(ver_vec[0])>abs(ver_vec[2])):
+      pnt3_local[0]=0
+      touch3_local[0]=0
+      touch1_local[0]=0
+      touch2_local[0]=0
+    elif (abs(ver_vec[1])>abs(ver_vec[0]))&(abs(ver_vec[1])>abs(ver_vec[2])):
+      pnt3_local[1]=0
+      touch3_local[1]=0
+      touch1_local[1]=0
+      touch2_local[1]=0
+    elif (abs(ver_vec[2])>abs(ver_vec[0]))&(abs(ver_vec[2])>abs(ver_vec[1])):
+      pnt3_local[2]=0
+      touch3_local[2]=0
+      touch1_local[2]=0
+      touch2_local[2]=0
+    else:
+      return final_change
+    end
+    new_vec3=two_point_get_vec(pnt3_local,touch3_local)
+    if abs(norm(new_vec3))<0.0001:
+      return final_change
+    end
+    new_vec2=two_point_get_vec(touch1_local,touch2_local)
+    if abs(norm(new_vec2))<0.0001:
+      return final_change
+    end
+    new_vec2=normalize(new_vec2)
+    value=vector_o_product(new_vec2,new_vec3)
+    final_change[0]=new_vec2[0]*value
+    final_change[1]=new_vec2[1]*value
+    final_change[2]=new_vec2[2]*value
+    return final_change
+  end
+  def cal_new_orientation_point(pnt1,pnt2,pnt3,inner_pnt,vec_pnt):
+    new_vec_pnt=elicopy.deepcopy(vec_pnt)
+    first_vec=two_point_get_vec(pnt1,pnt2)
+    first_vec=normalize(first_vec)
+    if abs(norm(first_vec))<0.0001:
+        return new_vec_pnt
+    end
+    second_vec=two_point_get_vec(pnt1,pnt3)
+    second_vec=normalize(second_vec)
+    if abs(norm(second_vec))<0.0001:
+        return new_vec_pnt
+    end
+    vec_dir=vector_v_product(first_vec,second_vec)
+    vec_dir=normalize(vec_dir)
+    if abs(norm(vec_dir))<0.0001:
+     return new_vec_pnt
+    end
+    len=vector_o_product(vec_dir,two_point_get_vec(inner_pnt,vec_pnt))
+    new_vec_pnt[0]=inner_pnt[0]+vec_dir[0]*len
+    new_vec_pnt[1]=inner_pnt[1]+vec_dir[1]*len
+    new_vec_pnt[2]=inner_pnt[2]+vec_dir[2]*len
+    return new_vec_pnt
+  end
+  global trackingFrame
+  trackingFrame = [0,0,0,0,0,0]
+  class KalmanFilter:
+      def __init__(self, process_variance, measurement_variance, initial_estimate=0.0, initial_error=1.0):
+          self.Q = process_variance
+          self.R = measurement_variance
+          self.x = initial_estimate
+          self.P = initial_error
+      def update(self, measurement):
+          self.P = self.P + self.Q
+          K = self.P / (self.P + self.R)
+          self.x = self.x + K * (measurement - self.x)
+          self.P = (1 - K) * self.P
+          return self.x
+  class PIDController:
+      def __init__(self, kp, ki, kd, setpoint):
+          self.kp = kp
+          self.ki = ki
+          self.kd = kd
+          self.setpoint = setpoint
+          self.previous_error = 0
+          self.integral = 0
+      def update(self, measured_value, dt):
+          error = self.setpoint - measured_value
+          self.integral += error * dt
+          derivative = (error - self.previous_error) / dt
+          output = self.kp * error + self.ki * self.integral + self.kd * derivative
+          self.previous_error = error
+          return output
+  def collect_current(duration_sec=5, interval_sec=0.1):
+      data = []
+      total_time = 0
+      while total_time < duration_sec:
+          current = 0
+          data.append(current)
+          total_time = total_time + interval_sec
+          sleep(interval_sec)
+      return data
+  def calculate_median(values):
+      if not values:
+          return 0.0
+      sorted_values = sorted(values)
+      n = len(sorted_values)
+      mid = n // 2
+      return (sorted_values[mid] if n % 2 == 1
+              else (sorted_values[mid - 1] + sorted_values[mid]) / 2)
+  def calculate_std(values):
+      if len(values) < 2:
+          return 0.0
+      mean = sum(values) / len(values)
+      variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+      if variance < 0:
+          variance = variance * -1
+      return variance
+  def median_filter(signal, kernel_size=5):
+      filtered = []
+      half = kernel_size // 2
+      for i in range(len(signal)):
+          start = max(0, i - half)
+          end = min(len(signal), i + half + 1)
+          window = signal[start:end]
+          sorted_window = sorted(window)
+          n = len(sorted_window)
+          if n % 2 == 1:
+              median = sorted_window[n // 2]
+          else:
+              median = (sorted_window[(n // 2) - 1] + sorted_window[n // 2]) / 2
+          filtered.append(median)
+      return filtered
+  def trapezoidal_integrate(y, x):
+      area = 0.0
+      for i in range(1, len(y)):
+          delta_x = x[i] - x[i - 1]
+          avg_y = (y[i - 1] + y[i]) / 2
+          area += avg_y * delta_x
+      return area
+  def calculate_areas(I):
+      t = [0.0] * len(I)
+      t[0] = 0.01
+      for i in range(1, len(I)):
+          t[i] = t[i - 1] + 0.01
+      net_area = trapezoidal_integrate(I, t)
+      return net_area
+  def calculate_baseline(data, window_size=200, threshold=3):
+      filtered = []
+      data_len = len(data)
+      for i in range(data_len):
+          start = max(0, i - window_size)
+          window = data[start:i + 1]
+          window_median = calculate_median(window)
+          window_std = calculate_std(window)
+          if window_std == 0:
+              filtered.append(data[i])
+          else:
+              if abs(data[i] - window_median) < threshold * window_std:
+                  filtered.append(data[i])
+      if not filtered:
+          return 0.0
+      return calculate_median(filtered)
+  def getReferenceCurrent(startTime, rcTime,sampled):
+      global referenceCurrent
+      sampled[0] = True
+      sleep(startTime)
+      current_data = collect_current(rcTime,0.01)
+      current = calculate_baseline(current_data)
+      referenceCurrent = current
+      return current
+  def cal_forward_frame(pnt_start,pnt_end):
+      forward_frame=[0,0,0,0,0,0]
+      forward_vec=two_point_get_vec(pnt_start,pnt_end)
+      if abs(norm(forward_vec))<0.0001:
+          return forward_frame
+      end
+      forward_vec=normalize(forward_vec)
+      cur_tool_pose=get_actual_tcp_pose()
+      cos0 = cos(cur_tool_pose[3])
+      cos1 = cos(cur_tool_pose[4])
+      cos2 = cos(cur_tool_pose[5])
+      sin0 = sin(cur_tool_pose[3])
+      sin1 = sin(cur_tool_pose[4])
+      sin2 = sin(cur_tool_pose[5])
+      z_dir = [0.0, 0.0, 1.0]
+      z_dir[0] = cos2 * sin1 * cos0 + sin2 * sin0
+      z_dir[1] = sin2 * sin1 * cos0 - cos2 * sin0
+      z_dir[2] = cos1 * cos0
+      if abs(norm(z_dir))<0.0001:
+          return forward_frame
+      end
+      z_dir=normalize(z_dir)
+      y_dir=vector_v_product(z_dir,forward_vec)
+      if abs(norm(y_dir))<0.0001:
+          return forward_frame
+      end
+      origin_pnt=[cur_tool_pose[0],cur_tool_pose[1],cur_tool_pose[2]]
+      forward_frame=cal_rpy_frame(origin_pnt,forward_vec,y_dir)
+      return forward_frame
+  end
+  def cal_current_direction(track_frame):
+    accuracy = 0.001
+    cos0 = cos(track_frame[3])
+    cos1 = cos(track_frame[4])
+    cos2 = cos(track_frame[5])
+    sin0 = sin(track_frame[3])
+    sin1 = sin(track_frame[4])
+    sin2 = sin(track_frame[5])
+    frame_y_dir = [0.0, 1.0, 0.0]
+    frame_y_dir[0] = cos2 * sin1 * sin0 - sin2 * cos0
+    frame_y_dir[1] = sin2 * sin1 * sin0 + cos2 * cos0
+    frame_y_dir[2] = cos1 * sin0
+    if abs(norm(frame_y_dir))<accuracy:
+      return 0
+    end
+    cur_tool_pose=get_target_tcp_pose_along_path()
+    ori_to_tool=two_point_get_vec(track_frame,cur_tool_pose)
+    if abs(norm(ori_to_tool))<accuracy:
+      return 0
+    end
+  
+    result=vector_o_product(frame_y_dir,ori_to_tool)
+    if result > accuracy:
+      return 1
+    end
+    if result < (-1 * accuracy):
+      return -1
+    end
+    return 0
+  end
+  def calculate_y_axis_z_axis_offset_in_base_frame(y_offset,z_offset,local_offset_frame):
+    cos0 = cos(local_offset_frame[3])
+    cos1 = cos(local_offset_frame[4])
+    cos2 = cos(local_offset_frame[5])
+    sin0 = sin(local_offset_frame[3])
+    sin1 = sin(local_offset_frame[4])
+    sin2 = sin(local_offset_frame[5])
+    ## calculate local offset frame z axis direction
+    local_z_dir = [0.0, 0.0, 1.0]
+    local_z_dir[0] = cos2 * sin1 * cos0 + sin2 * sin0
+    local_z_dir[1] = sin2 * sin1 * cos0 - cos2 * sin0
+    local_z_dir[2] = cos1 * cos0
+    ## calculate y offset in base frame
+    base_z_offset = [0.0, 0.0, 1.0]
+    base_z_offset[0] = z_offset * local_z_dir[0]
+    base_z_offset[1] = z_offset * local_z_dir[1]
+    base_z_offset[2] = z_offset * local_z_dir[2]
+    ## calculate local offset frame y axis direction
+    local_y_dir = [0.0, 1.0, 0.0]
+    local_y_dir[0] = cos2 * sin1 * sin0 - sin2 * cos0
+    local_y_dir[1] = sin2 * sin1 * sin0 + cos2 * cos0
+    local_y_dir[2] = cos1 * sin0
+    ## calculate y offset in base frame
+    base_y_offset = [0.0, 1.0, 0.0]
+    base_y_offset[0] = y_offset * local_y_dir[0]
+    base_y_offset[1] = y_offset * local_y_dir[1]
+    base_y_offset[2] = y_offset * local_y_dir[2]
+    result_offset = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    result_offset[0] = base_z_offset[0] + base_y_offset[0]
+    result_offset[1] = base_z_offset[1] + base_y_offset[1]
+    result_offset[2] = base_z_offset[2] + base_y_offset[2]
+    return result_offset
+  end
+  def stepwiseZero(value):
+      step = 0.002
+      if value > 0:
+          value = max(value - step, 0.0)
+      else:
+          value = min(value + step, 0.0)
+      if -1e-10 < value < 1e-10:
+          return 0.0
+      return value
+  end
+  def pathOffsetClear():
+      offset = path_offset_get(1)
+      while offset != [0] * len(offset):
+          x = stepwiseZero(offset[0])
+          y = stepwiseZero(offset[1])
+          z = stepwiseZero(offset[2])
+          rx = stepwiseZero(offset[3])
+          ry = stepwiseZero(offset[4])
+          rz = stepwiseZero(offset[5])
+          path_offset_set([x,y,z,rx,ry,rz], 1)
+          sync()
+          offset = path_offset_get(1)
+      end
+  end
+  global arc_alarm_thread_id
+  arc_alarm_thread_id = 0
+  def arcTracking(maxOffset, type, rcTime=0.1, isConstant = False,current = 160.0, lrOffset = 0.5, upOffset = 0.5,startTime = 2.0,startCyc = 3,udMax = 5,lrMax = 5):
+      import time
+      global arc_alarm_thread_id
+      global referenceCurrent
+      global trackingFrame
+      referenceCurrent = current
+      kf = KalmanFilter(process_variance=1e-3, measurement_variance=0.01, initial_estimate=referenceCurrent)
+      controller = PIDController(kp=0.5, ki=0.1, kd=0.01, setpoint=0)
+      lrkf = KalmanFilter(process_variance=1e-3, measurement_variance=0.01, initial_estimate=0)
+      lrController = PIDController(kp=0.5, ki=0.01, kd=0.01, setpoint=0)
+      sampled = [False]
+      path_offset_enable()
+      path_offset_set_alpha_filter(0.1)
+      path_offset_set_max_offset(maxOffset, 1.0)
+      path_offset_set([0,0,0,0,0,0], 1)
+      zOffset = 0.0
+      yOffset = 0
+      lCurrent = []
+      rCurrent = []
+      udCurrent = []
+      cycleIndex = 0
+      prev_state = 0
+      lastDir = 0
+      lastTimestamp = int(time.time() * 1000)
+      while True:
+          if arc_alarm_thread_id == 0:
+              sampled[0] = False
+              cycleIndex = 0
+              lastDir = 0
+              reference_current = 0 if not isConstant else current
+              kf = None
+              pathOffsetClear()
+              sleep(0.1)
+          elif not sampled[0] and not isConstant:
+              start_thread(getReferenceCurrent,(startTime,rcTime,sampled))
+              cycleIndex = 0
+          else:
+              current = 0
+              ret = 0
+              if trackingFrame != [0] * len(trackingFrame):
+                  ret = cal_current_direction(trackingFrame)
+                  lastDir = lastDir | (ret if ret >= 0 else 2)
+              if type >> 1 & 1 == 1:
+                  if ret == 0 and lastDir == 3:
+                      cycleIndex += 1
+                      lastDir = 0
+                      if len(lCurrent) > 0 and len(rCurrent) > 0 :
+                          la = calculate_areas(lCurrent)
+                          ra = calculate_areas(rCurrent)
+                          y = (la - ra) * lrOffset / 5200
+                          y = lrkf.update(y)
+                          y = lrController.update(y, 1)
+                          if cycleIndex >= startCyc :
+                            y = min(lrMax,y)
+                            yOffset = yOffset + y
+                          lCurrent.clear()
+                          rCurrent.clear()
+                  elif ret > 0:
+                      lCurrent.append(current)
+                  elif ret < 0:
+                      rCurrent.append(current)
+              end
+              if sampled[0] == True and kf == None and referenceCurrent > 0 :
+                  kf = KalmanFilter(process_variance=1e-3, measurement_variance=0.01, initial_estimate=referenceCurrent)
+              if type & 1 == 1 and referenceCurrent > 0:
+                  filtered = 0
+                  timestamp_ms = int(time.time() * 1000)
+                  if trackingFrame != [0] * len(trackingFrame) and ret == 0:
+                          if lastDir == 3:
+                             filtered = calculate_baseline(udCurrent)
+                             udCurrent.clear()
+                          else:
+                             udCurrent.append(current)
+                  elif timestamp_ms - lastTimestamp >= 100:
+                      filtered = calculate_baseline(udCurrent)
+                      lastTimestamp = timestamp_ms
+                      udCurrent.clear()
+                  else:
+                      udCurrent.append(current)
+                  if filtered != 0:
+                      z = kf.update(filtered)
+                      z = (z - referenceCurrent) / 1.0
+                      z = controller.update(z, 1)
+                      z = z / 5000.0 * upOffset
+                      z = min(udMax,z)
+                      zOffset = z
+              end
+              if abs(zOffset) > 0.0001 or abs(yOffset) > 0.0001:
+                  if trackingFrame == [0] * len(trackingFrame):
+                      path_offset_set([0,0,zOffset * -1,0,0,0], 3)
+                  else:
+                      offset_frame = calculate_y_axis_z_axis_offset_in_base_frame(yOffset, zOffset,trackingFrame)
+                      path_offset_set(offset_frame, 1)
+                  end
+                  sleep(0.002)
+              end
+          end
+      end
+  end
+  #--------------- End WeldingTools -----------------
+  # Set Node Preamble Script.
+  # Loop Node Preamble Script.
+  # Waypoint Node Preamble Script.
+  global u21021u22987u28857_p
+  u21021u22987u28857_p = [0.5006098136705166, -0.14749999996000482, 0.4327077345236048, 0.07733558194688067, 2.0449039364657756E-10, -1.5707963267790506]
+  global u21021u22987u28857_q
+  u21021u22987u28857_q = [0.0,-1.570796327,-1.4934607444378087,-1.570796327,1.570796327,0.0]
+  # Initial Variables value.
+  # Timer Node Preamble Script.
+  # SubTask Node Preamble Script.
+  # Before Start Preamble Script.
+  # Thread Node Preamble Script.
+  # Event Node Preamble Script.
+  # Main Task Script.
+  while (True):
+    $ LINE: (2, "机器人主任务")
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 焊接工具 (仿真)
+    $ LINE: (3, "焊接工具 (仿真)")
+    repeatable(0)
+    $ LINE: (4, "MoveJ")
+    $ LINE: (5, "初始点", "after")
+    movej(get_inverse_kin(u21021u22987u28857_p, qnear=u21021u22987u28857_q), a=1.3962634015954636, v=1.0471975511965976)
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 焊接
+    $ LINE: (6, "焊接")
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 接近点
+    $ LINE: (7, "接近点")
+    movep([0.5006098136705166, -0.14749999996000482, 0.4327077345236048, 0.07733558194688067, 2.0449039364657756E-10, -1.5707963267790506],0.2, 0.1, 0.001)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 开始点
+    $ LINE: (8, "开始点")
+    movep([0.5006101557339725, -0.14749999996000482, 0.38825046645950423, 0.07734191876482038, 2.04490293229339E-10, -1.5707963267790492],0.2, 0.1, 0.0)
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 直线形
+    $ LINE: (9, "直线形")
+    trackingFrame = [0.5006102, -0.14625, 0.3882505, -0.077342, -6.9E-6, 1.5708001]
+    movep([0.5036012, -0.14625, 0.3884823, 0.077342, -0.0, -1.5707964],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.14375, 0.3882505, -0.0773421, -6.9E-6, 1.5708001]
+    movep([0.4976191, -0.14375, 0.3880187, 0.0773421, -1.0E-7, -1.5707964],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.14125, 0.3882505, -0.0773422, -6.9E-6, 1.5708001]
+    movep([0.5036012, -0.14125, 0.3884823, 0.0773422, -2.0E-7, -1.5707965],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.13875, 0.3882505, -0.0773424, -6.9E-6, 1.5708001]
+    movep([0.4976191, -0.13875, 0.3880187, 0.0773424, -2.0E-7, -1.5707965],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.13625, 0.3882505, -0.0773425, -6.9E-6, 1.5708001]
+    movep([0.5036011, -0.13625, 0.3884823, 0.0773425, -3.0E-7, -1.5707966],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.13375, 0.3882506, -0.0773426, -6.9E-6, 1.5708001]
+    movep([0.4976191, -0.13375, 0.3880188, 0.0773426, -4.0E-7, -1.5707967],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.13125, 0.3882506, -0.0773428, -6.9E-6, 1.5708001]
+    movep([0.5036011, -0.13125, 0.3884824, 0.0773428, -5.0E-7, -1.5707967],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.12875, 0.3882506, -0.0773429, -6.9E-6, 1.5708001]
+    movep([0.4976191, -0.12875, 0.3880188, 0.0773429, -5.0E-7, -1.5707968],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.12625, 0.3882506, -0.077343, -6.9E-6, 1.5708001]
+    movep([0.5036011, -0.12625, 0.3884824, 0.077343, -6.0E-7, -1.5707968],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.12375, 0.3882506, -0.0773432, -6.9E-6, 1.5708001]
+    movep([0.497619, -0.12375, 0.3880188, 0.0773432, -7.0E-7, -1.5707969],0.351, 0.0195, 0.0)
+    trackingFrame = [0.5006101, -0.12125, 0.3882506, -0.0773433, -6.9E-6, 1.5708001]
+    movep([0.5036011, -0.12125, 0.3884824, 0.0773433, -7.0E-7, -1.570797],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.11875, 0.3882507, -0.0773434, -6.9E-6, 1.5708001]
+    movep([0.497619, -0.11875, 0.3880189, 0.0773434, -8.0E-7, -1.570797],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.11625, 0.3882507, -0.0773435, -6.9E-6, 1.5708001]
+    movep([0.5036011, -0.11625, 0.3884825, 0.0773435, -9.0E-7, -1.5707971],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.11375, 0.3882507, -0.0773437, -6.9E-6, 1.5708001]
+    movep([0.497619, -0.11375, 0.3880189, 0.0773437, -9.0E-7, -1.5707972],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.11125, 0.3882507, -0.0773438, -6.9E-6, 1.5708001]
+    movep([0.5036011, -0.11125, 0.3884825, 0.0773438, -1.0E-6, -1.5707972],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.10875, 0.3882507, -0.0773439, -6.9E-6, 1.5708001]
+    movep([0.497619, -0.10875, 0.3880189, 0.0773439, -1.1E-6, -1.5707973],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.10625, 0.3882507, -0.0773441, -6.9E-6, 1.5708001]
+    movep([0.503601, -0.10625, 0.3884826, 0.0773441, -1.1E-6, -1.5707973],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.10375, 0.3882508, -0.0773442, -6.9E-6, 1.5708001]
+    movep([0.497619, -0.10375, 0.388019, 0.0773442, -1.2E-6, -1.5707974],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.10125, 0.3882508, -0.0773443, -6.9E-6, 1.5708001]
+    movep([0.503601, -0.10125, 0.3884826, 0.0773443, -1.3E-6, -1.5707975],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.09875, 0.3882508, -0.0773445, -6.9E-6, 1.5708001]
+    movep([0.4976189, -0.09875, 0.388019, 0.0773445, -1.4E-6, -1.5707975],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.09625, 0.3882508, -0.0773446, -6.9E-6, 1.5708001]
+    movep([0.503601, -0.09625, 0.3884826, 0.0773446, -1.4E-6, -1.5707976],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.0937698, 0.3882508, -0.0773447, -6.9E-6, 1.5708001]
+    movep([0.4976664, -0.0937698, 0.3880227, 0.0773447, -1.5E-6, -1.5707976],0.351, 0.0195, 0.0)
+    trackingFrame = [0.50061, -0.0937698, 0.3882508, -0.0773447, -6.9E-6, 1.5708001]
+    movep([0.50061, -0.0937698, 0.3882508, 0.0773447, -1.5E-6, -1.5707976],0.351, 0.0195, 0.0)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 直线形_1
+    $ LINE: (10, "直线形_1")
+    trackingFrame = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    movep([0.50061, -0.0937698, 0.3882508, 0.0773447, -1.5E-6, -1.5707976],0.4068508, 0.0226028, 0.0)
+    trackingFrame = [0.49811, -0.0937699, 0.3882507, 3.8E-6, 5.0E-5, -3.1415666]
+    movec([0.49861, -0.0946449, 0.3882507, 0.0773446, -1.6E-6, -1.5707976],[0.49811, -0.0967699, 0.3882507, 0.0773445, -1.6E-6, -1.5707976],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.49561, -0.09377, 0.3882506, 3.9E-6, 5.0E-5, -3.1415666]
+    movec([0.49536, -0.094395, 0.3882506, 0.0773443, -1.8E-6, -1.5707976],[0.4956099, -0.09077, 0.3882506, 0.0773443, -1.8E-6, -1.5707976],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.49311, -0.09377, 0.3882505, 4.1E-6, 5.0E-5, -3.1415666]
+    movec([0.4928599, -0.093145, 0.3882504, 0.0773441, -2.0E-6, -1.5707976],[0.49311, -0.09677, 0.3882505, 0.0773441, -2.0E-6, -1.5707976],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.49061, -0.0937701, 0.3882503, 4.2E-6, 5.0E-5, -3.1415666]
+    movec([0.49036, -0.0943951, 0.3882503, 0.0773439, -2.1E-6, -1.5707976],[0.4906099, -0.0907701, 0.3882503, 0.0773439, -2.1E-6, -1.5707976],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.48811, -0.0937702, 0.3882502, 4.4E-6, 5.0E-5, -3.1415666]
+    movec([0.4878599, -0.0931452, 0.3882502, 0.0773437, -2.3E-6, -1.5707976],[0.48811, -0.0967702, 0.3882502, 0.0773437, -2.3E-6, -1.5707976],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.48561, -0.0937702, 0.3882501, 4.5E-6, 5.0E-5, -3.1415666]
+    movec([0.48536, -0.0943952, 0.3882501, 0.0773435, -2.4E-6, -1.5707976],[0.4856099, -0.0907702, 0.3882501, 0.0773435, -2.4E-6, -1.5707976],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.48311, -0.0937703, 0.38825, 4.7E-6, 5.0E-5, -3.1415666]
+    movec([0.4828599, -0.0931453, 0.3882499, 0.0773433, -2.6E-6, -1.5707976],[0.48311, -0.0967703, 0.38825, 0.0773433, -2.6E-6, -1.5707976],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.48061, -0.0937704, 0.3882498, 4.8E-6, 5.0E-5, -3.1415666]
+    movec([0.48036, -0.0943954, 0.3882498, 0.0773431, -2.8E-6, -1.5707976],[0.4806099, -0.0907704, 0.3882498, 0.0773431, -2.7E-6, -1.5707976],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.47811, -0.0937704, 0.3882497, 5.0E-6, 5.0E-5, -3.1415666]
+    movec([0.4778599, -0.0931454, 0.3882497, 0.0773429, -2.9E-6, -1.5707975],[0.47811, -0.0967704, 0.3882497, 0.0773429, -2.9E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.47561, -0.0937705, 0.3882496, 5.2E-6, 5.0E-5, -3.1415666]
+    movec([0.47536, -0.0943955, 0.3882496, 0.0773427, -3.1E-6, -1.5707975],[0.4756099, -0.0907705, 0.3882496, 0.0773427, -3.0E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.47311, -0.0937705, 0.3882495, 5.3E-6, 5.0E-5, -3.1415666]
+    movec([0.4728599, -0.0931456, 0.3882494, 0.0773425, -3.2E-6, -1.5707975],[0.47311, -0.0967705, 0.3882495, 0.0773425, -3.2E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.47061, -0.0937706, 0.3882493, 5.5E-6, 5.0E-5, -3.1415666]
+    movec([0.47036, -0.0943956, 0.3882493, 0.0773423, -3.4E-6, -1.5707975],[0.4706099, -0.0907706, 0.3882493, 0.0773423, -3.4E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.46811, -0.0937707, 0.3882492, 5.6E-6, 5.0E-5, -3.1415666]
+    movec([0.4678599, -0.0931457, 0.3882492, 0.0773421, -3.5E-6, -1.5707975],[0.46811, -0.0967707, 0.3882492, 0.0773421, -3.5E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.46561, -0.0937707, 0.3882491, 5.8E-6, 5.0E-5, -3.1415666]
+    movec([0.46536, -0.0943958, 0.3882491, 0.0773419, -3.7E-6, -1.5707975],[0.4656099, -0.0907707, 0.3882491, 0.0773419, -3.7E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.46311, -0.0937708, 0.388249, 5.9E-6, 5.0E-5, -3.1415666]
+    movec([0.4628599, -0.0931458, 0.3882489, 0.0773417, -3.8E-6, -1.5707975],[0.46311, -0.0967708, 0.388249, 0.0773417, -3.8E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.46061, -0.0937709, 0.3882488, 6.1E-6, 5.0E-5, -3.1415666]
+    movec([0.46036, -0.0943959, 0.3882488, 0.0773415, -4.0E-6, -1.5707975],[0.4606099, -0.0907709, 0.3882488, 0.0773415, -4.0E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.45811, -0.0937709, 0.3882487, 6.2E-6, 5.0E-5, -3.1415666]
+    movec([0.4578599, -0.0931459, 0.3882487, 0.0773412, -4.2E-6, -1.5707975],[0.45811, -0.0967709, 0.3882487, 0.0773413, -4.1E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.45561, -0.093771, 0.3882486, 6.4E-6, 5.0E-5, -3.1415666]
+    movec([0.45536, -0.094396, 0.3882486, 0.077341, -4.3E-6, -1.5707975],[0.4556099, -0.090771, 0.3882486, 0.0773411, -4.3E-6, -1.5707975],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.45311, -0.0937711, 0.3882485, 6.6E-6, 5.0E-5, -3.1415666]
+    movec([0.4528599, -0.0931461, 0.3882484, 0.0773408, -4.5E-6, -1.5707974],[0.45311, -0.0967711, 0.3882485, 0.0773409, -4.5E-6, -1.5707974],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.45061, -0.0937711, 0.3882483, 6.7E-6, 5.0E-5, -3.1415666]
+    movec([0.45036, -0.0943961, 0.3882483, 0.0773406, -4.6E-6, -1.5707974],[0.4506099, -0.0907711, 0.3882483, 0.0773407, -4.6E-6, -1.5707974],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.44811, -0.0937712, 0.3882482, 6.9E-6, 5.0E-5, -3.1415666]
+    movec([0.4478599, -0.0931462, 0.3882482, 0.0773404, -4.8E-6, -1.5707974],[0.44811, -0.0967712, 0.3882482, 0.0773405, -4.8E-6, -1.5707974],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.44561, -0.0937713, 0.3882481, 7.0E-6, 5.0E-5, -3.1415666]
+    movec([0.44536, -0.0943963, 0.3882481, 0.0773402, -4.9E-6, -1.5707974],[0.4456099, -0.0907713, 0.3882481, 0.0773403, -4.9E-6, -1.5707974],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.44311, -0.0937713, 0.388248, 7.2E-6, 5.0E-5, -3.1415666]
+    movec([0.4428599, -0.0931463, 0.3882479, 0.07734, -5.1E-6, -1.5707974],[0.44311, -0.0967713, 0.388248, 0.0773401, -5.1E-6, -1.5707974],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.44061, -0.0937714, 0.3882478, 7.3E-6, 5.0E-5, -3.1415666]
+    movec([0.44036, -0.0943964, 0.3882478, 0.0773398, -5.2E-6, -1.5707974],[0.4406099, -0.0907714, 0.3882478, 0.0773399, -5.2E-6, -1.5707974],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.43811, -0.0937715, 0.3882477, 7.5E-6, 5.0E-5, -3.1415666]
+    movec([0.4378599, -0.0931465, 0.3882477, 0.0773396, -5.4E-6, -1.5707974],[0.43811, -0.0967715, 0.3882477, 0.0773396, -5.4E-6, -1.5707974],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.43561, -0.0937715, 0.3882476, 7.6E-6, 5.0E-5, -3.1415666]
+    movec([0.43536, -0.0943965, 0.3882476, 0.0773394, -5.6E-6, -1.5707974],[0.4356099, -0.0907715, 0.3882476, 0.0773394, -5.5E-6, -1.5707974],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.43311, -0.0937716, 0.3882475, 7.8E-6, 5.0E-5, -3.1415666]
+    movec([0.4328599, -0.0931466, 0.3882474, 0.0773392, -5.7E-6, -1.5707974],[0.43311, -0.0967716, 0.3882475, 0.0773392, -5.7E-6, -1.5707974],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.43061, -0.0937717, 0.3882473, 8.0E-6, 5.0E-5, -3.1415666]
+    movec([0.43036, -0.0943967, 0.3882473, 0.077339, -5.9E-6, -1.5707973],[0.4306099, -0.0907717, 0.3882473, 0.077339, -5.9E-6, -1.5707973],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.42811, -0.0937717, 0.3882472, 8.1E-6, 5.0E-5, -3.1415666]
+    movec([0.4278599, -0.0931467, 0.3882472, 0.0773388, -6.0E-6, -1.5707973],[0.42811, -0.0967717, 0.3882472, 0.0773388, -6.0E-6, -1.5707973],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.42561, -0.0937718, 0.3882471, 8.3E-6, 5.0E-5, -3.1415666]
+    movec([0.42536, -0.0943968, 0.3882471, 0.0773386, -6.2E-6, -1.5707973],[0.4256099, -0.0907718, 0.3882471, 0.0773386, -6.2E-6, -1.5707973],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.42311, -0.0937719, 0.388247, 8.4E-6, 5.0E-5, -3.1415666]
+    movec([0.4228599, -0.0931469, 0.3882469, 0.0773384, -6.3E-6, -1.5707973],[0.42311, -0.0967719, 0.388247, 0.0773384, -6.3E-6, -1.5707973],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.42061, -0.0937719, 0.3882468, 8.6E-6, 5.0E-5, -3.1415666]
+    movec([0.42036, -0.0943969, 0.3882468, 0.0773382, -6.5E-6, -1.5707973],[0.4206099, -0.0907719, 0.3882468, 0.0773382, -6.5E-6, -1.5707973],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.41811, -0.093772, 0.3882467, 8.7E-6, 5.0E-5, -3.1415666]
+    movec([0.4178599, -0.093147, 0.3882467, 0.077338, -6.7E-6, -1.5707973],[0.41811, -0.096772, 0.3882467, 0.077338, -6.6E-6, -1.5707973],0.4068508, 0.0226028, 0.0,1)
+    sleep(0.2)
+    trackingFrame = [0.4159198, -0.093772, 0.3882466, 8.9E-6, 5.0E-5, -3.1415666]
+    movep([0.4159199, -0.0948806, 0.3882466, 0.0773378, -6.8E-6, -1.5707973],0.4068508, 0.0226028, 0.0)
+    trackingFrame = [0.4159198, -0.093772, 0.3882466, 8.9E-6, 5.0E-5, -3.1415666]
+    movep([0.4159198, -0.093772, 0.3882466, 0.0773378, -6.8E-6, -1.5707973],0.4068508, 0.0226028, 0.0)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 过渡点
+    $ LINE: (11, "过渡点")
+    movep([0.41591866408470407, -0.09377219903556964, 0.4453091545427179, 0.07734395965346591, -5.9342651231657185E-6, -1.5707972816154534],0.2, 0.1, 0.0)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 直线形_2
+    $ LINE: (12, "直线形_2")
+    trackingFrame = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    movep([0.4159187, -0.0937722, 0.4453092, 0.077344, -5.9E-6, -1.5707973],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159187, -0.0944645, 0.4442683, 0.1390362, 0.9838671, -1.5708055]
+    movep([0.4129476, -0.0941182, 0.4440381, 0.077344, -5.9E-6, -1.5707973],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159186, -0.095849, 0.4421867, 0.1390364, 0.9838671, -1.5708055]
+    movep([0.4188897, -0.0961952, 0.442417, 0.0773441, -5.8E-6, -1.5707974],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159186, -0.0972335, 0.4401051, 0.1390365, 0.9838671, -1.5708055]
+    movep([0.4129476, -0.0968873, 0.4398749, 0.0773442, -5.8E-6, -1.5707974],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159186, -0.098618, 0.4380235, 0.1390366, 0.9838671, -1.5708055]
+    movep([0.4188897, -0.0989642, 0.4382538, 0.0773443, -5.7E-6, -1.5707975],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159186, -0.1000025, 0.4359419, 0.1390368, 0.9838671, -1.5708055]
+    movep([0.4129476, -0.0996563, 0.4357116, 0.0773444, -5.6E-6, -1.5707975],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159186, -0.101387, 0.4338603, 0.1390369, 0.9838671, -1.5708055]
+    movep([0.4188896, -0.1017333, 0.4340905, 0.0773445, -5.6E-6, -1.5707976],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159186, -0.1027716, 0.4317787, 0.1390371, 0.9838671, -1.5708055]
+    movep([0.4129475, -0.1024253, 0.4315484, 0.0773445, -5.5E-6, -1.5707976],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159186, -0.1041561, 0.4296971, 0.1390372, 0.9838671, -1.5708055]
+    movep([0.4188896, -0.1045023, 0.4299273, 0.0773446, -5.4E-6, -1.5707977],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159186, -0.1055406, 0.4276154, 0.1390374, 0.9838671, -1.5708055]
+    movep([0.4129475, -0.1051944, 0.4273852, 0.0773447, -5.4E-6, -1.5707977],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159185, -0.1069251, 0.4255338, 0.1390375, 0.9838671, -1.5708055]
+    movep([0.4188896, -0.1072713, 0.4257641, 0.0773448, -5.3E-6, -1.5707978],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159185, -0.1083096, 0.4234522, 0.1390377, 0.9838671, -1.5708055]
+    movep([0.4129475, -0.1079634, 0.423222, 0.0773449, -5.2E-6, -1.5707978],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159185, -0.1096941, 0.4213706, 0.1390378, 0.9838671, -1.5708055]
+    movep([0.4188896, -0.1100404, 0.4216009, 0.077345, -5.2E-6, -1.5707979],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159185, -0.1110787, 0.419289, 0.139038, 0.9838671, -1.5708055]
+    movep([0.4129475, -0.1107324, 0.4190587, 0.0773451, -5.1E-6, -1.5707979],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159185, -0.1124632, 0.4172074, 0.1390381, 0.9838671, -1.5708055]
+    movep([0.4188895, -0.1128094, 0.4174376, 0.0773452, -5.0E-6, -1.570798],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159185, -0.1138477, 0.4151258, 0.1390383, 0.9838671, -1.5708055]
+    movep([0.4129474, -0.1135015, 0.4148955, 0.0773453, -5.0E-6, -1.5707981],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159185, -0.1152322, 0.4130442, 0.1390384, 0.9838671, -1.5708055]
+    movep([0.4188895, -0.1155784, 0.4132744, 0.0773454, -4.9E-6, -1.5707981],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159185, -0.1166167, 0.4109625, 0.1390386, 0.9838671, -1.5708055]
+    movep([0.4129474, -0.1162705, 0.4107323, 0.0773454, -4.8E-6, -1.5707982],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159184, -0.1180012, 0.4088809, 0.1390387, 0.9838671, -1.5708055]
+    movep([0.4188895, -0.1183475, 0.4091112, 0.0773455, -4.8E-6, -1.5707982],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159184, -0.1193858, 0.4067993, 0.1390389, 0.9838671, -1.5708055]
+    movep([0.4129474, -0.1190395, 0.4065691, 0.0773456, -4.7E-6, -1.5707983],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159184, -0.1207703, 0.4047177, 0.139039, 0.9838671, -1.5708055]
+    movep([0.4188895, -0.1211165, 0.404948, 0.0773457, -4.6E-6, -1.5707983],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159184, -0.1221548, 0.4026361, 0.1390392, 0.9838671, -1.5708055]
+    movep([0.4129474, -0.1218086, 0.4024058, 0.0773458, -4.6E-6, -1.5707984],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159184, -0.1235393, 0.4005545, 0.1390393, 0.9838671, -1.5708055]
+    movep([0.4188894, -0.1238855, 0.4007847, 0.0773459, -4.5E-6, -1.5707984],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159184, -0.1249238, 0.3984729, 0.1390395, 0.9838671, -1.5708055]
+    movep([0.4129473, -0.1245776, 0.3982426, 0.077346, -4.5E-6, -1.5707985],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159184, -0.1263083, 0.3963912, 0.1390396, 0.9838671, -1.5708055]
+    movep([0.4188894, -0.1266546, 0.3966215, 0.0773461, -4.4E-6, -1.5707985],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159184, -0.1276929, 0.3943096, 0.1390398, 0.9838671, -1.5708055]
+    movep([0.4129473, -0.1273466, 0.3940794, 0.0773462, -4.3E-6, -1.5707986],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159183, -0.1290774, 0.392228, 0.1390399, 0.9838671, -1.5708055]
+    movep([0.4188894, -0.1294236, 0.3924583, 0.0773463, -4.3E-6, -1.5707986],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159183, -0.1304619, 0.3901464, 0.1390401, 0.9838671, -1.5708055]
+    movep([0.4129473, -0.1301157, 0.3899161, 0.0773464, -4.2E-6, -1.5707987],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159183, -0.1318464, 0.3880648, 0.1390402, 0.9838671, -1.5708055]
+    movep([0.4188894, -0.1321926, 0.3882951, 0.0773464, -4.1E-6, -1.5707987],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159183, -0.1332309, 0.3859832, 0.1390403, 0.9838671, -1.5708055]
+    movep([0.4129473, -0.1328847, 0.3857529, 0.0773465, -4.1E-6, -1.5707988],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159183, -0.1346154, 0.3839016, 0.1390405, 0.9838671, -1.5708055]
+    movep([0.4188893, -0.1349617, 0.3841318, 0.0773466, -4.0E-6, -1.5707989],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159183, -0.136, 0.38182, 0.1390406, 0.9838671, -1.5708055]
+    movep([0.4129472, -0.1356537, 0.3815897, 0.0773467, -3.9E-6, -1.5707989],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159183, -0.1373845, 0.3797383, 0.1390408, 0.9838671, -1.5708055]
+    movep([0.4188893, -0.1377307, 0.3799686, 0.0773468, -3.9E-6, -1.570799],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159183, -0.138769, 0.3776567, 0.1390409, 0.9838671, -1.5708055]
+    movep([0.4129472, -0.1384228, 0.3774265, 0.0773469, -3.8E-6, -1.570799],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159182, -0.1401535, 0.3755751, 0.1390411, 0.9838671, -1.5708055]
+    movep([0.4188893, -0.1404997, 0.3758054, 0.077347, -3.7E-6, -1.5707991],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159182, -0.141538, 0.3734935, 0.1390412, 0.9838671, -1.5708055]
+    movep([0.4129472, -0.1411918, 0.3732632, 0.0773471, -3.7E-6, -1.5707991],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159182, -0.1429225, 0.3714119, 0.1390414, 0.9838671, -1.5708055]
+    movep([0.4188893, -0.1432688, 0.3716422, 0.0773472, -3.6E-6, -1.5707992],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159182, -0.1443071, 0.3693303, 0.1390415, 0.9838671, -1.5708055]
+    movep([0.4129472, -0.1439608, 0.3691, 0.0773473, -3.5E-6, -1.5707992],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159182, -0.1452517, 0.3679101, 0.1390416, 0.9838671, -1.5708055]
+    movep([0.4170012, -0.1453779, 0.367994, 0.0773473, -3.5E-6, -1.5707993],0.351, 0.0195, 0.0)
+    trackingFrame = [0.4159182, -0.1452517, 0.3679101, 0.1390416, 0.9838671, -1.5708055]
+    movep([0.4159182, -0.1452517, 0.3679101, 0.0773473, -3.5E-6, -1.5707993],0.351, 0.0195, 0.0)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 直线形_3
+    $ LINE: (13, "直线形_3")
+    trackingFrame = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    movep([0.4159182, -0.1452517, 0.3679101, 0.0773473, -3.5E-6, -1.5707993],0.2515576, 0.0167705, 0.0)
+    trackingFrame = [0.4174182, -0.1452517, 0.36791, -3.2E-6, 6.91E-5, -8.6E-6]
+    movep([0.4174182, -0.1422517, 0.3679099, 0.0773471, -3.6E-6, -1.5707992],0.2515576, 0.0167705, 0.0)
+    trackingFrame = [0.4204182, -0.1452517, 0.3679098, -3.4E-6, 6.91E-5, -8.6E-6]
+    movep([0.4204182, -0.1422517, 0.3679097, 0.0773467, -3.9E-6, -1.5707991],0.1125, 0.0075, 0.0)
+    trackingFrame = [0.4234182, -0.1452517, 0.3679095, -3.7E-6, 6.91E-5, -8.6E-6]
+    movep([0.4234182, -0.1482517, 0.3679096, 0.0773463, -4.2E-6, -1.570799],0.2515576, 0.0167705, 0.0)
+    trackingFrame = [0.4264182, -0.1452518, 0.3679093, -4.0E-6, 6.91E-5, -8.6E-6]
+    movep([0.4264182, -0.1482518, 0.3679093, 0.0773459, -4.4E-6, -1.5707989],0.1125, 0.0075, 0.0)
+    trackingFrame = [0.4294182, -0.1452518, 0.3679091, -4.2E-6, 6.91E-5, -8.6E-6]
+    movep([0.4294182, -0.1422518, 0.3679091, 0.0773456, -4.7E-6, -1.5707987],0.2515576, 0.0167705, 0.0)
+    trackingFrame = [0.4324182, -0.1452518, 0.3679089, -4.5E-6, 6.91E-5, -8.6E-6]
+    movep([0.4324182, -0.1422518, 0.3679089, 0.0773452, -5.0E-6, -1.5707986],0.1125, 0.0075, 0.0)
+    trackingFrame = [0.4354182, -0.1452518, 0.3679087, -4.8E-6, 6.91E-5, -8.6E-6]
+    movep([0.4354182, -0.1482518, 0.3679087, 0.0773448, -5.3E-6, -1.5707985],0.2515576, 0.0167705, 0.0)
+    trackingFrame = [0.4384182, -0.1452519, 0.3679085, -5.0E-6, 6.91E-5, -8.6E-6]
+    movep([0.4384182, -0.1482519, 0.3679085, 0.0773444, -5.5E-6, -1.5707984],0.1125, 0.0075, 0.0)
+    trackingFrame = [0.4414182, -0.1452519, 0.3679083, -5.3E-6, 6.91E-5, -8.6E-6]
+    movep([0.4414182, -0.1422519, 0.3679083, 0.077344, -5.8E-6, -1.5707983],0.2515576, 0.0167705, 0.0)
+    trackingFrame = [0.4444182, -0.1452519, 0.3679081, -5.6E-6, 6.91E-5, -8.6E-6]
+    movep([0.4444182, -0.1422519, 0.3679081, 0.0773436, -6.1E-6, -1.5707982],0.1125, 0.0075, 0.0)
+    trackingFrame = [0.4474182, -0.1452519, 0.3679079, -5.8E-6, 6.91E-5, -8.6E-6]
+    movep([0.4474182, -0.1482519, 0.3679079, 0.0773432, -6.4E-6, -1.570798],0.2515576, 0.0167705, 0.0)
+    trackingFrame = [0.4504182, -0.145252, 0.3679077, -6.1E-6, 6.91E-5, -8.6E-6]
+    movep([0.4504182, -0.148252, 0.3679077, 0.0773428, -6.6E-6, -1.5707979],0.1125, 0.0075, 0.0)
+    trackingFrame = [0.4531785, -0.145252, 0.3679075, -6.3E-6, 6.91E-5, -8.6E-6]
+    movep([0.4531785, -0.1427314, 0.3679075, 0.0773425, -6.9E-6, -1.5707978],0.2515576, 0.0167705, 0.0)
+    trackingFrame = [0.4531785, -0.145252, 0.3679075, -6.3E-6, 6.91E-5, -8.6E-6]
+    movep([0.4531785, -0.145252, 0.3679075, 0.0773425, -6.9E-6, -1.5707978],0.2515576, 0.0167705, 0.0)
+    # End: ELITECO Plugin Task Node
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 离开点
+    $ LINE: (14, "离开点")
+    movep([0.5006089485245595, -0.09376994726606047, 0.43198883313004105, 0.07733960800139954, -2.0648636185544126E-6, -1.5707976470189442],0.2, 0.1, 0.001)
+    # End: ELITECO Plugin Task Node
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 焊接参数
+    $ LINE: (15, "焊接参数")
+    # End: ELITECO Plugin Task Node
+    setRepeatable(0)
+    # End: ELITECO Plugin Task Node
+  end
+end

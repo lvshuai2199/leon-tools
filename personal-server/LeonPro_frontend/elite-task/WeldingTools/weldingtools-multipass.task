@@ -1,0 +1,1911 @@
+<EliTask name="weldingtools-multipass" installationName="default" robotType="CS66" toolType="1" createdVersion="2.15.0.477" lastSavedVersion="2.15.0.477" robotSN="12222112110000" savedTime="2026-08-31 10:22:10" typeName="机器人主任务">
+  <InitVariables typeName="初始化变量"/>
+  <MainTask isTaskAlwaysLoops="true" hasBeforeStart="false" hasInitVariables="true" typeName="机器人主任务">
+    <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldToolTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" typeName="焊接工具">
+      <dataModel>
+        <Primitive key="double_air_speed" value="1.0"/>
+        <Primitive key="boolean_run_mode" value="false"/>
+      </dataModel>
+      <children>
+        <MoveNode movementType="JOINT_MOVEMENT" positionType="CARTESIAN_POSE" tcpType="ACTIVE_TCP" describe="" typeName="MoveJ">
+          <frameReference>Ctrl_base_frame</frameReference>
+          <jointSpeed value="1.0471975511965976" unit="RAD_S">
+            <valueInSi>1.0471975511965976</valueInSi>
+            <siUnit class="cn.elibot.robot.plugin.domain.value.AngularSpeed$Unit">RAD_S</siUnit>
+          </jointSpeed>
+          <jointAcceleration value="1.3962634015954636" unit="RAD_S2">
+            <valueInSi>1.3962634015954636</valueInSi>
+            <siUnit class="cn.elibot.robot.plugin.domain.value.AngularAcceleration$Unit">RAD_S2</siUnit>
+          </jointAcceleration>
+          <WaypointNode name="初始点" positionNodeType="FIXED_POSITION" kinematicFlag="-1" customTransitionRadius="false" advancedPositionOptionType="INHERITED_PARAMETERS" typeName="路点">
+            <transitionRadius value="0.0" unit="M">
+              <valueInSi>0.0</valueInSi>
+              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+            </transitionRadius>
+            <internalPosition>
+              <jointPositions joints="0.0, -1.570796327, -1.0332651580340193, -1.570796327, 1.570796327, 0.0"/>
+              <toolPose X="518.1643040471787" Y="-147.49999996000483" Z="671.3520254534207" RX="0.5375311683506698" RY="1.7617879572743198E-10" RZ="-1.5707963266898801"/>
+              <flangePose X="466.9626151868003" Y="-147.49999998051516" Z="757.2495635895338" RX="-2.6040614852391233" RY="1.7617873826480945E-10" RZ="-1.57079632668988"/>
+            </internalPosition>
+            <fromPosition>
+              <jointPositions joints="NaN, NaN, NaN, NaN, NaN, NaN"/>
+              <toolPose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
+              <flangePose X="0.0" Y="0.0" Z="0.0" RX="0.0" RY="0.0" RZ="0.0"/>
+            </fromPosition>
+            <jointSpeed value="1.0471975511965976" unit="RAD_S">
+              <valueInSi>1.0471975511965976</valueInSi>
+              <siUnit class="cn.elibot.robot.plugin.domain.value.AngularSpeed$Unit">RAD_S</siUnit>
+            </jointSpeed>
+            <jointAcceleration value="1.3962634015954636" unit="RAD_S2">
+              <valueInSi>1.3962634015954636</valueInSi>
+              <siUnit class="cn.elibot.robot.plugin.domain.value.AngularAcceleration$Unit">RAD_S2</siUnit>
+            </jointAcceleration>
+            <cartesianSpeed value="0.25" unit="M_S">
+              <valueInSi>0.25</valueInSi>
+              <siUnit class="cn.elibot.robot.plugin.domain.value.Speed$Unit">M_S</siUnit>
+            </cartesianSpeed>
+            <cartesianAcceleration value="1.2" unit="M_S2">
+              <valueInSi>1.2</valueInSi>
+              <siUnit class="cn.elibot.robot.plugin.domain.value.Acceleration$Unit">M_S2</siUnit>
+            </cartesianAcceleration>
+            <nextMotionTime value="2.0" unit="S">
+              <valueInSi>2.0</valueInSi>
+              <siUnit class="cn.elibot.robot.plugin.domain.value.Time$Unit">S</siUnit>
+            </nextMotionTime>
+            <Pose key="baseToFrame">
+              <Position key="posePosition">
+                <Length key="X" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+                <Length key="Y" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+                <Length key="Z" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+              </Position>
+              <Rotation key="poseRotation">
+                <Angle key="RX" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+                <Angle key="RY" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+                <Angle key="RZ" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </Rotation>
+            </Pose>
+          </WaypointNode>
+        </MoveNode>
+        <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldMultiPassNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="多层多道" typeName="多层多道">
+          <dataModel>
+            <Primitive key="String_angle_plane_name" value="Ctrl_base_frame"/>
+            <Primitive key="String_off_ref_tow_title" value="参考 2"/>
+            <Primitive key="String_off_ref_one_title" value="参考 1"/>
+            <JointPositions key="JointPositions_off_ref_one_joint_key">
+              <JointPosition key="[01]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[11]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[21]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[31]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[41]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[51]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+            </JointPositions>
+            <JointPositions key="JointPositions_off_ref_tow_joint_key">
+              <JointPosition key="[01]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[11]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[21]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[31]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[41]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[51]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+            </JointPositions>
+            <Primitive key="boolean_effective" value="true"/>
+            <Primitive key="String_off_ref_three_title" value="参考 3"/>
+            <JointPositions key="JointPositions_off_ref_three_joint_key">
+              <JointPosition key="[01]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[11]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[21]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[31]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[41]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+              <JointPosition key="[51]">
+                <Angle key="pos" value="NaN" unit="RAD">
+                  <valueInSi>NaN</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </JointPosition>
+            </JointPositions>
+            <Primitive key="String_title" value="多层多道"/>
+            <Pose key="Pose_off_ref_one_pose_key">
+              <Position key="posePosition">
+                <Length key="X" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+                <Length key="Y" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+                <Length key="Z" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+              </Position>
+              <Rotation key="poseRotation">
+                <Angle key="RX" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+                <Angle key="RY" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+                <Angle key="RZ" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </Rotation>
+            </Pose>
+            <Pose key="Pose_off_ref_three_pose_key">
+              <Position key="posePosition">
+                <Length key="X" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+                <Length key="Y" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+                <Length key="Z" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+              </Position>
+              <Rotation key="poseRotation">
+                <Angle key="RX" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+                <Angle key="RY" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+                <Angle key="RZ" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </Rotation>
+            </Pose>
+            <Pose key="Pose_off_ref_tow_pose_key">
+              <Position key="posePosition">
+                <Length key="X" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+                <Length key="Y" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+                <Length key="Z" value="0.0" unit="M">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                </Length>
+              </Position>
+              <Rotation key="poseRotation">
+                <Angle key="RX" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+                <Angle key="RY" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+                <Angle key="RZ" value="0.0" unit="RAD">
+                  <valueInSi>0.0</valueInSi>
+                  <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                </Angle>
+              </Rotation>
+            </Pose>
+          </dataModel>
+          <children>
+            <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldRunTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="道" typeName="道">
+              <dataModel>
+                <Primitive key="int_circle_pattern_direction" value="0"/>
+                <Primitive key="double_end_blend" value="1.0"/>
+                <Primitive key="double_trapezoid_pattern_frequency" value="0.5"/>
+                <Primitive key="boolean_use_Angle" value="false"/>
+                <Primitive key="double_circle_pattern_frequency" value="4.0"/>
+                <Primitive key="double_travel_angle" value="10.0"/>
+                <Primitive key="double_trapezoid_pattern_stop_1" value="0.5"/>
+                <Primitive key="String_selectedPattern" value="NONE"/>
+                <Primitive key="double_trapezoid_pattern_stop_2" value="0.5"/>
+                <Primitive key="boolean_left_right_view" value="false"/>
+                <Primitive key="double_crescent_pattern_period" value="5.0"/>
+                <Primitive key="String_title" value="道"/>
+                <Primitive key="double_slopeDownTime" value="0.0"/>
+                <Primitive key="double_travel_speed" value="6.0"/>
+                <Primitive key="String_angle_plane_name" value="Ctrl_base_frame"/>
+                <Primitive key="double_zigzag_pattern_center" value="0.0"/>
+                <Primitive key="double_zigzag_pattern_period" value="5.0"/>
+                <Primitive key="boolean_effective" value="true"/>
+                <Primitive key="double_work_angle" value="45.0"/>
+                <Primitive key="double_crescent_pattern_stop_2" value="0.2"/>
+                <Primitive key="double_trapezoid_pattern_blend" value="0.0"/>
+                <Primitive key="double_crescent_arc_depth" value="50.0"/>
+                <Primitive key="double_trapezoid_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_zigzag_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_zigzag_pattern_angle" value="180.0"/>
+                <Primitive key="double_crescent_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_circle_pattern_width" value="5.0"/>
+                <Primitive key="double_circle_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_crescent_pattern_stop_1" value="0.2"/>
+                <Primitive key="double_zigzag_pattern_stop_1" value="0.0"/>
+                <Primitive key="double_zigzag_pattern_stop_2" value="0.0"/>
+              </dataModel>
+              <children>
+                <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldPointTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="接近点_1" typeName="点位">
+                  <dataModel>
+                    <Primitive key="double_movej_blend_key" value="0.0"/>
+                    <Primitive key="String_move_key" value="MOVEL"/>
+                    <Primitive key="double_movel_blend_key" value="1.0"/>
+                    <JointPositions key="JointPositions_move_joint_key">
+                      <JointPosition key="[01]">
+                        <Angle key="pos" value="0.0" unit="RAD">
+                          <valueInSi>0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[11]">
+                        <Angle key="pos" value="-1.570796327" unit="RAD">
+                          <valueInSi>-1.570796327</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[21]">
+                        <Angle key="pos" value="-1.0332651580340193" unit="RAD">
+                          <valueInSi>-1.0332651580340193</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[31]">
+                        <Angle key="pos" value="-1.570796327" unit="RAD">
+                          <valueInSi>-1.570796327</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[41]">
+                        <Angle key="pos" value="1.570796327" unit="RAD">
+                          <valueInSi>1.570796327</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[51]">
+                        <Angle key="pos" value="0.0" unit="RAD">
+                          <valueInSi>0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                    </JointPositions>
+                    <Primitive key="double_movej_speed_key" value="25.0"/>
+                    <Primitive key="double_movej_acc_key" value="50.0"/>
+                    <Primitive key="double_movel_speed_key" value="100.0"/>
+                    <Primitive key="String_title" value="接近点_1"/>
+                    <Primitive key="String_baseName" value="接近点"/>
+                    <Primitive key="boolean_isApproach" value="true"/>
+                    <Pose key="Pose_move_pose_key">
+                      <Position key="posePosition">
+                        <Length key="X" value="0.5181643040471787" unit="M">
+                          <valueInSi>0.5181643040471787</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Y" value="-0.14749999996000482" unit="M">
+                          <valueInSi>-0.14749999996000482</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Z" value="0.6713520254534207" unit="M">
+                          <valueInSi>0.6713520254534207</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                      </Position>
+                      <Rotation key="poseRotation">
+                        <Angle key="RX" value="0.5375311683506698" unit="RAD">
+                          <valueInSi>0.5375311683506698</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RY" value="1.7617879572743198E-10" unit="RAD">
+                          <valueInSi>1.7617879572743198E-10</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RZ" value="-1.5707963266898801" unit="RAD">
+                          <valueInSi>-1.5707963266898801</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </Rotation>
+                    </Pose>
+                    <Primitive key="double_movel_acc_key" value="200.0"/>
+                  </dataModel>
+                </TaskExtensionNode>
+                <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldStartTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" typeName="开始点">
+                  <dataModel>
+                    <Primitive key="double_movej_blend_key" value="0.0"/>
+                    <Primitive key="String_move_key" value="MOVEL"/>
+                    <Primitive key="double_movel_blend_key" value="1.0"/>
+                    <JointPositions key="JointPositions_move_joint_key">
+                      <JointPosition key="[01]">
+                        <Angle key="pos" value="0.0" unit="RAD">
+                          <valueInSi>0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[11]">
+                        <Angle key="pos" value="-1.570796327" unit="RAD">
+                          <valueInSi>-1.570796327</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[21]">
+                        <Angle key="pos" value="-1.2842156396844786" unit="RAD">
+                          <valueInSi>-1.2842156396844786</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[31]">
+                        <Angle key="pos" value="-1.570796327" unit="RAD">
+                          <valueInSi>-1.570796327</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[41]">
+                        <Angle key="pos" value="1.570796327" unit="RAD">
+                          <valueInSi>1.570796327</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[51]">
+                        <Angle key="pos" value="0.0" unit="RAD">
+                          <valueInSi>0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                    </JointPositions>
+                    <Primitive key="double_movej_speed_key" value="25.0"/>
+                    <Primitive key="double_movej_acc_key" value="50.0"/>
+                    <Primitive key="double_movel_speed_key" value="100.0"/>
+                    <Primitive key="String_title" value="开始点"/>
+                    <Primitive key="String_baseName" value=""/>
+                    <Primitive key="boolean_isApproach" value="true"/>
+                    <Pose key="Pose_move_pose_key">
+                      <Position key="posePosition">
+                        <Length key="X" value="0.522259642348008" unit="M">
+                          <valueInSi>0.522259642348008</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Y" value="-0.14749999996000482" unit="M">
+                          <valueInSi>-0.14749999996000482</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Z" value="0.540115123420498" unit="M">
+                          <valueInSi>0.540115123420498</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                      </Position>
+                      <Rotation key="poseRotation">
+                        <Angle key="RX" value="0.28658068670021125" unit="RAD">
+                          <valueInSi>0.28658068670021125</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RY" value="1.9673849687215548E-10" unit="RAD">
+                          <valueInSi>1.9673849687215548E-10</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RZ" value="-1.5707963267369192" unit="RAD">
+                          <valueInSi>-1.5707963267369192</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </Rotation>
+                    </Pose>
+                    <Primitive key="double_movel_acc_key" value="200.0"/>
+                  </dataModel>
+                  <children>
+                    <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldLinearTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="直线形_1" typeName="直线形">
+                      <dataModel>
+                        <JointPositions key="JointPositions_circular_end_move_joint_key">
+                          <JointPosition key="[01]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[11]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[21]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[31]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[41]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[51]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                        </JointPositions>
+                        <Primitive key="boolean_useSharedZigzagPattern" value="true"/>
+                        <Primitive key="int_circle_pattern_direction" value="0"/>
+                        <Primitive key="boolean_useSharedPatterns" value="true"/>
+                        <Pose key="Pose_circular_end_move_pose_key">
+                          <Position key="posePosition">
+                            <Length key="X" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Y" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Z" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                          </Position>
+                          <Rotation key="poseRotation">
+                            <Angle key="RX" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RY" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RZ" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </Rotation>
+                        </Pose>
+                        <Primitive key="double_end_blend" value="1.0"/>
+                        <Primitive key="double_trapezoid_pattern_frequency" value="0.5"/>
+                        <Primitive key="boolean_use_Angle" value="false"/>
+                        <Primitive key="double_circle_pattern_frequency" value="4.0"/>
+                        <Primitive key="double_travel_angle" value="10.0"/>
+                        <Primitive key="double_trapezoid_pattern_stop_1" value="0.5"/>
+                        <Primitive key="String_selectedPattern" value="NONE"/>
+                        <Primitive key="double_trapezoid_pattern_stop_2" value="0.5"/>
+                        <Primitive key="boolean_left_right_view" value="false"/>
+                        <Primitive key="double_crescent_pattern_period" value="5.0"/>
+                        <Primitive key="String_title" value="直线形_1"/>
+                        <Pose key="Pose_circular_pass_move_pose_key">
+                          <Position key="posePosition">
+                            <Length key="X" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Y" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Z" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                          </Position>
+                          <Rotation key="poseRotation">
+                            <Angle key="RX" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RY" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RZ" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </Rotation>
+                        </Pose>
+                        <Primitive key="boolean_arcFixedMode" value="false"/>
+                        <Primitive key="double_slopeDownTime" value="0.0"/>
+                        <Primitive key="boolean_useSharedSlopes" value="true"/>
+                        <JointPositions key="JointPositions_linear_move_joint_key">
+                          <JointPosition key="[01]">
+                            <Angle key="pos" value="0.2819256664927307" unit="RAD">
+                              <valueInSi>0.2819256664927307</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[11]">
+                            <Angle key="pos" value="-1.516146606309971" unit="RAD">
+                              <valueInSi>-1.516146606309971</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[21]">
+                            <Angle key="pos" value="-1.3345072588794762" unit="RAD">
+                              <valueInSi>-1.3345072588794762</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[31]">
+                            <Angle key="pos" value="-1.5858996198712318" unit="RAD">
+                              <valueInSi>-1.5858996198712318</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[41]">
+                            <Angle key="pos" value="1.4920747055298391" unit="RAD">
+                              <valueInSi>1.4920747055298391</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[51]">
+                            <Angle key="pos" value="0.27099738069353313" unit="RAD">
+                              <valueInSi>0.27099738069353313</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                        </JointPositions>
+                        <Primitive key="double_travel_speed" value="6.0"/>
+                        <Primitive key="boolean_useSharedAngles" value="true"/>
+                        <JointPositions key="JointPositions_circular_pass_move_joint_key">
+                          <JointPosition key="[01]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[11]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[21]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[31]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[41]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[51]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                        </JointPositions>
+                        <Primitive key="String_angle_plane_name" value="Ctrl_base_frame"/>
+                        <Primitive key="double_customArcAngle" value="360.0"/>
+                        <Primitive key="double_zigzag_pattern_center" value="0.0"/>
+                        <Primitive key="double_zigzag_pattern_period" value="5.0"/>
+                        <Primitive key="double_work_angle" value="45.0"/>
+                        <Primitive key="double_crescent_pattern_stop_2" value="0.2"/>
+                        <Primitive key="double_trapezoid_pattern_blend" value="0.0"/>
+                        <Primitive key="double_crescent_arc_depth" value="50.0"/>
+                        <Primitive key="double_trapezoid_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_zigzag_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_zigzag_pattern_angle" value="180.0"/>
+                        <Pose key="Pose_linear_move_pose_key">
+                          <Position key="posePosition">
+                            <Length key="X" value="0.5222595848295769" unit="M">
+                              <valueInSi>0.5222595848295769</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Y" value="-0.018260098183844876" unit="M">
+                              <valueInSi>-0.018260098183844876</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Z" value="0.5401124399007727" unit="M">
+                              <valueInSi>0.5401124399007727</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                          </Position>
+                          <Rotation key="poseRotation">
+                            <Angle key="RX" value="0.2865733379252782" unit="RAD">
+                              <valueInSi>0.2865733379252782</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RY" value="2.7782787455355256E-7" unit="RAD">
+                              <valueInSi>2.7782787455355256E-7</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RZ" value="-1.5708000135510818" unit="RAD">
+                              <valueInSi>-1.5708000135510818</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </Rotation>
+                        </Pose>
+                        <Primitive key="double_crescent_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_circle_pattern_width" value="5.0"/>
+                        <Primitive key="double_circle_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_crescent_pattern_stop_1" value="0.2"/>
+                        <Primitive key="boolean_isLinear" value="true"/>
+                        <Primitive key="boolean_useSharedCirclePattern" value="true"/>
+                        <Primitive key="boolean_useSharedStandard" value="true"/>
+                        <Primitive key="boolean_useSharedCrescentPattern" value="true"/>
+                        <Primitive key="boolean_overrideArcAngle" value="false"/>
+                        <Primitive key="double_zigzag_pattern_stop_1" value="0.0"/>
+                        <Primitive key="boolean_useSharedTrapezoidPattern" value="true"/>
+                        <Primitive key="double_zigzag_pattern_stop_2" value="0.0"/>
+                      </dataModel>
+                    </TaskExtensionNode>
+                  </children>
+                </TaskExtensionNode>
+                <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldPointTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="离开点_1" typeName="点位">
+                  <dataModel>
+                    <Primitive key="double_movej_blend_key" value="0.0"/>
+                    <Primitive key="String_move_key" value="MOVEL"/>
+                    <Primitive key="double_movel_blend_key" value="1.0"/>
+                    <JointPositions key="JointPositions_move_joint_key">
+                      <JointPosition key="[01]">
+                        <Angle key="pos" value="0.2819256664927307" unit="RAD">
+                          <valueInSi>0.2819256664927307</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[11]">
+                        <Angle key="pos" value="-1.581875922303208" unit="RAD">
+                          <valueInSi>-1.581875922303208</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[21]">
+                        <Angle key="pos" value="-1.0778380158494931" unit="RAD">
+                          <valueInSi>-1.0778380158494931</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[31]">
+                        <Angle key="pos" value="-1.776835407948204" unit="RAD">
+                          <valueInSi>-1.776835407948204</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[41]">
+                        <Angle key="pos" value="1.4920747055298391" unit="RAD">
+                          <valueInSi>1.4920747055298391</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[51]">
+                        <Angle key="pos" value="0.27099738069353313" unit="RAD">
+                          <valueInSi>0.27099738069353313</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                    </JointPositions>
+                    <Primitive key="double_movej_speed_key" value="25.0"/>
+                    <Primitive key="double_movej_acc_key" value="50.0"/>
+                    <Primitive key="double_movel_speed_key" value="100.0"/>
+                    <Primitive key="String_title" value="离开点_1"/>
+                    <Primitive key="String_baseName" value="离开点"/>
+                    <Primitive key="boolean_isApproach" value="false"/>
+                    <Pose key="Pose_move_pose_key">
+                      <Position key="posePosition">
+                        <Length key="X" value="0.5222579142251942" unit="M">
+                          <valueInSi>0.5222579142251942</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Y" value="-0.01826058205833054" unit="M">
+                          <valueInSi>-0.01826058205833054</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Z" value="0.609683912698466" unit="M">
+                          <valueInSi>0.609683912698466</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                      </Position>
+                      <Rotation key="poseRotation">
+                        <Angle key="RX" value="0.28657731348083276" unit="RAD">
+                          <valueInSi>0.28657731348083276</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RY" value="1.4293251764806877E-6" unit="RAD">
+                          <valueInSi>1.4293251764806877E-6</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RZ" value="-1.5708000135476883" unit="RAD">
+                          <valueInSi>-1.5708000135476883</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </Rotation>
+                    </Pose>
+                    <Primitive key="double_movel_acc_key" value="200.0"/>
+                  </dataModel>
+                </TaskExtensionNode>
+              </children>
+            </TaskExtensionNode>
+            <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldRunTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="道_1" typeName="道">
+              <dataModel>
+                <Primitive key="int_circle_pattern_direction" value="0"/>
+                <Primitive key="double_end_blend" value="1.0"/>
+                <Primitive key="double_trapezoid_pattern_frequency" value="0.5"/>
+                <Primitive key="boolean_use_Angle" value="false"/>
+                <Primitive key="double_circle_pattern_frequency" value="4.0"/>
+                <Primitive key="double_travel_angle" value="10.0"/>
+                <Primitive key="double_trapezoid_pattern_stop_1" value="0.5"/>
+                <Primitive key="String_selectedPattern" value="NONE"/>
+                <Primitive key="double_trapezoid_pattern_stop_2" value="0.5"/>
+                <Primitive key="boolean_left_right_view" value="false"/>
+                <Primitive key="double_crescent_pattern_period" value="5.0"/>
+                <Primitive key="String_title" value="道_1"/>
+                <Primitive key="double_slopeDownTime" value="0.0"/>
+                <Primitive key="double_travel_speed" value="6.0"/>
+                <Primitive key="String_angle_plane_name" value="Ctrl_base_frame"/>
+                <Primitive key="double_zigzag_pattern_center" value="0.0"/>
+                <Primitive key="double_zigzag_pattern_period" value="5.0"/>
+                <Primitive key="boolean_effective" value="true"/>
+                <Primitive key="double_work_angle" value="45.0"/>
+                <Primitive key="double_crescent_pattern_stop_2" value="0.2"/>
+                <Primitive key="double_trapezoid_pattern_blend" value="0.0"/>
+                <Primitive key="double_crescent_arc_depth" value="50.0"/>
+                <Primitive key="double_trapezoid_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_zigzag_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_zigzag_pattern_angle" value="180.0"/>
+                <Primitive key="double_crescent_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_circle_pattern_width" value="5.0"/>
+                <Primitive key="double_circle_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_crescent_pattern_stop_1" value="0.2"/>
+                <Primitive key="double_zigzag_pattern_stop_1" value="0.0"/>
+                <Primitive key="double_zigzag_pattern_stop_2" value="0.0"/>
+              </dataModel>
+              <children>
+                <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldPointTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="接近点_2" typeName="点位">
+                  <dataModel>
+                    <Primitive key="double_movej_blend_key" value="0.0"/>
+                    <Primitive key="String_move_key" value="MOVEL"/>
+                    <Primitive key="double_movel_blend_key" value="1.0"/>
+                    <JointPositions key="JointPositions_move_joint_key">
+                      <JointPosition key="[01]">
+                        <Angle key="pos" value="-0.0" unit="RAD">
+                          <valueInSi>-0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[11]">
+                        <Angle key="pos" value="-1.566192" unit="RAD">
+                          <valueInSi>-1.566192</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[21]">
+                        <Angle key="pos" value="-1.022882" unit="RAD">
+                          <valueInSi>-1.022882</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[31]">
+                        <Angle key="pos" value="-1.585784" unit="RAD">
+                          <valueInSi>-1.585784</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[41]">
+                        <Angle key="pos" value="1.570796" unit="RAD">
+                          <valueInSi>1.570796</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[51]">
+                        <Angle key="pos" value="-0.0" unit="RAD">
+                          <valueInSi>-0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                    </JointPositions>
+                    <Primitive key="double_movej_speed_key" value="25.0"/>
+                    <Primitive key="double_movej_acc_key" value="50.0"/>
+                    <Primitive key="double_movel_speed_key" value="100.0"/>
+                    <Primitive key="String_title" value="接近点_2"/>
+                    <Primitive key="String_baseName" value="接近点"/>
+                    <Primitive key="boolean_isApproach" value="true"/>
+                    <Pose key="Pose_move_pose_key">
+                      <Position key="posePosition">
+                        <Length key="X" value="0.5131643040471792" unit="M">
+                          <valueInSi>0.5131643040471792</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Y" value="-0.14750000218526307" unit="M">
+                          <valueInSi>-0.14750000218526307</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Z" value="0.6763520254534207" unit="M">
+                          <valueInSi>0.6763520254534207</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                      </Position>
+                      <Rotation key="poseRotation">
+                        <Angle key="RX" value="0.5375311683506698" unit="RAD">
+                          <valueInSi>0.5375311683506698</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RY" value="1.7617879572743198E-10" unit="RAD">
+                          <valueInSi>1.7617879572743198E-10</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RZ" value="-1.5707963266898801" unit="RAD">
+                          <valueInSi>-1.5707963266898801</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </Rotation>
+                    </Pose>
+                    <Primitive key="double_movel_acc_key" value="200.0"/>
+                  </dataModel>
+                </TaskExtensionNode>
+                <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldStartTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" typeName="开始点">
+                  <dataModel>
+                    <Primitive key="double_movej_blend_key" value="0.0"/>
+                    <Primitive key="String_move_key" value="MOVEL"/>
+                    <Primitive key="double_movel_blend_key" value="1.0"/>
+                    <JointPositions key="JointPositions_move_joint_key">
+                      <JointPosition key="[01]">
+                        <Angle key="pos" value="-0.0" unit="RAD">
+                          <valueInSi>-0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[11]">
+                        <Angle key="pos" value="-1.562633" unit="RAD">
+                          <valueInSi>-1.562633</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[21]">
+                        <Angle key="pos" value="-1.278966" unit="RAD">
+                          <valueInSi>-1.278966</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[31]">
+                        <Angle key="pos" value="-1.58421" unit="RAD">
+                          <valueInSi>-1.58421</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[41]">
+                        <Angle key="pos" value="1.570796" unit="RAD">
+                          <valueInSi>1.570796</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[51]">
+                        <Angle key="pos" value="-0.0" unit="RAD">
+                          <valueInSi>-0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                    </JointPositions>
+                    <Primitive key="double_movej_speed_key" value="25.0"/>
+                    <Primitive key="double_movej_acc_key" value="50.0"/>
+                    <Primitive key="double_movel_speed_key" value="100.0"/>
+                    <Primitive key="String_title" value="开始点"/>
+                    <Primitive key="String_baseName" value=""/>
+                    <Primitive key="boolean_isApproach" value="true"/>
+                    <Pose key="Pose_move_pose_key">
+                      <Position key="posePosition">
+                        <Length key="X" value="0.5172596423480085" unit="M">
+                          <valueInSi>0.5172596423480085</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Y" value="-0.14750000218526307" unit="M">
+                          <valueInSi>-0.14750000218526307</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Z" value="0.545115123420498" unit="M">
+                          <valueInSi>0.545115123420498</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                      </Position>
+                      <Rotation key="poseRotation">
+                        <Angle key="RX" value="0.28658068670021125" unit="RAD">
+                          <valueInSi>0.28658068670021125</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RY" value="1.9673849687215548E-10" unit="RAD">
+                          <valueInSi>1.9673849687215548E-10</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RZ" value="-1.5707963267369192" unit="RAD">
+                          <valueInSi>-1.5707963267369192</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </Rotation>
+                    </Pose>
+                    <Primitive key="double_movel_acc_key" value="200.0"/>
+                  </dataModel>
+                  <children>
+                    <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldLinearTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="直线形" typeName="直线形">
+                      <dataModel>
+                        <JointPositions key="JointPositions_circular_end_move_joint_key">
+                          <JointPosition key="[01]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[11]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[21]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[31]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[41]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[51]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                        </JointPositions>
+                        <Primitive key="boolean_useSharedZigzagPattern" value="true"/>
+                        <Primitive key="int_circle_pattern_direction" value="0"/>
+                        <Primitive key="boolean_useSharedPatterns" value="true"/>
+                        <Pose key="Pose_circular_end_move_pose_key">
+                          <Position key="posePosition">
+                            <Length key="X" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Y" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Z" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                          </Position>
+                          <Rotation key="poseRotation">
+                            <Angle key="RX" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RY" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RZ" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </Rotation>
+                        </Pose>
+                        <Primitive key="double_end_blend" value="1.0"/>
+                        <Primitive key="double_trapezoid_pattern_frequency" value="0.5"/>
+                        <Primitive key="boolean_use_Angle" value="false"/>
+                        <Primitive key="double_circle_pattern_frequency" value="4.0"/>
+                        <Primitive key="double_travel_angle" value="10.0"/>
+                        <Primitive key="double_trapezoid_pattern_stop_1" value="0.5"/>
+                        <Primitive key="String_selectedPattern" value="NONE"/>
+                        <Primitive key="double_trapezoid_pattern_stop_2" value="0.5"/>
+                        <Primitive key="boolean_left_right_view" value="false"/>
+                        <Primitive key="double_crescent_pattern_period" value="5.0"/>
+                        <Primitive key="String_title" value="直线形"/>
+                        <Pose key="Pose_circular_pass_move_pose_key">
+                          <Position key="posePosition">
+                            <Length key="X" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Y" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Z" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                          </Position>
+                          <Rotation key="poseRotation">
+                            <Angle key="RX" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RY" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RZ" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </Rotation>
+                        </Pose>
+                        <Primitive key="boolean_arcFixedMode" value="false"/>
+                        <Primitive key="double_slopeDownTime" value="0.0"/>
+                        <Primitive key="boolean_useSharedSlopes" value="true"/>
+                        <JointPositions key="JointPositions_linear_move_joint_key">
+                          <JointPosition key="[01]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[11]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[21]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[31]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[41]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[51]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                        </JointPositions>
+                        <Primitive key="double_travel_speed" value="6.0"/>
+                        <Primitive key="boolean_useSharedAngles" value="true"/>
+                        <JointPositions key="JointPositions_circular_pass_move_joint_key">
+                          <JointPosition key="[01]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[11]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[21]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[31]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[41]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[51]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                        </JointPositions>
+                        <Primitive key="String_angle_plane_name" value="Ctrl_base_frame"/>
+                        <Primitive key="double_customArcAngle" value="360.0"/>
+                        <Primitive key="double_zigzag_pattern_center" value="0.0"/>
+                        <Primitive key="double_zigzag_pattern_period" value="5.0"/>
+                        <Primitive key="double_work_angle" value="45.0"/>
+                        <Primitive key="double_crescent_pattern_stop_2" value="0.2"/>
+                        <Primitive key="double_trapezoid_pattern_blend" value="0.0"/>
+                        <Primitive key="double_crescent_arc_depth" value="50.0"/>
+                        <Primitive key="double_trapezoid_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_zigzag_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_zigzag_pattern_angle" value="180.0"/>
+                        <Pose key="Pose_linear_move_pose_key">
+                          <Position key="posePosition">
+                            <Length key="X" value="0.5172595848295773" unit="M">
+                              <valueInSi>0.5172595848295773</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Y" value="-0.01826010040910311" unit="M">
+                              <valueInSi>-0.01826010040910311</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Z" value="0.5451124399007727" unit="M">
+                              <valueInSi>0.5451124399007727</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                          </Position>
+                          <Rotation key="poseRotation">
+                            <Angle key="RX" value="0.2865733379252782" unit="RAD">
+                              <valueInSi>0.2865733379252782</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RY" value="2.7782787455355256E-7" unit="RAD">
+                              <valueInSi>2.7782787455355256E-7</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RZ" value="-1.5708000135510818" unit="RAD">
+                              <valueInSi>-1.5708000135510818</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </Rotation>
+                        </Pose>
+                        <Primitive key="double_crescent_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_circle_pattern_width" value="5.0"/>
+                        <Primitive key="double_circle_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_crescent_pattern_stop_1" value="0.2"/>
+                        <Primitive key="boolean_isLinear" value="true"/>
+                        <Primitive key="boolean_useSharedCirclePattern" value="true"/>
+                        <Primitive key="boolean_useSharedStandard" value="true"/>
+                        <Primitive key="boolean_useSharedCrescentPattern" value="true"/>
+                        <Primitive key="boolean_overrideArcAngle" value="false"/>
+                        <Primitive key="double_zigzag_pattern_stop_1" value="0.0"/>
+                        <Primitive key="boolean_useSharedTrapezoidPattern" value="true"/>
+                        <Primitive key="double_zigzag_pattern_stop_2" value="0.0"/>
+                      </dataModel>
+                    </TaskExtensionNode>
+                  </children>
+                </TaskExtensionNode>
+                <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldPointTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="离开点_2" typeName="点位">
+                  <dataModel>
+                    <Primitive key="double_movej_blend_key" value="0.0"/>
+                    <Primitive key="String_move_key" value="MOVEL"/>
+                    <Primitive key="double_movel_blend_key" value="1.0"/>
+                    <JointPositions key="JointPositions_move_joint_key">
+                      <JointPosition key="[01]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[11]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[21]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[31]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[41]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[51]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                    </JointPositions>
+                    <Primitive key="double_movej_speed_key" value="25.0"/>
+                    <Primitive key="double_movej_acc_key" value="50.0"/>
+                    <Primitive key="double_movel_speed_key" value="100.0"/>
+                    <Primitive key="String_title" value="离开点_2"/>
+                    <Primitive key="String_baseName" value="离开点"/>
+                    <Primitive key="boolean_isApproach" value="false"/>
+                    <Pose key="Pose_move_pose_key">
+                      <Position key="posePosition">
+                        <Length key="X" value="0.5172579142251946" unit="M">
+                          <valueInSi>0.5172579142251946</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Y" value="-0.018260584283588774" unit="M">
+                          <valueInSi>-0.018260584283588774</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Z" value="0.614683912698466" unit="M">
+                          <valueInSi>0.614683912698466</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                      </Position>
+                      <Rotation key="poseRotation">
+                        <Angle key="RX" value="0.28657731348083276" unit="RAD">
+                          <valueInSi>0.28657731348083276</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RY" value="1.4293251764806877E-6" unit="RAD">
+                          <valueInSi>1.4293251764806877E-6</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RZ" value="-1.5708000135476883" unit="RAD">
+                          <valueInSi>-1.5708000135476883</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </Rotation>
+                    </Pose>
+                    <Primitive key="double_movel_acc_key" value="200.0"/>
+                  </dataModel>
+                </TaskExtensionNode>
+              </children>
+            </TaskExtensionNode>
+            <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldRunTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="道_2" typeName="道">
+              <dataModel>
+                <Primitive key="int_circle_pattern_direction" value="0"/>
+                <Primitive key="double_end_blend" value="1.0"/>
+                <Primitive key="double_trapezoid_pattern_frequency" value="0.5"/>
+                <Primitive key="boolean_use_Angle" value="false"/>
+                <Primitive key="double_circle_pattern_frequency" value="4.0"/>
+                <Primitive key="double_travel_angle" value="10.0"/>
+                <Primitive key="double_trapezoid_pattern_stop_1" value="0.5"/>
+                <Primitive key="String_selectedPattern" value="NONE"/>
+                <Primitive key="double_trapezoid_pattern_stop_2" value="0.5"/>
+                <Primitive key="boolean_left_right_view" value="false"/>
+                <Primitive key="double_crescent_pattern_period" value="5.0"/>
+                <Primitive key="String_title" value="道_2"/>
+                <Primitive key="double_slopeDownTime" value="0.0"/>
+                <Primitive key="double_travel_speed" value="6.0"/>
+                <Primitive key="String_angle_plane_name" value="Ctrl_base_frame"/>
+                <Primitive key="double_zigzag_pattern_center" value="0.0"/>
+                <Primitive key="double_zigzag_pattern_period" value="5.0"/>
+                <Primitive key="boolean_effective" value="true"/>
+                <Primitive key="double_work_angle" value="45.0"/>
+                <Primitive key="double_crescent_pattern_stop_2" value="0.2"/>
+                <Primitive key="double_trapezoid_pattern_blend" value="0.0"/>
+                <Primitive key="double_crescent_arc_depth" value="50.0"/>
+                <Primitive key="double_trapezoid_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_zigzag_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_zigzag_pattern_angle" value="180.0"/>
+                <Primitive key="double_crescent_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_circle_pattern_width" value="5.0"/>
+                <Primitive key="double_circle_pattern_amplitude" value="3.0"/>
+                <Primitive key="double_crescent_pattern_stop_1" value="0.2"/>
+                <Primitive key="double_zigzag_pattern_stop_1" value="0.0"/>
+                <Primitive key="double_zigzag_pattern_stop_2" value="0.0"/>
+              </dataModel>
+              <children>
+                <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldPointTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="接近点_3" typeName="点位">
+                  <dataModel>
+                    <Primitive key="double_movej_blend_key" value="0.0"/>
+                    <Primitive key="String_move_key" value="MOVEL"/>
+                    <Primitive key="double_movel_blend_key" value="1.0"/>
+                    <JointPositions key="JointPositions_move_joint_key">
+                      <JointPosition key="[01]">
+                        <Angle key="pos" value="-0.0" unit="RAD">
+                          <valueInSi>-0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[11]">
+                        <Angle key="pos" value="-1.561844" unit="RAD">
+                          <valueInSi>-1.561844</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[21]">
+                        <Angle key="pos" value="-1.012079" unit="RAD">
+                          <valueInSi>-1.012079</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[31]">
+                        <Angle key="pos" value="-1.600935" unit="RAD">
+                          <valueInSi>-1.600935</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[41]">
+                        <Angle key="pos" value="1.570796" unit="RAD">
+                          <valueInSi>1.570796</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[51]">
+                        <Angle key="pos" value="-0.0" unit="RAD">
+                          <valueInSi>-0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                    </JointPositions>
+                    <Primitive key="double_movej_speed_key" value="25.0"/>
+                    <Primitive key="double_movej_acc_key" value="50.0"/>
+                    <Primitive key="double_movel_speed_key" value="100.0"/>
+                    <Primitive key="String_title" value="接近点_3"/>
+                    <Primitive key="String_baseName" value="接近点"/>
+                    <Primitive key="boolean_isApproach" value="true"/>
+                    <Pose key="Pose_move_pose_key">
+                      <Position key="posePosition">
+                        <Length key="X" value="0.5081643040471797" unit="M">
+                          <valueInSi>0.5081643040471797</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Y" value="-0.1475000044105213" unit="M">
+                          <valueInSi>-0.1475000044105213</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Z" value="0.6813520254534207" unit="M">
+                          <valueInSi>0.6813520254534207</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                      </Position>
+                      <Rotation key="poseRotation">
+                        <Angle key="RX" value="0.5375311683506698" unit="RAD">
+                          <valueInSi>0.5375311683506698</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RY" value="1.7617879572743198E-10" unit="RAD">
+                          <valueInSi>1.7617879572743198E-10</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RZ" value="-1.5707963266898801" unit="RAD">
+                          <valueInSi>-1.5707963266898801</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </Rotation>
+                    </Pose>
+                    <Primitive key="double_movel_acc_key" value="200.0"/>
+                  </dataModel>
+                </TaskExtensionNode>
+                <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldStartTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" typeName="开始点">
+                  <dataModel>
+                    <Primitive key="double_movej_blend_key" value="0.0"/>
+                    <Primitive key="String_move_key" value="MOVEL"/>
+                    <Primitive key="double_movel_blend_key" value="1.0"/>
+                    <JointPositions key="JointPositions_move_joint_key">
+                      <JointPosition key="[01]">
+                        <Angle key="pos" value="-0.0" unit="RAD">
+                          <valueInSi>-0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[11]">
+                        <Angle key="pos" value="-1.554663" unit="RAD">
+                          <valueInSi>-1.554663</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[21]">
+                        <Angle key="pos" value="-1.273394" unit="RAD">
+                          <valueInSi>-1.273394</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[31]">
+                        <Angle key="pos" value="-1.597752" unit="RAD">
+                          <valueInSi>-1.597752</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[41]">
+                        <Angle key="pos" value="1.570796" unit="RAD">
+                          <valueInSi>1.570796</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[51]">
+                        <Angle key="pos" value="-0.0" unit="RAD">
+                          <valueInSi>-0.0</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                    </JointPositions>
+                    <Primitive key="double_movej_speed_key" value="25.0"/>
+                    <Primitive key="double_movej_acc_key" value="50.0"/>
+                    <Primitive key="double_movel_speed_key" value="100.0"/>
+                    <Primitive key="String_title" value="开始点"/>
+                    <Primitive key="String_baseName" value=""/>
+                    <Primitive key="boolean_isApproach" value="true"/>
+                    <Pose key="Pose_move_pose_key">
+                      <Position key="posePosition">
+                        <Length key="X" value="0.512259642348009" unit="M">
+                          <valueInSi>0.512259642348009</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Y" value="-0.1475000044105213" unit="M">
+                          <valueInSi>-0.1475000044105213</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Z" value="0.550115123420498" unit="M">
+                          <valueInSi>0.550115123420498</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                      </Position>
+                      <Rotation key="poseRotation">
+                        <Angle key="RX" value="0.28658068670021125" unit="RAD">
+                          <valueInSi>0.28658068670021125</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RY" value="1.9673849687215548E-10" unit="RAD">
+                          <valueInSi>1.9673849687215548E-10</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RZ" value="-1.5707963267369192" unit="RAD">
+                          <valueInSi>-1.5707963267369192</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </Rotation>
+                    </Pose>
+                    <Primitive key="double_movel_acc_key" value="200.0"/>
+                  </dataModel>
+                  <children>
+                    <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldLinearTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="直线形_2" typeName="直线形">
+                      <dataModel>
+                        <JointPositions key="JointPositions_circular_end_move_joint_key">
+                          <JointPosition key="[01]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[11]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[21]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[31]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[41]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[51]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                        </JointPositions>
+                        <Primitive key="boolean_useSharedZigzagPattern" value="true"/>
+                        <Primitive key="int_circle_pattern_direction" value="0"/>
+                        <Primitive key="boolean_useSharedPatterns" value="true"/>
+                        <Pose key="Pose_circular_end_move_pose_key">
+                          <Position key="posePosition">
+                            <Length key="X" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Y" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Z" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                          </Position>
+                          <Rotation key="poseRotation">
+                            <Angle key="RX" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RY" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RZ" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </Rotation>
+                        </Pose>
+                        <Primitive key="double_end_blend" value="1.0"/>
+                        <Primitive key="double_trapezoid_pattern_frequency" value="0.5"/>
+                        <Primitive key="boolean_use_Angle" value="false"/>
+                        <Primitive key="double_circle_pattern_frequency" value="4.0"/>
+                        <Primitive key="double_travel_angle" value="10.0"/>
+                        <Primitive key="double_trapezoid_pattern_stop_1" value="0.5"/>
+                        <Primitive key="String_selectedPattern" value="NONE"/>
+                        <Primitive key="double_trapezoid_pattern_stop_2" value="0.5"/>
+                        <Primitive key="boolean_left_right_view" value="false"/>
+                        <Primitive key="double_crescent_pattern_period" value="5.0"/>
+                        <Primitive key="String_title" value="直线形_2"/>
+                        <Pose key="Pose_circular_pass_move_pose_key">
+                          <Position key="posePosition">
+                            <Length key="X" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Y" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Z" value="0.0" unit="M">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                          </Position>
+                          <Rotation key="poseRotation">
+                            <Angle key="RX" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RY" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RZ" value="0.0" unit="RAD">
+                              <valueInSi>0.0</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </Rotation>
+                        </Pose>
+                        <Primitive key="boolean_arcFixedMode" value="false"/>
+                        <Primitive key="double_slopeDownTime" value="0.0"/>
+                        <Primitive key="boolean_useSharedSlopes" value="true"/>
+                        <JointPositions key="JointPositions_linear_move_joint_key">
+                          <JointPosition key="[01]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[11]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[21]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[31]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[41]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[51]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                        </JointPositions>
+                        <Primitive key="double_travel_speed" value="6.0"/>
+                        <Primitive key="boolean_useSharedAngles" value="true"/>
+                        <JointPositions key="JointPositions_circular_pass_move_joint_key">
+                          <JointPosition key="[01]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[11]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[21]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[31]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[41]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                          <JointPosition key="[51]">
+                            <Angle key="pos" value="NaN" unit="RAD">
+                              <valueInSi>NaN</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </JointPosition>
+                        </JointPositions>
+                        <Primitive key="String_angle_plane_name" value="Ctrl_base_frame"/>
+                        <Primitive key="double_customArcAngle" value="360.0"/>
+                        <Primitive key="double_zigzag_pattern_center" value="0.0"/>
+                        <Primitive key="double_zigzag_pattern_period" value="5.0"/>
+                        <Primitive key="double_work_angle" value="45.0"/>
+                        <Primitive key="double_crescent_pattern_stop_2" value="0.2"/>
+                        <Primitive key="double_trapezoid_pattern_blend" value="0.0"/>
+                        <Primitive key="double_crescent_arc_depth" value="50.0"/>
+                        <Primitive key="double_trapezoid_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_zigzag_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_zigzag_pattern_angle" value="180.0"/>
+                        <Pose key="Pose_linear_move_pose_key">
+                          <Position key="posePosition">
+                            <Length key="X" value="0.5122595848295779" unit="M">
+                              <valueInSi>0.5122595848295779</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Y" value="-0.018260102634361345" unit="M">
+                              <valueInSi>-0.018260102634361345</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                            <Length key="Z" value="0.5501124399007727" unit="M">
+                              <valueInSi>0.5501124399007727</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                            </Length>
+                          </Position>
+                          <Rotation key="poseRotation">
+                            <Angle key="RX" value="0.2865733379252782" unit="RAD">
+                              <valueInSi>0.2865733379252782</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RY" value="2.7782787455355256E-7" unit="RAD">
+                              <valueInSi>2.7782787455355256E-7</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                            <Angle key="RZ" value="-1.5708000135510818" unit="RAD">
+                              <valueInSi>-1.5708000135510818</valueInSi>
+                              <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                            </Angle>
+                          </Rotation>
+                        </Pose>
+                        <Primitive key="double_crescent_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_circle_pattern_width" value="5.0"/>
+                        <Primitive key="double_circle_pattern_amplitude" value="3.0"/>
+                        <Primitive key="double_crescent_pattern_stop_1" value="0.2"/>
+                        <Primitive key="boolean_isLinear" value="true"/>
+                        <Primitive key="boolean_useSharedCirclePattern" value="true"/>
+                        <Primitive key="boolean_useSharedStandard" value="true"/>
+                        <Primitive key="boolean_useSharedCrescentPattern" value="true"/>
+                        <Primitive key="boolean_overrideArcAngle" value="false"/>
+                        <Primitive key="double_zigzag_pattern_stop_1" value="0.0"/>
+                        <Primitive key="boolean_useSharedTrapezoidPattern" value="true"/>
+                        <Primitive key="double_zigzag_pattern_stop_2" value="0.0"/>
+                      </dataModel>
+                    </TaskExtensionNode>
+                  </children>
+                </TaskExtensionNode>
+                <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.WeldingTools.WeldPointTaskNode" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="ELITECO: Plugin WeldingTools" name="离开点_3" typeName="点位">
+                  <dataModel>
+                    <Primitive key="double_movej_blend_key" value="0.0"/>
+                    <Primitive key="String_move_key" value="MOVEL"/>
+                    <Primitive key="double_movel_blend_key" value="1.0"/>
+                    <JointPositions key="JointPositions_move_joint_key">
+                      <JointPosition key="[01]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[11]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[21]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[31]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[41]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                      <JointPosition key="[51]">
+                        <Angle key="pos" value="NaN" unit="RAD">
+                          <valueInSi>NaN</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </JointPosition>
+                    </JointPositions>
+                    <Primitive key="double_movej_speed_key" value="25.0"/>
+                    <Primitive key="double_movej_acc_key" value="50.0"/>
+                    <Primitive key="double_movel_speed_key" value="100.0"/>
+                    <Primitive key="String_title" value="离开点_3"/>
+                    <Primitive key="String_baseName" value="离开点"/>
+                    <Primitive key="boolean_isApproach" value="false"/>
+                    <Pose key="Pose_move_pose_key">
+                      <Position key="posePosition">
+                        <Length key="X" value="0.5122579142251953" unit="M">
+                          <valueInSi>0.5122579142251953</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Y" value="-0.01826058650884701" unit="M">
+                          <valueInSi>-0.01826058650884701</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                        <Length key="Z" value="0.619683912698466" unit="M">
+                          <valueInSi>0.619683912698466</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Length$Unit">M</siUnit>
+                        </Length>
+                      </Position>
+                      <Rotation key="poseRotation">
+                        <Angle key="RX" value="0.28657731348083276" unit="RAD">
+                          <valueInSi>0.28657731348083276</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RY" value="1.4293251764806877E-6" unit="RAD">
+                          <valueInSi>1.4293251764806877E-6</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                        <Angle key="RZ" value="-1.5708000135476883" unit="RAD">
+                          <valueInSi>-1.5708000135476883</valueInSi>
+                          <siUnit class="cn.elibot.robot.plugin.domain.value.Angle$Unit">rad</siUnit>
+                        </Angle>
+                      </Rotation>
+                    </Pose>
+                    <Primitive key="double_movel_acc_key" value="200.0"/>
+                  </dataModel>
+                </TaskExtensionNode>
+              </children>
+            </TaskExtensionNode>
+          </children>
+        </TaskExtensionNode>
+      </children>
+    </TaskExtensionNode>
+  </MainTask>
+</EliTask>

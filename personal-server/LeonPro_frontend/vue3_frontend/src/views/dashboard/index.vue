@@ -114,8 +114,8 @@ interface ToolCard {
 const toolCards = ref<ToolCard[]>([
   {
     title: "轨迹分析",
-    desc: "EliScript / CSV 轨迹可视化，3D 与 2D 投影、姿态解算",
-    path: "/tool/trace",
+    desc: "独立页面解析 WeldingTools / FullFunctionWelding 工程，可视化任务树与机械臂轨迹",
+    path: "/trace",
     icon: markRaw(TrendCharts),
     color: "#4080FF",
   },

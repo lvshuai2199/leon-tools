@@ -2,6 +2,7 @@ node_modules
 .DS_Store
 dist
 public/lib/plotly.min.js
+public/elite-task
 deploy/deploy.env
 deploy/dist-upload.tar
 dist-ssr

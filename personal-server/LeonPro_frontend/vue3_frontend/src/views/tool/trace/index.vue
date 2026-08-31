@@ -1,120 +1,155 @@
 <template>
-  <div class="trace-container">
-    <el-card shadow="never" class="mb-4">
-      <template #header>
-        <div class="flex-x-between">
-          <span class="font-bold">机器人轨迹交互分析工具</span>
-          <el-tag type="info" size="small">EliScript / CSV · 本地解析</el-tag>
-        </div>
-      </template>
-
-      <el-row :gutter="16">
-        <el-col :span="12" :xs="24">
-          <el-text tag="b" size="small" class="mb-1 block">粘贴 EliScript 脚本内容 (movej/movel/movep/movec)</el-text>
-          <el-input
-            v-model="scriptInput"
-            type="textarea"
-            :rows="5"
-            placeholder="在此粘贴 Elite/A9 脚本内容..."
-          />
-          <el-button type="primary" class="mt-2 w-full" @click="processScript">
-            解析文本
+  <div class="trace-page" @dragover.prevent @drop.prevent="onDrop">
+    <header class="trace-header">
+      <div class="header-left">
+        <el-button text @click="goHome">
+          <el-icon class="mr-1"><Back /></el-icon>
+          返回工作台
+        </el-button>
+        <span class="header-title">轨迹分析</span>
+        <el-tag size="small" type="info">独立页面 · 无需权限</el-tag>
+        <el-tag v-if="resolvedPluginLabel" size="small" type="success">{{ resolvedPluginLabel }}</el-tag>
+      </div>
+      <div class="header-right">
+        <el-select v-model="workspace.plugin" class="plugin-select" @change="reparseAndDraw">
+          <el-option label="自动识别插件包" value="auto" />
+          <el-option label="WeldingTools 焊接工具" value="welding-tools" />
+          <el-option label="FullFunctionWelding 全功能焊接" value="full-function" />
+        </el-select>
+        <el-dropdown @command="loadExample">
+          <el-button>
+            加载示例工程
+            <el-icon class="el-icon--right"><ArrowDown /></el-icon>
           </el-button>
-        </el-col>
-        <el-col :span="12" :xs="24">
-          <el-text tag="b" size="small" class="mb-1 block">导入文件</el-text>
-          <input
-            ref="fileInputRef"
-            type="file"
-            accept=".csv,.txt,.jbi,.eli,.py"
-            class="file-input"
-          />
-          <el-button type="success" class="mt-1 mb-2 w-full" @click="processFile">
-            读取外部文件
-          </el-button>
-          <div class="hint">
-            支持 movej/movel/movep/movec，Z 突变 &gt; 5mm 自动断开连线
-          </div>
-        </el-col>
-      </el-row>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="welding-liner">WeldingTools · 直线焊接</el-dropdown-item>
+              <el-dropdown-item command="welding-multipass">WeldingTools · 多层多道</el-dropdown-item>
+              <el-dropdown-item command="full-liner">FullFunctionWelding · 直线+圆弧</el-dropdown-item>
+              <el-dropdown-item command="full-multi">FullFunctionWelding · 多层多道</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
+        <el-button type="danger" plain @click="clearAll">清空数据</el-button>
+      </div>
+    </header>
 
-      <!-- 控制面板 -->
+    <section class="trace-toolbar">
+      <div class="upload-row">
+        <input
+          ref="fileInputRef"
+          type="file"
+          multiple
+          accept=".task,.script,.txt,.xml,.csv,.eli,.py,.jbi"
+          class="file-input"
+          @change="onFilesPicked"
+        />
+        <el-button type="primary" @click="fileInputRef?.click()">导入工程文件</el-button>
+        <span class="file-hint">
+          可同时选择 XML(.task)、脚本(.task.script) 与树结构(.txt)。当前：
+          {{ fileSummary }}
+        </span>
+      </div>
       <div class="controls">
         <label class="checkbox-item">
-          <input v-model="showLine" type="checkbox" @change="drawCharts" /> 显示轨迹连线
+          <input v-model="workspace.showLine" type="checkbox" @change="drawCharts" /> 显示轨迹连线
         </label>
         <label class="checkbox-item">
-          <input v-model="showPoints" type="checkbox" @change="drawCharts" /> 显示轨迹点位
+          <input v-model="workspace.showPoints" type="checkbox" @change="drawCharts" /> 显示轨迹点位
         </label>
         <label class="checkbox-item checkbox-divider">
-          <input v-model="showMarkers" type="checkbox" @change="drawCharts" /> 显示基准标记点 (Frame)
+          <input v-model="workspace.showMarkers" type="checkbox" @change="drawCharts" /> 显示参考点
         </label>
         <label class="checkbox-item checkbox-divider checkbox-warn">
-          <input v-model="showArrows" type="checkbox" @change="drawCharts" /> 显示姿态箭头 (Orientation)
+          <input v-model="workspace.showArrows" type="checkbox" @change="drawCharts" /> 显示姿态箭头
         </label>
         <div v-if="statusMsg" class="status-msg">{{ statusMsg }}</div>
       </div>
-    </el-card>
+    </section>
 
-    <el-row :gutter="16">
-      <el-col :span="17" :xs="24">
-        <div ref="chart3D" class="chart-box" />
-        <div ref="chart2D" class="chart-box" />
-      </el-col>
-
-      <!-- 右侧详情面板 -->
-      <el-col :span="7" :xs="24">
-        <el-card shadow="never" class="inspector-panel">
-          <template #header>
-            <span class="font-bold">🎯 点位数据查看</span>
+    <section class="trace-body">
+      <aside class="tree-pane">
+        <div class="pane-title">任务树</div>
+        <el-tree
+          v-if="treeData.length"
+          :data="treeData"
+          node-key="id"
+          default-expand-all
+          highlight-current
+          :expand-on-click-node="false"
+          @node-click="onTreeNodeClick"
+        >
+          <template #default="{ data }">
+            <span class="tree-node" :class="`kind-${data.kind}`">
+              <span class="tree-dot" />
+              <span class="tree-label">{{ data.label }}</span>
+              <span v-if="data.pose" class="tree-flag">点</span>
+              <span v-if="data.kind === 'ref' || data.refs.length" class="tree-flag ref">参考</span>
+            </span>
           </template>
+        </el-tree>
+        <el-empty v-else description="导入工程后显示任务树" :image-size="64" />
+      </aside>
 
-          <div class="data-label">拾取对象:</div>
-          <div class="pick-type">{{ selected.type || "未选择点位" }}</div>
+      <div class="chart-pane">
+        <div ref="chart3D" class="chart-box" />
+        <div ref="chart2D" class="chart-box chart-box-2d" />
+      </div>
 
-          <div class="data-label">坐标数组 [X, Y, Z]:</div>
-          <div class="data-display">{{ selected.coord || "在图中点击点位或轨迹" }}</div>
+      <aside class="inspector-pane">
+        <div class="pane-title">点位数据查看</div>
+        <div class="data-label">拾取对象:</div>
+        <div class="pick-type">{{ selected.type || "未选择点位" }}</div>
 
-          <div class="data-label mt-3">姿态 [Rx, Ry, Rz]:</div>
-          <div class="data-display">{{ selected.orientation || "未选择点位" }}</div>
+        <div class="data-label">坐标数组 [X, Y, Z]:</div>
+        <div class="data-display">{{ selected.coord || "点击树节点或图中轨迹" }}</div>
 
-          <div class="data-label mt-3">枪轴与 XY 平面夹角:</div>
-          <div class="data-display">{{ selected.angleXY || "未选择点位" }}</div>
+        <div class="data-label mt-3">姿态 [Rx, Ry, Rz]:</div>
+        <div class="data-display">{{ selected.orientation || "未选择点位" }}</div>
 
-          <div class="data-label mt-3">枪轴与 YZ 平面夹角:</div>
-          <div class="data-display">{{ selected.angleYZ || "未选择点位" }}</div>
+        <div class="data-label mt-3">枪轴与 XY 平面夹角:</div>
+        <div class="data-display">{{ selected.angleXY || "未选择点位" }}</div>
 
-          <div class="data-label mt-3">枪轴与 XZ 平面夹角:</div>
-          <div class="data-display">{{ selected.angleXZ || "未选择点位" }}</div>
+        <div class="data-label mt-3">枪轴与 YZ 平面夹角:</div>
+        <div class="data-display">{{ selected.angleYZ || "未选择点位" }}</div>
 
-          <div class="data-label mt-3">前进角:</div>
-          <div class="data-display">{{ selected.angleForward || "未选择点位" }}</div>
+        <div class="data-label mt-3">枪轴与 XZ 平面夹角:</div>
+        <div class="data-display">{{ selected.angleXZ || "未选择点位" }}</div>
 
-          <div class="data-label mt-3">工作角 (X旋转):</div>
-          <div class="data-display">{{ selected.angleWork || "未选择点位" }}</div>
+        <div class="data-label mt-3">前进角:</div>
+        <div class="data-display">{{ selected.angleForward || "未选择点位" }}</div>
 
-          <el-button type="warning" class="mt-3 w-full" @click="copyData">复制坐标</el-button>
+        <div class="data-label mt-3">工作角 (X旋转):</div>
+        <div class="data-display">{{ selected.angleWork || "未选择点位" }}</div>
 
-          <div class="tips">
-            <strong>操作技巧：</strong><br />
-            • 红色箭头代表工具 Z 轴方向（姿态）。<br />
-            • 橙色虚线代表 movej 关节接近移动。<br />
-            • 绿色圆点代表焊接路径 movep/movel/movec。<br />
-            • 红色菱形代表 full_tracking_frame 基准。<br />
-            • 连线断开处表示机器人发生了大幅度抬升。<br />
-            • 点击点位可在右侧查看姿态、水平面夹角及前进角。
-          </div>
-        </el-card>
-      </el-col>
-    </el-row>
+        <el-button type="warning" class="mt-3 w-full" @click="copyData">复制坐标</el-button>
+
+        <div class="tips">
+          <strong>说明：</strong><br />
+          • WeldingTools 脚本多为直接 pose 数组；FullFunctionWelding 使用 full_apply_touch_offset。<br />
+          • 红色菱形为参考点 / 跟踪坐标系，可通过「显示参考点」开关。<br />
+          • 橙色虚线为 movej 接近，绿色为焊接路径 movep/movel/movec。<br />
+          • 数据缓存在本机，刷新不会丢失，点「清空数据」后才消失。
+        </div>
+      </aside>
+    </section>
   </div>
 </template>
 
 <script setup lang="ts">
-import Papa from "papaparse";
+import { ArrowDown, Back } from "@element-plus/icons-vue";
+import {
+  classifyProjectFile,
+  parseProject,
+  type PluginKind,
+  type TaskTreeNode,
+  type TrajData,
+  type TrajPoint,
+} from "./parse";
+import { clearWorkspace, emptyWorkspace, hasWorkspaceContent, loadWorkspace, saveWorkspace } from "./persist";
 
 defineOptions({
-  name: "Trace",
+  name: "TraceAnalysis",
   inheritAttrs: false,
 });
 
@@ -127,47 +162,52 @@ type PlotlyEl = HTMLElement & {
   on?: (event: string, cb: (ev: any) => void) => void;
 };
 
-async function getPlotly(): Promise<PlotlyApi> {
-  const w = window as Window & { Plotly?: PlotlyApi };
-  if (w.Plotly) return w.Plotly;
-  await new Promise<void>((resolve, reject) => {
-    const script = document.createElement("script");
-    script.src = "/lib/plotly.min.js";
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error("Plotly 加载失败"));
-    document.head.appendChild(script);
-  });
-  if (!w.Plotly) throw new Error("Plotly 未挂载");
-  return w.Plotly;
-}
+const EXAMPLES: Record<string, { plugin: PluginKind; files: string[] }> = {
+  "welding-liner": {
+    plugin: "welding-tools",
+    files: [
+      "/elite-task/WeldingTools/weldingtools-liner.task",
+      "/elite-task/WeldingTools/weldingtools-liner.task.script",
+      "/elite-task/WeldingTools/weldingtools-liner.txt",
+    ],
+  },
+  "welding-multipass": {
+    plugin: "welding-tools",
+    files: [
+      "/elite-task/WeldingTools/weldingtools-multipass.task",
+      "/elite-task/WeldingTools/weldingtools-multipass.task.script",
+      "/elite-task/WeldingTools/weldingtools-multipass.txt",
+    ],
+  },
+  "full-liner": {
+    plugin: "full-function",
+    files: [
+      "/elite-task/FullFunctionWelding/fullFunctionweld-liner.task",
+      "/elite-task/FullFunctionWelding/fullFunctionweld-liner.task.script",
+      "/elite-task/FullFunctionWelding/fullFunctionweld-liner.txt",
+    ],
+  },
+  "full-multi": {
+    plugin: "full-function",
+    files: [
+      "/elite-task/FullFunctionWelding/fullFunctionweld-multi.task",
+      "/elite-task/FullFunctionWelding/fullFunctionweld-multi.task.script",
+      "/elite-task/FullFunctionWelding/fullFunctionweld-multi.txt",
+    ],
+  },
+};
 
-interface TrajPoint {
-  x: number;
-  y: number;
-  z: number;
-  rx: number;
-  ry: number;
-  rz: number;
-  type: string;
-  beadId?: number;
-}
-
-interface TrajData {
-  main: TrajPoint[];
-  markers: TrajPoint[];
-}
-
-const scriptInput = ref("");
+const router = useRouter();
+const route = useRoute();
 const fileInputRef = ref<HTMLInputElement>();
 const chart3D = ref<HTMLElement>();
 const chart2D = ref<HTMLElement>();
 
-const showLine = ref(true);
-const showPoints = ref(false);
-const showMarkers = ref(false);
-const showArrows = ref(false);
-
+const workspace = reactive(loadWorkspace() || emptyWorkspace());
+const treeData = ref<TaskTreeNode[]>([]);
 const statusMsg = ref("");
+const resolvedPlugin = ref("");
+const pickedTreePose = ref<TrajPoint | null>(null);
 
 const selected = reactive({
   type: "",
@@ -183,97 +223,172 @@ const selected = reactive({
 let lastSelectedValue = "";
 let globalData: TrajData = { main: [], markers: [] };
 
-/** 解析 EliScript / CSV 文本为轨迹数据 */
-function parseTrajectoryData(text: string): TrajData {
-  const data: TrajData = { main: [], markers: [] };
+const resolvedPluginLabel = computed(() => {
+  if (resolvedPlugin.value === "welding-tools") return "WeldingTools";
+  if (resolvedPlugin.value === "full-function") return "FullFunctionWelding";
+  return "";
+});
 
-  const motionReg =
-    /(movej|movel|movep|movec)\s*\([\s\S]{0,500}?full_apply_touch_offset\s*\(\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
+const fileSummary = computed(() => {
+  const parts = [workspace.xmlName, workspace.scriptName, workspace.treeName].filter(Boolean);
+  return parts.length ? parts.join(" / ") : "尚未导入";
+});
 
-  const markerReg =
-    /full_tracking_frame\s*=\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
-
-  let m: RegExpExecArray | null;
-  while ((m = motionReg.exec(text)) !== null) {
-    data.main.push({
-      x: parseFloat(m[2]),
-      y: parseFloat(m[3]),
-      z: parseFloat(m[4]),
-      rx: parseFloat(m[5]),
-      ry: parseFloat(m[6]),
-      rz: parseFloat(m[7]),
-      type: m[1],
-    });
-  }
-
-  const movecEndReg =
-    /movec\s*\([\s\S]{0,500}?full_apply_touch_offset\s*\(\s*\[[^\]]+\]\s*\)[\s\S]{0,200}?full_apply_touch_offset\s*\(\s*\[\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)\s*,\s*([^,\]]+)/g;
-  while ((m = movecEndReg.exec(text)) !== null) {
-    data.main.push({
-      x: parseFloat(m[1]),
-      y: parseFloat(m[2]),
-      z: parseFloat(m[3]),
-      rx: parseFloat(m[4]),
-      ry: parseFloat(m[5]),
-      rz: parseFloat(m[6]),
-      type: "movec_end",
-    });
-  }
-
-  while ((m = markerReg.exec(text)) !== null) {
-    const pt = {
-      x: parseFloat(m[1]),
-      y: parseFloat(m[2]),
-      z: parseFloat(m[3]),
-      rx: parseFloat(m[4]),
-      ry: parseFloat(m[5]),
-      rz: parseFloat(m[6]),
-      type: "marker",
-    };
-    if (pt.x === 0 && pt.y === 0 && pt.z === 0 && pt.rx === 0 && pt.ry === 0 && pt.rz === 0)
-      continue;
-    data.markers.push(pt);
-  }
-
-  // 按道分组
-  let beadId = 0;
-  let prevType: string | null = null;
-  data.main.forEach((p, i) => {
-    if (p.type === "movej" && i > 0 && prevType !== "movej") beadId++;
-    p.beadId = beadId;
-    prevType = p.type;
+async function getPlotly(): Promise<PlotlyApi> {
+  const w = window as Window & { Plotly?: PlotlyApi };
+  if (w.Plotly) return w.Plotly;
+  await new Promise<void>((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "/lib/plotly.min.js";
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Plotly 加载失败"));
+    document.head.appendChild(script);
   });
-
-  // CSV 兜底
-  if (data.main.length === 0 && data.markers.length === 0) {
-    const csv = Papa.parse(text.trim(), { dynamicTyping: true, skipEmptyLines: true });
-    (csv.data as any[]).forEach((row) => {
-      if (row?.length >= 3 && typeof row[0] === "number") {
-        data.main.push({
-          x: row[0],
-          y: row[1],
-          z: row[2],
-          rx: row[3] || 0,
-          ry: row[4] || 0,
-          rz: row[5] || 0,
-          type: "csv",
-        });
-      }
-    });
-  }
-
-  return data;
+  if (!w.Plotly) throw new Error("Plotly 未挂载");
+  return w.Plotly;
 }
 
-/** 路径预处理（Z 突变 > 5mm 断线） */
+function persistNow() {
+  saveWorkspace({ ...workspace });
+}
+
+function goHome() {
+  router.push("/");
+}
+
+function applyParse() {
+  const result = parseProject({
+    xmlText: workspace.xmlText,
+    scriptText: workspace.scriptText,
+    treeText: workspace.treeText,
+    plugin: workspace.plugin,
+  });
+  treeData.value = result.tree;
+  globalData = result.traj;
+  resolvedPlugin.value = result.plugin;
+  return result;
+}
+
+function reparseAndDraw() {
+  applyParse();
+  persistNow();
+  drawCharts();
+}
+
+async function ingestFiles(files: File[]) {
+  if (!files.length) return;
+  for (const file of files) {
+    const content = await file.text();
+    const kind = classifyProjectFile(file.name, content);
+    if (kind === "xml") {
+      workspace.xmlText = content;
+      workspace.xmlName = file.name;
+    } else if (kind === "script") {
+      workspace.scriptText = content;
+      workspace.scriptName = file.name;
+    } else if (kind === "tree") {
+      workspace.treeText = content;
+      workspace.treeName = file.name;
+    } else if (/\.(csv|eli|py|jbi)$/i.test(file.name) || /\b(movej|movel|movep|movec)\s*\(/.test(content)) {
+      workspace.scriptText = content;
+      workspace.scriptName = file.name;
+    }
+  }
+  pickedTreePose.value = null;
+  persistNow();
+  const result = applyParse();
+  if (!result.traj.main.length && !result.traj.markers.length) {
+    ElMessage.warning("未能从工程中解析出轨迹，请确认插件包选择与文件是否匹配。");
+    return;
+  }
+  await drawCharts();
+  ElMessage.success("工程已解析，刷新页面不会丢失。");
+}
+
+function onFilesPicked(ev: Event) {
+  const input = ev.target as HTMLInputElement;
+  ingestFiles(Array.from(input.files || [])).finally(() => {
+    input.value = "";
+  });
+}
+
+function onDrop(ev: DragEvent) {
+  ingestFiles(Array.from(ev.dataTransfer?.files || []));
+}
+
+async function loadExample(key: string) {
+  const example = EXAMPLES[key];
+  if (!example) return;
+  try {
+    const texts = await Promise.all(
+      example.files.map(async (url) => {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`无法加载 ${url}`);
+        return { url, content: await res.text() };
+      })
+    );
+    workspace.plugin = example.plugin;
+    workspace.xmlText = "";
+    workspace.scriptText = "";
+    workspace.treeText = "";
+    workspace.xmlName = "";
+    workspace.scriptName = "";
+    workspace.treeName = "";
+    for (const item of texts) {
+      const name = item.url.split("/").pop() || item.url;
+      const kind = classifyProjectFile(name, item.content);
+      if (kind === "xml") {
+        workspace.xmlText = item.content;
+        workspace.xmlName = name;
+      } else if (kind === "script") {
+        workspace.scriptText = item.content;
+        workspace.scriptName = name;
+      } else if (kind === "tree") {
+        workspace.treeText = item.content;
+        workspace.treeName = name;
+      }
+    }
+    pickedTreePose.value = null;
+    persistNow();
+    applyParse();
+    await drawCharts();
+    ElMessage.success("示例工程已加载");
+  } catch {
+    ElMessage.error("示例工程加载失败，请确认 elite-task 文件可用，或直接导入本地工程。");
+  }
+}
+
+function clearAll() {
+  Object.assign(workspace, emptyWorkspace());
+  treeData.value = [];
+  globalData = { main: [], markers: [] };
+  resolvedPlugin.value = "";
+  pickedTreePose.value = null;
+  statusMsg.value = "";
+  selected.type = "";
+  selected.coord = "";
+  selected.orientation = "";
+  selected.angleXY = "";
+  selected.angleYZ = "";
+  selected.angleXZ = "";
+  selected.angleForward = "";
+  selected.angleWork = "";
+  lastSelectedValue = "";
+  clearWorkspace();
+  const Plotly = (window as Window & { Plotly?: PlotlyApi }).Plotly;
+  if (Plotly && chart3D.value) Plotly.purge(chart3D.value);
+  if (Plotly && chart2D.value) Plotly.purge(chart2D.value);
+  ElMessage.success("已清空本地缓存");
+}
+
 function preparePath(points: TrajPoint[]) {
-  const res: { x: (number | null)[]; y: (number | null)[]; z: (number | null)[]; idx: (number | null)[]; types: (string | null)[] } = {
-    x: [],
-    y: [],
-    z: [],
-    idx: [],
-    types: [],
-  };
+  const res: {
+    x: (number | null)[];
+    y: (number | null)[];
+    z: (number | null)[];
+    idx: (number | null)[];
+    types: (string | null)[];
+  } = { x: [], y: [], z: [], idx: [], types: [] };
   for (let i = 0; i < points.length; i++) {
     if (i > 0 && Math.abs(points[i].z - points[i - 1].z) > 0.005) {
       res.x.push(null);
@@ -291,11 +406,13 @@ function preparePath(points: TrajPoint[]) {
   return res;
 }
 
-/** Euler 角 → 工具 Z 轴方向向量 */
 function eulerToToolZ(rx: number, ry: number, rz: number) {
-  const crx = Math.cos(rx), srx = Math.sin(rx);
-  const cry = Math.cos(ry), sry = Math.sin(ry);
-  const crz = Math.cos(rz), srz = Math.sin(rz);
+  const crx = Math.cos(rx),
+    srx = Math.sin(rx);
+  const cry = Math.cos(ry),
+    sry = Math.sin(ry);
+  const crz = Math.cos(rz),
+    srz = Math.sin(rz);
   return {
     u: crz * sry * crx + srz * srx,
     v: srz * sry * crx - crz * srx,
@@ -305,7 +422,9 @@ function eulerToToolZ(rx: number, ry: number, rz: number) {
 
 function computeSpan(points: TrajPoint[]) {
   if (!points.length) return 0.1;
-  const xs = points.map((p) => p.x), ys = points.map((p) => p.y), zs = points.map((p) => p.z);
+  const xs = points.map((p) => p.x),
+    ys = points.map((p) => p.y),
+    zs = points.map((p) => p.z);
   const dx = Math.max(...xs) - Math.min(...xs);
   const dy = Math.max(...ys) - Math.min(...ys);
   const dz = Math.max(...zs) - Math.min(...zs);
@@ -403,29 +522,19 @@ function findMainIndex(pts: any): number {
   );
 }
 
-/** 更新右侧面板 */
-function updateInspector(pts: any) {
-  const traceName = pts.fullData?.name || "";
-  const x = pts.x.toFixed(6);
-  const y = pts.y.toFixed(6);
-  const z = pts.z !== undefined ? pts.z.toFixed(6) : "N/A";
-  const idx = pts.customdata ?? "-";
-  const motionType = pts.text || "";
-
-  selected.type = `${traceName}  [Idx: ${idx}]  ${motionType}`;
-  const valStr = `[${x}, ${y}, ${z}]`;
+function fillInspector(point: TrajPoint, title: string, idx: number | string) {
+  selected.type = `${title}  [Idx: ${idx}]  ${point.type || ""}`;
+  const valStr = `[${point.x.toFixed(6)}, ${point.y.toFixed(6)}, ${point.z.toFixed(6)}]`;
   selected.coord = valStr;
   lastSelectedValue = valStr;
 
-  const point = findSelectedPoint(pts);
-  if (point && Number.isFinite(point.rx)) {
+  if (Number.isFinite(point.rx)) {
     selected.orientation = `[${point.rx.toFixed(6)}, ${point.ry.toFixed(6)}, ${point.rz.toFixed(6)}]`;
-
     selected.angleXY = `${angleWithPlane(point.rx, point.ry, point.rz, "z").toFixed(2)}°`;
     selected.angleYZ = `${angleWithPlane(point.rx, point.ry, point.rz, "x").toFixed(2)}°`;
     selected.angleXZ = `${angleWithPlane(point.rx, point.ry, point.rz, "y").toFixed(2)}°`;
 
-    const mainIdx = findMainIndex(pts);
+    const mainIdx = typeof idx === "number" ? idx : findMainIndex(point);
     const tangent = forwardDirectionAt(mainIdx);
     selected.angleForward = tangent
       ? `${forwardAngle(point.rx, point.ry, point.rz, tangent).toFixed(2)}°`
@@ -443,29 +552,66 @@ function updateInspector(pts: any) {
   }
 }
 
-/** 绘图 */
+function updateInspector(pts: any) {
+  const traceName = pts.fullData?.name || "";
+  const idx = pts.customdata ?? "-";
+  const motionType = pts.text || "";
+  const point = findSelectedPoint(pts);
+  if (point) {
+    fillInspector(point, traceName, idx);
+    return;
+  }
+  const x = pts.x.toFixed(6);
+  const y = pts.y.toFixed(6);
+  const z = pts.z !== undefined ? pts.z.toFixed(6) : "N/A";
+  selected.type = `${traceName}  [Idx: ${idx}]  ${motionType}`;
+  selected.coord = `[${x}, ${y}, ${z}]`;
+  lastSelectedValue = selected.coord;
+}
+
+function onTreeNodeClick(node: TaskTreeNode) {
+  const point = node.pose || node.refs[0];
+  if (!point) {
+    ElMessage.info("该节点没有坐标数据");
+    return;
+  }
+  pickedTreePose.value = point;
+  fillInspector(point, node.label, node.id);
+  drawCharts();
+}
+
 async function drawCharts() {
+  persistNow();
   const data = globalData;
   if (!data.main.length && !data.markers.length) {
-    ElMessage.warning("未能识别到有效的轨迹坐标数据（movej/movel/movep/movec），请检查格式。");
+    if (hasWorkspaceContent(workspace)) {
+      ElMessage.warning("未能识别到有效的轨迹坐标数据，请检查插件包与文件格式。");
+    }
     return;
   }
 
   let mode = "none";
-  if (showLine.value && showPoints.value) mode = "lines+markers";
-  else if (showLine.value) mode = "lines";
-  else if (showPoints.value) mode = "markers";
+  if (workspace.showLine && workspace.showPoints) mode = "lines+markers";
+  else if (workspace.showLine) mode = "lines";
+  else if (workspace.showPoints) mode = "markers";
 
   const traces3D: any[] = [];
   const traces2D: any[] = [];
 
   if (data.main.length > 0) {
     const path = preparePath(data.main);
-    const hoverText = path.types.map((t) => (t ? `Type: ${t}` : ""));
+    const hoverText = path.types.map((t, i) => {
+      const name = typeof path.idx[i] === "number" ? data.main[path.idx[i] as number]?.name : "";
+      return [t ? `Type: ${t}` : "", name ? `Node: ${name}` : ""].filter(Boolean).join(" · ");
+    });
 
     traces3D.push({
-      x: path.x, y: path.y, z: path.z,
-      name: "完整轨迹 (all)", mode, type: "scatter3d",
+      x: path.x,
+      y: path.y,
+      z: path.z,
+      name: "完整轨迹 (all)",
+      mode,
+      type: "scatter3d",
       line: { color: "#3498db", width: 4 },
       marker: { size: 2, color: "#2980b9" },
       customdata: path.idx,
@@ -473,8 +619,11 @@ async function drawCharts() {
       hovertemplate: "Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<br>%{text}<extra></extra>",
     });
     traces2D.push({
-      x: path.x, y: path.y,
-      name: "平面投影 (all)", mode, type: "scatter",
+      x: path.x,
+      y: path.y,
+      name: "平面投影 (all)",
+      mode,
+      type: "scatter",
       line: { color: "#3498db", width: 2 },
       marker: { size: 4 },
       customdata: path.idx,
@@ -486,16 +635,23 @@ async function drawCharts() {
     const movejIdx = data.main.map((_, i) => i).filter((i) => data.main[i].type === "movej");
     if (movejPts.length > 0) {
       traces3D.push({
-        x: movejPts.map((p) => p.x), y: movejPts.map((p) => p.y), z: movejPts.map((p) => p.z),
-        name: "movej 接近点", mode: "markers+lines", type: "scatter3d",
+        x: movejPts.map((p) => p.x),
+        y: movejPts.map((p) => p.y),
+        z: movejPts.map((p) => p.z),
+        name: "movej 接近点",
+        mode: "markers+lines",
+        type: "scatter3d",
         line: { color: "#e67e22", width: 2, dash: "dash" },
         marker: { size: 4, color: "#e67e22", symbol: "circle-open" },
         customdata: movejIdx,
         hovertemplate: "Idx: %{customdata}<br>movej<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
       });
       traces2D.push({
-        x: movejPts.map((p) => p.x), y: movejPts.map((p) => p.y),
-        name: "movej 接近点", mode: "markers+lines", type: "scatter",
+        x: movejPts.map((p) => p.x),
+        y: movejPts.map((p) => p.y),
+        name: "movej 接近点",
+        mode: "markers+lines",
+        type: "scatter",
         line: { color: "#e67e22", width: 2, dash: "dash" },
         marker: { size: 6, color: "#e67e22", symbol: "circle-open" },
         customdata: movejIdx,
@@ -509,16 +665,23 @@ async function drawCharts() {
     );
     if (weldPts.length > 0) {
       traces3D.push({
-        x: weldPts.map((p) => p.x), y: weldPts.map((p) => p.y), z: weldPts.map((p) => p.z),
-        name: "焊道路径 (movep/movel/movec)", mode: "markers", type: "scatter3d",
+        x: weldPts.map((p) => p.x),
+        y: weldPts.map((p) => p.y),
+        z: weldPts.map((p) => p.z),
+        name: "焊道路径 (movep/movel/movec)",
+        mode: "markers",
+        type: "scatter3d",
         marker: { size: 3, color: "#27ae60", symbol: "circle" },
         customdata: weldIdx,
         text: weldPts.map((p) => p.type),
         hovertemplate: "Idx: %{customdata}<br>%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
       });
       traces2D.push({
-        x: weldPts.map((p) => p.x), y: weldPts.map((p) => p.y),
-        name: "焊接路径", mode: "markers", type: "scatter",
+        x: weldPts.map((p) => p.x),
+        y: weldPts.map((p) => p.y),
+        name: "焊接路径",
+        mode: "markers",
+        type: "scatter",
         marker: { size: 6, color: "#27ae60", symbol: "circle" },
         customdata: weldIdx,
         hovertemplate: "Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<extra></extra>",
@@ -526,23 +689,55 @@ async function drawCharts() {
     }
   }
 
-  if (showMarkers.value && data.markers.length > 0) {
+  if (workspace.showMarkers && data.markers.length > 0) {
     const mX = data.markers.map((p) => p.x);
     const mY = data.markers.map((p) => p.y);
     const mZ = data.markers.map((p) => p.z);
     traces3D.push({
-      x: mX, y: mY, z: mZ,
-      name: "基准标记点 (frame)", mode: "markers", type: "scatter3d",
+      x: mX,
+      y: mY,
+      z: mZ,
+      name: "参考点",
+      mode: "markers",
+      type: "scatter3d",
       marker: { color: "#e74c3c", size: 8, symbol: "diamond" },
+      text: data.markers.map((p) => p.name || "参考点"),
+      hovertemplate: "%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
     });
     traces2D.push({
-      x: mX, y: mY,
-      name: "基准标记点 (frame)", mode: "markers", type: "scatter",
+      x: mX,
+      y: mY,
+      name: "参考点",
+      mode: "markers",
+      type: "scatter",
       marker: { color: "#e74c3c", size: 10, symbol: "diamond" },
+      text: data.markers.map((p) => p.name || "参考点"),
+      hovertemplate: "%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<extra></extra>",
     });
   }
 
-  if (showArrows.value && data.main.length > 0) {
+  if (pickedTreePose.value) {
+    const p = pickedTreePose.value;
+    traces3D.push({
+      x: [p.x],
+      y: [p.y],
+      z: [p.z],
+      name: "树节点选中",
+      mode: "markers",
+      type: "scatter3d",
+      marker: { color: "#9b59b6", size: 10, symbol: "x" },
+    });
+    traces2D.push({
+      x: [p.x],
+      y: [p.y],
+      name: "树节点选中",
+      mode: "markers",
+      type: "scatter",
+      marker: { color: "#9b59b6", size: 12, symbol: "x" },
+    });
+  }
+
+  if (workspace.showArrows && data.main.length > 0) {
     const span = computeSpan(data.main);
     const arrowLen = span * 0.06;
     const step = Math.max(1, Math.floor(data.main.length / 80));
@@ -553,7 +748,9 @@ async function drawCharts() {
       arrowPts.push({ x: p.x, y: p.y, z: p.z, u: dir.u, v: dir.v, w: dir.w });
     }
 
-    const arrowX: (number | null)[] = [], arrowY: (number | null)[] = [], arrowZ: (number | null)[] = [];
+    const arrowX: (number | null)[] = [],
+      arrowY: (number | null)[] = [],
+      arrowZ: (number | null)[] = [];
     for (const a of arrowPts) {
       arrowX.push(a.x, a.x + a.u * arrowLen, null);
       arrowY.push(a.y, a.y + a.v * arrowLen, null);
@@ -561,8 +758,12 @@ async function drawCharts() {
     }
 
     traces3D.push({
-      x: arrowX, y: arrowY, z: arrowZ,
-      name: "姿态箭头 (Tool Z)", mode: "lines", type: "scatter3d",
+      x: arrowX,
+      y: arrowY,
+      z: arrowZ,
+      name: "姿态箭头 (Tool Z)",
+      mode: "lines",
+      type: "scatter3d",
       line: { color: "#e74c3c", width: 2 },
       hoverinfo: "skip",
       showlegend: true,
@@ -571,7 +772,9 @@ async function drawCharts() {
       x: arrowPts.map((a) => a.x + a.u * arrowLen),
       y: arrowPts.map((a) => a.y + a.v * arrowLen),
       z: arrowPts.map((a) => a.z + a.w * arrowLen),
-      name: "箭头尖端", mode: "markers", type: "scatter3d",
+      name: "箭头尖端",
+      mode: "markers",
+      type: "scatter3d",
       marker: { color: "#c0392b", size: 3, symbol: "triangle-up" },
       hoverinfo: "skip",
       showlegend: false,
@@ -589,6 +792,7 @@ async function drawCharts() {
     yaxis: { title: "Y (m)" },
     hovermode: "closest",
     legend: { x: 0.01, y: 1, font: { size: 10 } },
+    margin: { t: 20 },
   };
 
   const Plotly = await getPlotly();
@@ -601,7 +805,6 @@ async function drawCharts() {
     });
   });
 
-  // 状态栏
   const cnt: Record<string, number> = {};
   data.main.forEach((p) => {
     cnt[p.type] = (cnt[p.type] || 0) + 1;
@@ -614,28 +817,9 @@ async function drawCharts() {
   if (cnt.movec_end) parts.push(`${cnt.movec_end} movec_end`);
   if (cnt.csv) parts.push(`${cnt.csv} csv`);
 
-  statusMsg.value = `✅ 点位: ${data.main.length} (${parts.join(", ")})${
-    data.markers.length ? ` | 标记: ${data.markers.length}` : ""
+  statusMsg.value = `点位: ${data.main.length} (${parts.join(", ") || "无"})${
+    data.markers.length ? ` | 参考点: ${data.markers.length}` : ""
   }`;
-}
-
-function processScript() {
-  globalData = parseTrajectoryData(scriptInput.value);
-  drawCharts();
-}
-
-function processFile() {
-  const file = fileInputRef.value?.files?.[0];
-  if (!file) {
-    ElMessage.warning("请先选择文件");
-    return;
-  }
-  const reader = new FileReader();
-  reader.onload = (e) => {
-    globalData = parseTrajectoryData(e.target?.result as string);
-    drawCharts();
-  };
-  reader.readAsText(file);
 }
 
 function copyData() {
@@ -645,6 +829,31 @@ function copyData() {
   });
 }
 
+watch(
+  () => ({
+    plugin: workspace.plugin,
+    showLine: workspace.showLine,
+    showPoints: workspace.showPoints,
+    showMarkers: workspace.showMarkers,
+    showArrows: workspace.showArrows,
+  }),
+  () => persistNow()
+);
+
+onMounted(async () => {
+  if (route.path !== "/trace") {
+    router.replace("/trace");
+    return;
+  }
+  document.title = "轨迹分析";
+  if (!hasWorkspaceContent(workspace)) return;
+  applyParse();
+  await nextTick();
+  if (globalData.main.length || globalData.markers.length) {
+    await drawCharts();
+  }
+});
+
 onBeforeUnmount(() => {
   const Plotly = (window as Window & { Plotly?: PlotlyApi }).Plotly;
   if (Plotly && chart3D.value) Plotly.purge(chart3D.value);
@@ -653,21 +862,68 @@ onBeforeUnmount(() => {
 </script>
 
 <style lang="scss" scoped>
-.trace-container {
-  padding: 16px;
+.trace-page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--el-bg-color-page);
+}
+
+.trace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-shrink: 0;
+  height: 56px;
+  padding: 0 16px;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+
+  .header-left,
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+  }
+
+  .header-title {
+    font-size: 16px;
+    font-weight: 700;
+  }
+
+  .plugin-select {
+    width: 240px;
+  }
+}
+
+.trace-toolbar {
+  flex-shrink: 0;
+  padding: 10px 16px 8px;
+  background: var(--el-bg-color);
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+
+.upload-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .file-input {
-  display: block;
-  width: 100%;
-  margin-bottom: 8px;
-  font-size: 12px;
+  display: none;
 }
 
-.hint {
+.file-hint {
   font-size: 12px;
-  color: #7f8c8d;
-  line-height: 1.6;
+  color: var(--el-text-color-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .controls {
@@ -675,8 +931,8 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 20px;
   flex-wrap: wrap;
-  margin-top: 12px;
-  padding: 12px;
+  margin-top: 8px;
+  padding: 8px 12px;
   background: var(--el-fill-color-light);
   border-radius: 6px;
 }
@@ -707,24 +963,95 @@ onBeforeUnmount(() => {
 
 .status-msg {
   margin-left: auto;
-  padding: 8px 12px;
+  padding: 6px 12px;
   font-size: 12px;
   color: #155724;
   background: #d4edda;
   border-radius: 4px;
 }
 
+.trace-body {
+  display: grid;
+  grid-template-columns: 280px minmax(0, 1fr) 300px;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+  padding: 12px 16px 16px;
+}
+
+.tree-pane,
+.inspector-pane {
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  background: var(--el-bg-color);
+  border: 1px solid var(--el-border-color-lighter);
+  border-radius: 8px;
+}
+
+.pane-title {
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.tree-node {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.tree-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #409eff;
+}
+
+.kind-ref .tree-dot {
+  background: #e74c3c;
+}
+
+.kind-move .tree-dot {
+  background: #e67e22;
+}
+
+.kind-weld .tree-dot {
+  background: #27ae60;
+}
+
+.tree-flag {
+  padding: 0 4px;
+  font-size: 10px;
+  color: #409eff;
+  background: #ecf5ff;
+  border-radius: 3px;
+
+  &.ref {
+    color: #e74c3c;
+    background: #fdecea;
+  }
+}
+
+.chart-pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  gap: 12px;
+}
+
 .chart-box {
-  height: 480px;
-  margin-bottom: 16px;
+  flex: 1;
+  min-height: 0;
   background: #fff;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: 8px;
 }
 
-.inspector-panel {
-  position: sticky;
-  top: 80px;
+.chart-box-2d {
+  flex: 0.7;
 }
 
 .data-label {
@@ -771,6 +1098,22 @@ html.dark {
 
   .checkbox-item {
     color: var(--el-text-color-regular);
+  }
+
+  .chart-box {
+    background: var(--el-bg-color);
+  }
+}
+
+@media (max-width: 1100px) {
+  .trace-body {
+    grid-template-columns: 1fr;
+    overflow: auto;
+  }
+
+  .chart-box {
+    height: 360px;
+    flex: none;
   }
 }
 </style>

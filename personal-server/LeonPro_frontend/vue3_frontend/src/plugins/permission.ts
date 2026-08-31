@@ -4,18 +4,30 @@ import { getAccessToken } from "@/utils/auth";
 import router from "@/router";
 import { usePermissionStore, useUserStore } from "@/store";
 
-export function setupPermission() {
-  const whiteList = ["/login"];
+const PUBLIC_PATHS = new Set(["/login", "/trace", "/tool/trace"]);
 
+function isPublicPath(path: string) {
+  return PUBLIC_PATHS.has(path);
+}
+
+export function setupPermission() {
   router.beforeEach(async (to) => {
     NProgress.start();
 
     const isLogin = !!getAccessToken();
-    if (isLogin) {
-      if (to.path === "/login") {
+    if (to.path === "/login") {
+      if (isLogin) {
         return { path: "/" };
       }
+      return true;
+    }
 
+    // 轨迹分析为独立公开页：不走菜单权限，未登录也可访问
+    if (isPublicPath(to.path)) {
+      return true;
+    }
+
+    if (isLogin) {
       const permissionStore = usePermissionStore();
       if (permissionStore.isRoutesLoaded) {
         if (to.matched.length === 0) {
@@ -46,9 +58,6 @@ export function setupPermission() {
       }
     }
 
-    if (whiteList.includes(to.path)) {
-      return true;
-    }
     NProgress.done();
     return loginRedirect(to);
   });

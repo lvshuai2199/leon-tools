@@ -7,7 +7,7 @@ import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
 
 import UnoCSS from "unocss/vite";
 import { resolve } from "path";
-import { copyFileSync, mkdirSync } from "fs";
+import { copyFileSync, cpSync, existsSync, mkdirSync } from "fs";
 import { name, version, engines, dependencies, devDependencies } from "./package.json" with { type: "json" };
 
 const __APP_INFO__ = {
@@ -57,6 +57,12 @@ export default defineConfig(({ mode }: ConfigEnv) => {
           const destDir = resolve(import.meta.dirname, "public/lib");
           mkdirSync(destDir, { recursive: true });
           copyFileSync(src, resolve(destDir, "plotly.min.js"));
+
+          const eliteSrc = resolve(import.meta.dirname, "../elite-task");
+          const eliteDest = resolve(import.meta.dirname, "public/elite-task");
+          if (existsSync(eliteSrc)) {
+            cpSync(eliteSrc, eliteDest, { recursive: true });
+          }
         },
       },
       AutoImport({
