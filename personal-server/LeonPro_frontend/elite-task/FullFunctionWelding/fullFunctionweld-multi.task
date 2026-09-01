@@ -1,4 +1,4 @@
-<EliTask name="fullFunctionweld-multi" installationName="default" robotType="CS66" toolType="1" createdVersion="2.15.0.477" lastSavedVersion="2.15.0.477" robotSN="12222112110000" savedTime="2026-08-31 10:26:16" typeName="机器人主任务">
+<EliTask name="fullFunctionweld-multi" installationName="default" robotType="CS66" toolType="1" createdVersion="2.15.0.477" lastSavedVersion="2.15.0.477" robotSN="12222112110000" savedTime="2026-09-01 16:18:16" typeName="机器人主任务">
   <InitVariables typeName="初始化变量"/>
   <MainTask isTaskAlwaysLoops="true" hasBeforeStart="false" hasInitVariables="true" typeName="机器人主任务">
     <TaskExtensionNode extensionClass="cn.elibot.plugin.processes.FullFunctionWelding.WeldingQuickProgram" extensionType="" extensionDeveloper="ELITE ROBOTS" extensionName="FullFunctionWelding" typeName="快速编程工具">

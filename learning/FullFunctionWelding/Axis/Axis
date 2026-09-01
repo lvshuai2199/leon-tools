@@ -1,4 +1,4 @@
-def fullFunctionweldmulti():
+def fullFunctionWeldAxis():
   # Preamble Script.
   # Test Preamble Script To Be Added In The Future.
   set_safety_mode_transition_hardness(1)
@@ -2890,7 +2890,7 @@ def fullFunctionweldmulti():
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 快速编程工具
     $ LINE: (3, "快速编程工具")
-    full_repeatable(23)
+    full_repeatable(13)
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 点到点移动程序
@@ -2899,178 +2899,41 @@ def fullFunctionweldmulti():
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 路点_1（协同）
     $ LINE: (5, "路点_1（协同）")
-    movej(get_inverse_kin(full_apply_touch_offset([0.5101771297493309, -0.14749999996000482, 0.5416881216253817, 0.1459333210338106, 2.0292330563845067E-10, -1.5707963267650713]), qnear=[0.0,-1.6144881566476783,-1.183670202361204,-1.7682973003419973,1.570796327,0.0]),1.396263401670578, 1.0471975511965976, 0, 0.0)
+    movej(get_inverse_kin(full_apply_touch_offset([0.5118983230054975, -0.14749999996000482, 0.47480864477831675, 0.16044932735976677, 2.024689975644702E-10, -1.570796326762129]), qnear=[0.0,-1.570796327,-1.4103469990249229,-1.570796327,1.570796327,0.0]),1.396263401670578, 1.0471975511965976, 0, 0.0)
     # End: ELITECO Plugin Task Node
     in_welding_path = False
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
-    #   Type: 多层多道
-    $ LINE: (6, "多层多道")
-    full_multi_pass_process_index = 0
-    full_multi_pass_bead_index = 0
-    full_multi_pass_bead_count = 5
-    # multi-pass control start
-    while (full_multi_pass_bead_index < full_multi_pass_bead_count):
-      if (full_multi_pass_bead_index == 0):
-        # multi-pass bead 1
-        movej(get_inverse_kin(full_apply_touch_offset([0.5101765486552104, -0.14749999996000482, 0.4701341405782784, 0.14592499242412685, 2.02923539083244E-10, -1.5707963267650733]), qnear=[0.0,-1.5717609459564226,-1.4167893808245182,-1.577913661179622,1.570796327,0.0]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.5101766380998205, -0.010701010436020257, 0.4701365079337214, 0.14593129765037954, 7.968823202420826E-7, -1.5707997234434237]),1.05, 0.006, 0.0)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-      if (full_multi_pass_bead_index == 1):
-        # multi-pass bead 2
-        movej(get_inverse_kin(full_apply_touch_offset([0.5051765734275191, -0.14749999669123504, 0.47513416535046327, 0.14592499242412685, 2.02923539083244E-10, -1.5707963267650733]), qnear=[0.0,-1.5717609459564226,-1.4167893808245182,-1.577913661179622,1.570796327,0.0]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.5051766628721291, -0.01070100716725046, 0.4751365327059063, 0.14593129765037954, 7.968823202420826E-7, -1.5707997234434237]),1.05, 0.006, 0.0)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-      if (full_multi_pass_bead_index == 2):
-        # multi-pass bead 3
-        movej(get_inverse_kin(full_apply_touch_offset([0.5001765981998278, -0.14749999342246523, 0.4801341901226482, 0.14592499242412685, 2.02923539083244E-10, -1.5707963267650733]), qnear=[0.0,-1.5717609459564226,-1.4167893808245182,-1.577913661179622,1.570796327,0.0]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.5001766876444379, -0.01070100389848066, 0.4801365574780912, 0.14593129765037954, 7.968823202420826E-7, -1.5707997234434237]),1.05, 0.006, 0.0)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-      if (full_multi_pass_bead_index == 3):
-        # multi-pass bead 4
-        movej(get_inverse_kin(full_apply_touch_offset([0.49517662297213655, -0.14749999015369541, 0.48513421489483305, 0.14592499242412685, 2.02923539083244E-10, -1.5707963267650733]), qnear=[0.0,-1.5717609459564226,-1.4167893808245182,-1.577913661179622,1.570796327,0.0]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.49517671241674655, -0.010701000629710864, 0.4851365822502761, 0.14593129765037954, 7.968823202420826E-7, -1.5707997234434237]),1.05, 0.006, 0.0)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-      if (full_multi_pass_bead_index == 4):
-        # multi-pass bead 5
-        movej(get_inverse_kin(full_apply_touch_offset([0.49017664774444536, -0.14749998688492566, 0.490134239667018, 0.14592499242412685, 2.02923539083244E-10, -1.5707963267650733]), qnear=[0.0,-1.5717609459564226,-1.4167893808245182,-1.577913661179622,1.570796327,0.0]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.49017673718905536, -0.010700997360941066, 0.4901366070224611, 0.14593129765037954, 7.968823202420826E-7, -1.5707997234434237]),1.05, 0.006, 0.0)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-    end
-    # multi-pass control end
-    # End: ELITECO Plugin Task Node
-    # Begin: ELITECO Plugin Task Node
-    #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
-    #   Type: 多层多道开始 No.1
-    $ LINE: (7, "多层多道开始 No.1")
-    # End: ELITECO Plugin Task Node
-    # Begin: ELITECO Plugin Task Node
-    #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 直线焊接程序
-    $ LINE: (8, "直线焊接程序")
+    $ LINE: (6, "直线焊接程序")
+    # Begin: ELITECO Plugin Task Node
+    #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
+    #   Type: 开始点
+    $ LINE: (7, "开始点")
+    movej(get_inverse_kin(full_apply_touch_offset([0.5118981521270449, -0.14749999996000482, 0.4010096402067772, 0.16045100454208244, 2.0246894260679767E-10, -1.5707963267621285]), qnear=[0.0,-1.5594372626533428,-1.6113136701665347,-1.3811870430227302,1.570796327,0.0]),1.396263401670578, 1.0471975511965976, 0, 0.0)
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
-    #   Type: 多层多道结束
-    $ LINE: (14, "多层多道结束")
+    #   Type: MAG焊接开始 No.1
+    $ LINE: (8, "MAG焊接开始 No.1")
+    in_welding_path = True
+    full_current_mag_process = 0
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
-    #   Type: 多层多道
-    $ LINE: (15, "多层多道")
-    full_multi_pass_process_index = 0
-    full_multi_pass_bead_index = 0
-    full_multi_pass_bead_count = 5
-    # multi-pass control start
-    while (full_multi_pass_bead_index < full_multi_pass_bead_count):
-      if (full_multi_pass_bead_index == 0):
-        # multi-pass bead 1
-        movej(get_inverse_kin(full_apply_touch_offset([0.4290869242218776, 0.04959803155591941, 0.47013605216163973, 0.14593258426245093, 4.718075165794662E-6, -1.5708011774298976]), qnear=[0.4970852769923313,-1.3265268603294817,-1.624738449004585,-1.6326437389582096,1.501400635367849,0.4926245681940785]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.3686070665213629, 0.049597954249616626, 0.4701330723997333, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.3686063223477079, 0.16848840653003852, 0.47013363191647406, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.45806641299935613, 0.16848598029542114, 0.4701344392419976, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-      if (full_multi_pass_bead_index == 1):
-        # multi-pass bead 2
-        movej(get_inverse_kin(full_apply_touch_offset([0.42908684216901, 0.044597983571917986, 0.4751360041765046, 0.14593258426245093, 4.718075165794662E-6, -1.5708011774298976]), qnear=[0.4970852769923313,-1.3265268603294817,-1.624738449004585,-1.6326437389582096,1.501400635367849,0.4926245681940785]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.36696603199311356, 0.04459790416812401, 0.47513294356705876, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.36559997535041594, 0.17248365697325835, 0.4751336170792346, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.46107262951198086, 0.17248119581757734, 0.47513453076223455, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-      if (full_multi_pass_bead_index == 2):
-        # multi-pass bead 3
-        movej(get_inverse_kin(full_apply_touch_offset([0.4290867601161423, 0.03959793558791656, 0.48013595619136934, 0.14593258426245093, 4.718075165794662E-6, -1.5708011774298976]), qnear=[0.4970852769923313,-1.3265268603294817,-1.624738449004585,-1.6326437389582096,1.501400635367849,0.4926245681940785]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.36538111508194293, 0.03959785415836181, 0.4801328174992244, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.36259362835312403, 0.17647890741647815, 0.48013360224199514, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.46407884602460553, 0.17647641133973355, 0.48013462228247134, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-      if (full_multi_pass_bead_index == 3):
-        # multi-pass bead 4
-        movej(get_inverse_kin(full_apply_touch_offset([0.4290866780632746, 0.03459788760391514, 0.48513590820623415, 0.14593258426245093, 4.718075165794662E-6, -1.5708011774298976]), qnear=[0.4970852769923313,-1.3265268603294817,-1.624738449004585,-1.6326437389582096,1.501400635367849,0.4926245681940785]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.363846924235738, 0.034597804213438464, 0.48513269393059544, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.359587281355832, 0.18047415785969798, 0.4851335874047557, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.4670850625372302, 0.18047162686188975, 0.4851347138027083, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-      if (full_multi_pass_bead_index == 4):
-        # multi-pass bead 5
-        movej(get_inverse_kin(full_apply_touch_offset([0.429086596010407, 0.02959783961991372, 0.49013586022109895, 0.14593258426245093, 4.718075165794662E-6, -1.5708011774298976]), qnear=[0.4970852769923313,-1.3265268603294817,-1.624738449004585,-1.6326437389582096,1.501400635367849,0.4926245681940785]),1.396263401670578, 1.0471975511965976, 0, 0.0)
-        in_welding_path = True
-        full_current_mag_process = 0
-        movep(full_apply_touch_offset([0.36235887963201774, 0.02959775432749998, 0.49013257263553034, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.3565809343585401, 0.1844694083029178, 0.4901335725675162, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.4700912790498549, 0.18446684238404595, 0.4901348053229452, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
-        full_current_mag_process = -1
-        in_welding_path = False
-        in_welding_path = False
-        full_multi_pass_bead_index = full_multi_pass_bead_index + 1
-      end
-    end
-    # multi-pass control end
+    #   Type: 直线路点
+    $ LINE: (9, "直线路点")
+    movep(full_apply_touch_offset([0.5118975332548967, -0.06838935499602106, 0.4010083483918747, 0.16044691402958464, -7.723177187121058E-7, -1.5707948170127743]),1.05, 0.006, 0.0)
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
-    #   Type: 多层多道开始 No.1
-    $ LINE: (16, "多层多道开始 No.1")
+    #   Type: MAG焊接结束
+    $ LINE: (10, "MAG焊接结束")
+    full_current_mag_process = -1
+    in_welding_path = False
     # End: ELITECO Plugin Task Node
-    # Begin: ELITECO Plugin Task Node
-    #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
-    #   Type: 混合焊接程序
-    $ LINE: (17, "混合焊接程序")
-    # End: ELITECO Plugin Task Node
-    # Begin: ELITECO Plugin Task Node
-    #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
-    #   Type: 多层多道结束
-    $ LINE: (26, "多层多道结束")
+    in_welding_path = False
     # End: ELITECO Plugin Task Node
     # End: ELITECO Plugin Task Node
   end
