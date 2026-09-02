@@ -72,6 +72,36 @@
         </el-card>
       </el-col>
     </el-row>
+
+    <!-- 系统数据（随代码部署） -->
+    <div class="section-title">系统数据</div>
+    <el-card shadow="never" class="data-pack-card">
+      <div class="data-pack-head">
+        <div>
+          <div class="data-pack-title">导出部署数据包</div>
+          <p class="data-pack-desc">
+            导出当前思维导图（含 PNG）和注册码配置。把下载的
+            <code>system-data.zip</code>
+            放到代码目录
+            <code>personal-server/LeonPro_backend/SpringBoot/src/main/resources/seed/system-data.zip</code>
+            后重新打包部署，新环境启动会自动导入。
+          </p>
+        </div>
+        <el-button type="primary" :icon="Download" :loading="exporting" @click="exportPack">
+          导出 system-data.zip
+        </el-button>
+      </div>
+      <el-descriptions v-if="packStatus" :column="2" border size="small" class="data-pack-status">
+        <el-descriptions-item label="思维导图">{{ packStatus.mindmapCount ?? 0 }} 条</el-descriptions-item>
+        <el-descriptions-item label="注册码配置">{{ packStatus.regCodeConfigCount ?? 0 }} 条</el-descriptions-item>
+        <el-descriptions-item label="代码内数据包">
+          {{ packStatus.packOnClasspath ? "已放置，启动会导入" : "未放置" }}
+        </el-descriptions-item>
+        <el-descriptions-item label="运行目录数据包">
+          {{ packStatus.packOnDisk ? "已放置，启动会导入" : "未放置" }}
+        </el-descriptions-item>
+      </el-descriptions>
+    </el-card>
   </div>
 </template>
 
@@ -82,8 +112,9 @@ defineOptions({
 });
 
 import { markRaw } from "vue";
-import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar, Key, Setting } from "@element-plus/icons-vue";
+import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar, Key, Setting, Download, Share, Notebook } from "@element-plus/icons-vue";
 import { useUserStore } from "@/store/modules/user";
+import SystemDataAPI, { type SystemDataStatusVO } from "@/api/system/data-pack";
 
 const router = useRouter();
 const userStore = useUserStore();
@@ -135,7 +166,7 @@ const toolCards = ref<ToolCard[]>([
   },
   {
     title: "注册码生成",
-    desc: "按公司与名称生成临时注册码，结果写入操作日志",
+    desc: "按公司与名称生成临时注册码，结果写入注册码记录",
     path: "/tool/regcode",
     icon: markRaw(Key),
     color: "#F76560",
@@ -146,6 +177,13 @@ const toolCards = ref<ToolCard[]>([
     path: "/tool/regcode-config",
     icon: markRaw(Setting),
     color: "#9B59B6",
+  },
+  {
+    title: "思维导图",
+    desc: "Markdown 生成导图，可存储并随系统数据包一起部署",
+    path: "/tool/mindmap",
+    icon: markRaw(Share),
+    color: "#14C9C9",
   },
 ]);
 
@@ -158,7 +196,7 @@ const workCards = ref<ToolCard[]>([
     color: "#4080FF",
   },
   {
-    title: "操作日志",
+    title: "注册码记录",
     desc: "注册码生成记录：公司、名称、操作人员与时间",
     path: "/work/registration",
     icon: markRaw(Postcard),
@@ -181,7 +219,64 @@ const systemCards = ref<ToolCard[]>([
     icon: markRaw(Avatar),
     color: "#FF9A2E",
   },
+  {
+    title: "操作日志",
+    desc: "全站用户操作、关键参数、失败与异常，便于回溯排查",
+    path: "/system/oplog",
+    icon: markRaw(Notebook),
+    color: "#73767A",
+  },
 ]);
+
+const exporting = ref(false);
+const packStatus = ref<SystemDataStatusVO>();
+
+function loadPackStatus() {
+  SystemDataAPI.status()
+    .then((data) => {
+      packStatus.value = data;
+    })
+    .catch((e) => {
+      console.error(e);
+    });
+}
+
+async function exportPack() {
+  exporting.value = true;
+  try {
+    const res: any = await SystemDataAPI.export();
+    const blob: Blob = res instanceof Blob ? res : res.data;
+    if (!blob) {
+      ElMessage.error("导出失败");
+      return;
+    }
+    if (blob.type && blob.type.includes("application/json")) {
+      const text = await blob.text();
+      try {
+        const json = JSON.parse(text);
+        ElMessage.error(json.message || "导出失败");
+      } catch {
+        ElMessage.error("导出失败");
+      }
+      return;
+    }
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "system-data.zip";
+    a.click();
+    URL.revokeObjectURL(url);
+    ElMessage.success("已下载，放到后端 seed 目录后重新部署即可自动导入");
+  } catch (e) {
+    console.error(e);
+  } finally {
+    exporting.value = false;
+  }
+}
+
+onMounted(() => {
+  loadPackStatus();
+});
 </script>
 
 <style lang="scss" scoped>
@@ -270,6 +365,37 @@ const systemCards = ref<ToolCard[]>([
           color: var(--el-text-color-secondary);
         }
       }
+    }
+  }
+}
+
+.data-pack-card {
+  margin-bottom: 16px;
+
+  .data-pack-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 12px;
+  }
+
+  .data-pack-title {
+    font-size: 15px;
+    font-weight: 600;
+  }
+
+  .data-pack-desc {
+    margin-top: 8px;
+    font-size: 13px;
+    line-height: 1.6;
+    color: var(--el-text-color-secondary);
+
+    code {
+      padding: 0 4px;
+      font-size: 12px;
+      color: var(--el-color-primary);
+      word-break: break-all;
     }
   }
 }
