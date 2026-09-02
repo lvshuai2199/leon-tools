@@ -35,3 +35,6 @@ build/
 ### Deploy ###
 deploy/dist/
 deploy/deploy.env
+
+### Local mindmap images ###
+data/

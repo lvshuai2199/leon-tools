@@ -25,6 +25,7 @@ public class SchemaPatcher implements CommandLineRunner {
         ensureColumn("com_registration", "operator",
                 "ALTER TABLE com_registration ADD COLUMN operator VARCHAR(100) DEFAULT NULL COMMENT '操作人员（用户ID，无则未知人员）'");
         ensureRegCodeConfigTable();
+        ensureToolMindmapTable();
     }
 
     private void ensureRegCodeConfigTable() {
@@ -50,6 +51,29 @@ public class SchemaPatcher implements CommandLineRunner {
                         + "PRIMARY KEY (`id`)"
                         + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='注册码生成配置'");
         log.info("已创建表 reg_code_config。");
+    }
+
+    private void ensureToolMindmapTable() {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                Integer.class,
+                "tool_mindmap");
+        if (count != null && count > 0) {
+            return;
+        }
+        jdbcTemplate.execute(
+                "CREATE TABLE `tool_mindmap` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '主键',"
+                        + "`title` VARCHAR(200) DEFAULT NULL COMMENT '标题',"
+                        + "`markdown` MEDIUMTEXT COMMENT 'Markdown 源码',"
+                        + "`public_id` VARCHAR(64) NOT NULL COMMENT '对外访问标识',"
+                        + "`create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',"
+                        + "`update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',"
+                        + "PRIMARY KEY (`id`),"
+                        + "UNIQUE KEY `uk_tool_mindmap_public_id` (`public_id`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='思维导图存储'");
+        log.info("已创建表 tool_mindmap。");
     }
 
     private void ensureColumn(String table, String column, String alterSql) {

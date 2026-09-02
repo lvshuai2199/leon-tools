@@ -44,6 +44,15 @@ export default defineConfig(({ mode }: ConfigEnv) => {
           changeOrigin: true,
           target: env.VITE_APP_API_URL,
           rewrite: (path) => path.replace(new RegExp("^" + env.VITE_APP_BASE_API), ""),
+          configure: (proxy) => {
+            proxy.on("proxyRes", (proxyRes, req) => {
+              if (req.url?.includes("/public/mindmap/")) {
+                proxyRes.headers["cache-control"] = "no-store, no-cache, max-age=0, must-revalidate";
+                proxyRes.headers["pragma"] = "no-cache";
+                proxyRes.headers["expires"] = "0";
+              }
+            });
+          },
         },
       },
     },

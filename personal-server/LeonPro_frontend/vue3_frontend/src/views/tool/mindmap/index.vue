@@ -14,7 +14,16 @@
         <el-button size="small" type="primary" :icon="Download" @click="exportPNG">下载 PNG</el-button>
         <el-button size="small" type="success" :icon="Download" @click="exportSVG">下载 SVG</el-button>
         <el-button size="small" :icon="Download" @click="exportMarkdown">下载 Markdown</el-button>
-        <span class="toolbar-tip">用 Markdown 标题与列表层级自动构建思维导图</span>
+        <el-divider direction="vertical" />
+        <el-button size="small" type="warning" :loading="saveLoading" @click="openSaveDialog(false)">
+          {{ currentId ? "保存修改" : "存储并生成链接" }}
+        </el-button>
+        <el-button v-if="currentId" size="small" @click="openSaveDialog(true)">另存为</el-button>
+        <el-button size="small" @click="openStoredList">已存储列表</el-button>
+        <span class="toolbar-tip">
+          <template v-if="currentId">正在编辑：{{ currentTitle }}</template>
+          <template v-else>存储后可查看本地图片链接，供外部访问</template>
+        </span>
       </div>
 
       <div class="main">
@@ -36,20 +45,83 @@
             思维导图预览
             <span class="pane-tip">鼠标拖拽平移 · 滚轮缩放</span>
           </div>
-          <div ref="mapWrapRef" class="map-wrap">
-            <svg
-              ref="svgRef"
-              class="map-svg"
-              @wheel.prevent="onWheel"
-              @mousedown="onMouseDown"
-              @mousemove="onMouseMove"
-              @mouseup="onMouseUp"
-              @mouseleave="onMouseUp"
-            ></svg>
+          <div
+            ref="mapWrapRef"
+            class="map-wrap"
+            @mousedown="onMouseDown"
+            @mousemove="onMouseMove"
+            @mouseup="onMouseUp"
+            @mouseleave="onMouseUp"
+          >
+            <svg ref="svgRef" class="map-svg"></svg>
           </div>
         </div>
       </div>
     </el-card>
+
+    <el-dialog v-model="saveDialog.visible" :title="saveDialog.saveAs ? '另存为' : currentId ? '保存修改' : '存储思维导图'" width="460px">
+      <el-form label-width="80px">
+        <el-form-item label="标题">
+          <el-input v-model="saveDialog.title" maxlength="80" show-word-limit placeholder="用于列表展示" />
+        </el-form-item>
+        <p class="save-hint">将生成 PNG 存到服务器，并可查看本地图片链接。</p>
+      </el-form>
+      <template #footer>
+        <el-button @click="saveDialog.visible = false">取消</el-button>
+        <el-button type="primary" :loading="saveLoading" @click="confirmSave">确定存储</el-button>
+      </template>
+    </el-dialog>
+
+    <el-drawer v-model="listDrawer.visible" title="已存储思维导图" size="640px" destroy-on-close>
+      <div class="list-toolbar">
+        <el-input
+          v-model="listQuery.title"
+          placeholder="按标题搜索"
+          clearable
+          style="width: 220px"
+          @keyup.enter="loadStoredList"
+        />
+        <el-button type="primary" @click="loadStoredList">查询</el-button>
+      </div>
+      <el-table v-loading="listDrawer.loading" :data="listDrawer.records" border>
+        <el-table-column label="预览" width="88" align="center">
+          <template #default="{ row }">
+            <el-image
+              class="thumb"
+              :src="mindmapPreviewUrl(row)"
+              :preview-src-list="[mindmapPublicUrl(row)]"
+              fit="contain"
+              preview-teleported
+            />
+          </template>
+        </el-table-column>
+        <el-table-column prop="title" label="标题" min-width="140" show-overflow-tooltip />
+        <el-table-column prop="updateTime" label="更新时间" width="170" />
+        <el-table-column label="操作" width="200" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="loadStored(row)">编辑</el-button>
+            <el-button type="success" link size="small" @click="viewStoredLink(row)">查看链接</el-button>
+            <el-button type="danger" link size="small" @click="deleteStored(row)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <Pagination
+        v-if="listDrawer.total > 0"
+        v-model:page="listQuery.current"
+        v-model:limit="listQuery.size"
+        :total="listDrawer.total"
+        @pagination="loadStoredList"
+      />
+    </el-drawer>
+
+    <el-dialog v-model="linkDialog.visible" title="图片链接" width="560px">
+      <el-input v-model="linkDialog.url" readonly>
+        <template #append>
+          <el-button @click="openLink">打开</el-button>
+        </template>
+      </el-input>
+      <p class="save-hint" style="margin: 10px 0 0">选中上方地址后自行复制即可。</p>
+    </el-dialog>
   </div>
 </template>
 
@@ -59,6 +131,7 @@ import Codemirror from "codemirror-editor-vue3";
 import "codemirror/mode/markdown/markdown.js";
 import type { EditorConfiguration } from "codemirror";
 import { Download } from "@element-plus/icons-vue";
+import MindmapAPI, { mindmapPreviewUrl, mindmapPublicUrl, type MindmapVO } from "@/api/tool/mindmap";
 
 defineOptions({ name: "Mindmap" });
 
@@ -110,6 +183,28 @@ const exampleMarkdown = `# LeonTools 工具平台
 const markdown = ref(exampleMarkdown);
 const svgRef = ref<SVGSVGElement>();
 const mapWrapRef = ref<HTMLElement>();
+const currentId = ref("");
+const currentTitle = ref("");
+const saveLoading = ref(false);
+
+const saveDialog = reactive({
+  visible: false,
+  saveAs: false,
+  title: "",
+});
+
+const listQuery = reactive({
+  current: 1,
+  size: 10,
+  title: "",
+});
+
+const listDrawer = reactive({
+  visible: false,
+  loading: false,
+  records: [] as MindmapVO[],
+  total: 0,
+});
 
 const cmOptions: EditorConfiguration = {
   mode: "markdown",
@@ -129,13 +224,15 @@ interface TreeNode {
   height: number;
 }
 
-const LEVEL_GAP = 70; // 相邻层水平间距
+const LEVEL_GAP = 56; // 父子节点水平间距（父右缘 → 子左缘）
+const SIBLING_GAP = 14; // 兄弟节点垂直间距
 const NODE_PAD_X = 14;
 const NODE_PAD_Y = 8;
 const NODE_MIN_WIDTH = 48;
 const FONT_SIZE = 14;
 const FONT_LINE = 20;
-const CHAR_WIDTH = 8;
+const FONT_FAMILY =
+  "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif";
 
 // 主题色（按层级）
 const PALETTE = [
@@ -160,34 +257,53 @@ function plainText(s: string): string {
     .trim();
 }
 
-/** 估算节点宽高（基于字符数） */
+let measureCtx: CanvasRenderingContext2D | null = null;
+
+/** 按真实字体测量节点宽高（中文等宽字符不会估窄导致连线错位） */
 function measure(text: string) {
-  const lines = text.split(/\n/).length;
-  const maxLineLen = Math.max(...text.split(/\n/).map((l) => l.length));
+  if (!measureCtx) {
+    measureCtx = document.createElement("canvas").getContext("2d");
+  }
+  const ctx = measureCtx;
+  const lines = text.split(/\n/);
+  let maxW = 0;
+  if (ctx) {
+    ctx.font = `${FONT_SIZE}px ${FONT_FAMILY}`;
+    for (const line of lines) {
+      maxW = Math.max(maxW, ctx.measureText(line || " ").width);
+    }
+  } else {
+    maxW = Math.max(...lines.map((l) => [...l].length)) * FONT_SIZE;
+  }
   return {
-    width: Math.max(NODE_MIN_WIDTH, maxLineLen * CHAR_WIDTH + NODE_PAD_X * 2),
-    height: lines * FONT_LINE + NODE_PAD_Y * 2,
+    width: Math.max(NODE_MIN_WIDTH, Math.ceil(maxW) + NODE_PAD_X * 2),
+    height: Math.max(lines.length, 1) * FONT_LINE + NODE_PAD_Y * 2,
   };
 }
 
 /** 递归将 token 列表转换为 TreeNode（追加到 parent.children） */
 function buildFromTokens(tokens: Tokens.Generic[], parent: TreeNode) {
-  for (const tok of tokens) {
+  let i = 0;
+  while (i < tokens.length) {
+    const tok = tokens[i];
     if (tok.type === "heading") {
       const h = tok as Tokens.Heading;
       const node: TreeNode = { text: plainText(h.text), children: [], x: 0, y: 0, width: 0, height: 0 };
       parent.children.push(node);
-      // 后续同级 token 中，直到下一个同级/更高级 heading 之前的内容都视为该节点子内容
-      const childrenTokens = collectSubTokens(tokens, tokens.indexOf(h));
+      const childrenTokens = collectSubTokens(tokens, i);
       if (childrenTokens.length > 0) {
         buildFromTokens(childrenTokens, node);
       }
+      i += 1 + childrenTokens.length;
     } else if (tok.type === "list") {
       const list = tok as Tokens.List;
       for (const item of list.items) {
         const node = collectListItem(item);
         if (node) parent.children.push(node);
       }
+      i++;
+    } else {
+      i++;
     }
   }
 }
@@ -209,7 +325,7 @@ function collectListItem(item: Tokens.ListItem): TreeNode | null {
   // item.text 是渲染文本（含 list 缩进标记），item.tokens 是结构化 tokens
   // item.tokens 通常包含 text(tokens)+list（嵌套）
   // 用 item.text 第一行作为节点文本
-  const firstLine = item.text.split("\n")[0].trim();
+  const firstLine = plainText(item.text.split("\n")[0]);
   const node: TreeNode = { text: firstLine, children: [], x: 0, y: 0, width: 0, height: 0 };
   // 递归处理 item.tokens 中的嵌套 list
   for (const sub of item.tokens) {
@@ -241,51 +357,47 @@ function parseMarkdown(md: string): TreeNode {
     const sub = collectSubTokens(tokens, tokens.indexOf(firstHeading));
     buildFromTokens(sub, root);
   } else {
-    // 无标题：根 = "思维导图"，把其它 heading 作为一级子
-    for (const t of tokens) {
-      if (t.type === "heading") {
-        const h = t as Tokens.Heading;
-        const node: TreeNode = { text: plainText(h.text), children: [], x: 0, y: 0, width: 0, height: 0 };
-        const sub = collectSubTokens(tokens, tokens.indexOf(h));
-        buildFromTokens(sub, node);
-        root.children.push(node);
-      } else if (t.type === "list") {
-        const list = t as Tokens.List;
-        for (const item of list.items) {
-          const n = collectListItem(item);
-          if (n) root.children.push(n);
-        }
-      }
-    }
+    buildFromTokens(tokens, root);
   }
   return root;
 }
 
-/** 递归布局：根在最左侧，子节点向右逐层展开。
- *  节点 x = depth * LEVEL_GAP + width/2（节点中心 x）
- *  父节点 y = 子节点 y 的中点；叶节点 y 由游标累加
- *  返回分配占用的总高度
+/** 递归布局：子节点紧贴在父节点右侧（按真实宽度 + 水平间距），避免连线回穿。
+ *  父节点垂直居中于首尾子节点；返回本子树占用的总高度。
  */
-function layoutTree(node: TreeNode, depth: number, yStart: number): number {
+function layoutTree(node: TreeNode, xStart: number, yStart: number): number {
   const m = measure(node.text);
   node.width = m.width;
   node.height = m.height;
-  node.x = depth * LEVEL_GAP + node.width / 2;
+  node.x = xStart + node.width / 2;
 
   if (!node.children || node.children.length === 0) {
     node.y = yStart + node.height / 2;
     return node.height;
   }
 
+  const childXStart = xStart + node.width + LEVEL_GAP;
   let cursor = yStart;
-  for (const child of node.children) {
-    cursor += layoutTree(child, depth + 1, cursor);
-  }
-  // 父节点 y 居中于第一个/最后一个子节点的中点
+  node.children.forEach((child, i) => {
+    if (i > 0) cursor += SIBLING_GAP;
+    cursor += layoutTree(child, childXStart, cursor);
+  });
   const first = node.children[0];
   const last = node.children[node.children.length - 1];
   node.y = (first.y + last.y) / 2;
-  return cursor - yStart;
+  const occupied = cursor - yStart;
+  const top = node.y - node.height / 2;
+  const bottom = node.y + node.height / 2;
+  const extraTop = Math.max(0, yStart - top);
+  if (extraTop > 0) {
+    shiftTree(node, extraTop);
+  }
+  return Math.max(occupied + extraTop, bottom + extraTop - yStart);
+}
+
+function shiftTree(node: TreeNode, dy: number) {
+  node.y += dy;
+  node.children.forEach((c) => shiftTree(c, dy));
 }
 
 /** 计算整棵树的边界（用于设置 viewBox） */
@@ -328,7 +440,7 @@ function renderTree(root: TreeNode) {
   // 布局
   layoutTree(root, 0, 0);
   const bounds = computeBounds(root);
-  const padding = 24;
+  const padding = 40;
   const vbX = bounds.minX - padding;
   const vbY = bounds.minY - padding;
   const vbW = bounds.width + padding * 2;
@@ -380,8 +492,7 @@ function renderTree(root: TreeNode) {
       x: node.x,
       y: node.y,
       "font-size": FONT_SIZE,
-      "font-family":
-        "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif",
+      "font-family": FONT_FAMILY,
       "text-anchor": "middle",
       "dominant-baseline": "middle",
       fill: isRoot ? "#ffffff" : "#222",
@@ -416,6 +527,7 @@ function render() {
   try {
     const root = parseMarkdown(markdown.value);
     renderTree(root);
+    applyTransform();
   } catch (e) {
     console.error("mindmap render error", e);
   }
@@ -433,20 +545,28 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function getExportSize() {
+  const svg = svgRef.value!;
+  const vb = (svg.getAttribute("viewBox") || "0 0 800 600").split(/\s+/).map(Number);
+  const w = Math.max(1, vb[2] || 800);
+  const h = Math.max(1, vb[3] || 600);
+  return { vb, w, h };
+}
+
 function getSvgXml(): string {
   const svg = svgRef.value!;
-  // 用实际渲染宽高，避免 viewBox 转换造成导出变形
-  const wrap = mapWrapRef.value!;
-  const w = wrap.clientWidth || 800;
-  const h = wrap.clientHeight || 600;
+  const { vb, w, h } = getExportSize();
   const clone = svg.cloneNode(true) as SVGSVGElement;
-  clone.setAttribute("width", String(w));
-  clone.setAttribute("height", String(h));
-  // 用真实 viewBox（已设置）
+  // 导出完整画布，忽略预览里的平移/缩放，避免内容被裁切
+  const g = clone.querySelector("#mm-root");
+  g?.removeAttribute("transform");
+  clone.removeAttribute("style");
+  clone.setAttribute("width", String(Math.round(w)));
+  clone.setAttribute("height", String(Math.round(h)));
+  clone.setAttribute("viewBox", `${vb[0]} ${vb[1]} ${w} ${h}`);
+  clone.setAttribute("preserveAspectRatio", "xMidYMid meet");
   clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
-  // 加白底
-  const vb = (svg.getAttribute("viewBox") || "0 0 800 600").split(/\s+/).map(Number);
-  const bg = el("rect", { x: vb[0], y: vb[1], width: vb[2], height: vb[3], fill: "#ffffff" });
+  const bg = el("rect", { x: vb[0], y: vb[1], width: w, height: h, fill: "#ffffff" });
   clone.insertBefore(bg, clone.firstChild);
   return new XMLSerializer().serializeToString(clone);
 }
@@ -457,29 +577,164 @@ function exportSVG() {
   ElMessage.success("SVG 已导出");
 }
 
-async function exportPNG() {
+async function renderPngBlob(): Promise<Blob> {
   const xml = getSvgXml();
   const url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml;charset=utf-8" }));
-  const img = new Image();
-  await new Promise<void>((resolve, reject) => {
-    img.onload = () => resolve();
-    img.onerror = () => reject(new Error("SVG 转图片失败"));
-    img.src = url;
+  try {
+    const img = new Image();
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error("SVG 转图片失败"));
+      img.src = url;
+    });
+    const { w, h } = getExportSize();
+    const scale = 2;
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.max(1, Math.round(w * scale));
+    canvas.height = Math.max(1, Math.round(h * scale));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("无法创建画布");
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
+    if (!blob) throw new Error("生成 PNG 失败");
+    return blob;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("读取图片失败"));
+    reader.readAsDataURL(blob);
   });
-  const wrap = mapWrapRef.value!;
-  const scale = 2;
-  const canvas = document.createElement("canvas");
-  canvas.width = (wrap.clientWidth || 800) * scale;
-  canvas.height = (wrap.clientHeight || 600) * scale;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-  ctx.fillStyle = "#ffffff";
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-  URL.revokeObjectURL(url);
-  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/png"));
-  if (blob) downloadBlob(blob, "mindmap.png");
-  ElMessage.success("PNG 已导出");
+}
+
+function defaultTitleFromMarkdown() {
+  const line = (markdown.value || "").split("\n").map((s) => s.trim().replace(/^#+\s*/, "")).find(Boolean);
+  return line ? line.slice(0, 80) : "未命名思维导图";
+}
+
+function openSaveDialog(saveAs: boolean) {
+  saveDialog.saveAs = saveAs;
+  saveDialog.title = currentTitle.value || defaultTitleFromMarkdown();
+  saveDialog.visible = true;
+}
+
+async function confirmSave() {
+  if (!markdown.value?.trim()) {
+    ElMessage.warning("当前没有可存储的内容");
+    return;
+  }
+  saveLoading.value = true;
+  try {
+    clearTimeout(renderTimer);
+    render();
+    const blob = await renderPngBlob();
+    const imageBase64 = await blobToDataUrl(blob);
+    const saved = await MindmapAPI.save({
+      id: saveDialog.saveAs ? undefined : currentId.value || undefined,
+      title: saveDialog.title.trim() || defaultTitleFromMarkdown(),
+      markdown: markdown.value,
+      imageBase64,
+    });
+    currentId.value = saved.id || "";
+    currentTitle.value = saved.title || saveDialog.title;
+    saveDialog.visible = false;
+    ElMessage.success("已存储");
+    showLink(mindmapPublicUrl(saved));
+  } catch (e) {
+    console.error(e);
+  } finally {
+    saveLoading.value = false;
+  }
+}
+
+function openStoredList() {
+  listDrawer.visible = true;
+  loadStoredList();
+}
+
+function loadStoredList() {
+  listDrawer.loading = true;
+  MindmapAPI.getPage(listQuery)
+    .then((data) => {
+      listDrawer.records = data.records || [];
+      listDrawer.total = data.total || 0;
+    })
+    .catch((error) => {
+      console.error(error);
+    })
+    .finally(() => {
+      listDrawer.loading = false;
+    });
+}
+
+async function loadStored(row: MindmapVO) {
+  if (!row.id) return;
+  try {
+    const detail = await MindmapAPI.getById(row.id);
+    markdown.value = detail.markdown || "";
+    currentId.value = detail.id || "";
+    currentTitle.value = detail.title || "";
+    listDrawer.visible = false;
+    ElMessage.success("已载入，可继续修改后保存");
+  } catch (e) {
+    console.error(e);
+  }
+}
+
+const linkDialog = reactive({
+  visible: false,
+  url: "",
+});
+
+function showLink(url: string) {
+  linkDialog.url = url;
+  linkDialog.visible = true;
+}
+
+function viewStoredLink(row: MindmapVO) {
+  showLink(mindmapPublicUrl(row));
+}
+
+function openLink() {
+  if (linkDialog.url) window.open(linkDialog.url, "_blank");
+}
+
+function deleteStored(row: MindmapVO) {
+  if (!row.id) return;
+  ElMessageBox.confirm(`确认删除「${row.title || "未命名"}」吗？删除后外链将失效。`, "警告", {
+    confirmButtonText: "确定",
+    cancelButtonText: "取消",
+    type: "warning",
+  })
+    .then(() => {
+      MindmapAPI.deleteByIds([row.id!]).then(() => {
+        ElMessage.success("已删除");
+        if (currentId.value === row.id) {
+          currentId.value = "";
+          currentTitle.value = "";
+        }
+        loadStoredList();
+      });
+    })
+    .catch(() => {});
+}
+
+async function exportPNG() {
+  try {
+    const blob = await renderPngBlob();
+    downloadBlob(blob, "mindmap.png");
+    ElMessage.success("PNG 已导出");
+  } catch (e) {
+    console.error(e);
+    ElMessage.error("PNG 导出失败");
+  }
 }
 
 function exportMarkdown() {
@@ -496,22 +751,28 @@ function exportMarkdown() {
 
 function loadExample() {
   markdown.value = exampleMarkdown;
+  currentId.value = "";
+  currentTitle.value = "";
   ElMessage.success("已加载示例");
 }
 
-/** 简单的滚轮缩放 + 拖拽平移 */
+/** 预览区内滚轮缩放 + 拖拽平移（仅变换内部图形，不缩放整页） */
 const viewState = reactive({ scale: 1, tx: 0, ty: 0 });
 let dragStart: { x: number; y: number; tx: number; ty: number } | null = null;
+let wrapRo: ResizeObserver | undefined;
 
 function applyTransform() {
   const g = svgRef.value?.querySelector("#mm-root") as SVGElement | null;
-  if (g) g.setAttribute("transform", `translate(${viewState.tx},${viewState.ty}) scale(${viewState.scale})`);
+  if (g) {
+    g.setAttribute("transform", `translate(${viewState.tx},${viewState.ty}) scale(${viewState.scale})`);
+  }
 }
 
 function onWheel(e: WheelEvent) {
   e.preventDefault();
-  const delta = -e.deltaY * 0.001;
-  viewState.scale = Math.min(3, Math.max(0.3, viewState.scale * (1 + delta)));
+  e.stopPropagation();
+  const delta = e.deltaY < 0 ? 1.08 : 1 / 1.08;
+  viewState.scale = Math.min(4, Math.max(0.25, viewState.scale * delta));
   applyTransform();
 }
 
@@ -531,11 +792,17 @@ function onMouseUp() {
 
 onMounted(() => {
   render();
-  const ro = new ResizeObserver(() => applyTransform());
-  if (mapWrapRef.value) ro.observe(mapWrapRef.value);
+  const wrap = mapWrapRef.value;
+  if (wrap) {
+    wrap.addEventListener("wheel", onWheel, { passive: false });
+    wrapRo = new ResizeObserver(() => applyTransform());
+    wrapRo.observe(wrap);
+  }
 });
 
 onBeforeUnmount(() => {
+  mapWrapRef.value?.removeEventListener("wheel", onWheel);
+  wrapRo?.disconnect();
   if (svgRef.value) svgRef.value.innerHTML = "";
 });
 </script>
@@ -560,6 +827,25 @@ onBeforeUnmount(() => {
     font-size: 12px;
     color: var(--el-text-color-secondary);
   }
+}
+
+.save-hint {
+  margin: 0 0 0 80px;
+  font-size: 12px;
+  color: var(--el-text-color-secondary);
+}
+
+.list-toolbar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.thumb {
+  width: 56px;
+  height: 40px;
+  border-radius: 4px;
+  background: #fff;
 }
 
 .main {
@@ -607,6 +893,8 @@ onBeforeUnmount(() => {
   overflow: hidden;
   background: #fff;
   cursor: grab;
+  touch-action: none;
+  overscroll-behavior: contain;
 }
 
 .map-wrap:active {
@@ -617,6 +905,7 @@ onBeforeUnmount(() => {
   display: block;
   width: 100%;
   height: 100%;
+  overflow: hidden;
   user-select: none;
 }
 
