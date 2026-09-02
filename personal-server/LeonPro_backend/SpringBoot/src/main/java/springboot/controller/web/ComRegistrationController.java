@@ -81,9 +81,9 @@ public class ComRegistrationController {
         }
         boolean save = this.comRegistrationService.save(comRegistration);
         if (save) {
-            return ApiResponse.success("已写入操作日志");
+            return ApiResponse.success("已写入注册码记录");
         }
-        return ApiResponse.failure("写入操作日志失败");
+        return ApiResponse.failure("写入注册码记录失败");
     }
 
     /**

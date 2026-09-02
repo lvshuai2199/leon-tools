@@ -39,7 +39,7 @@
 
     <el-card shadow="never">
       <template #header>
-        <span>操作日志</span>
+        <span>注册码记录</span>
       </template>
 
       <el-table v-loading="loading" :data="regList" border>
@@ -125,7 +125,7 @@ function loadList() {
       total.value = data.total || 0;
     })
     .catch((error) => {
-      console.error("加载操作日志失败", error);
+      console.error("加载注册码记录失败", error);
     })
     .finally(() => {
       loading.value = false;

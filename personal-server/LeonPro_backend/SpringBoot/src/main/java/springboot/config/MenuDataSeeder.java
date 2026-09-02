@@ -54,7 +54,7 @@ public class MenuDataSeeder implements CommandLineRunner {
                 "todo", 2, 0, 1, 0, 0, null, now));
         menus.add(build("menu_tasks", "menu_work", "任务管理", "tasks", "work/tasks/index", null,
                 "Tasks", "todo", 1, 1, 1, 0, 1, null, now));
-        menus.add(build("menu_registration", "menu_work", "操作日志", "registration", "work/registration/index", null,
+        menus.add(build("menu_registration", "menu_work", "注册码记录", "registration", "work/registration/index", null,
                 "Registration", "client", 2, 1, 1, 0, 1, null, now));
 
         // ============ 系统管理（3） ============
@@ -105,10 +105,14 @@ public class MenuDataSeeder implements CommandLineRunner {
         }
         SysMenus registration = sysMenusService.getById("menu_registration");
         if (registration == null) {
-            registration = build("menu_registration", "menu_work", "操作日志", "registration",
+            registration = build("menu_registration", "menu_work", "注册码记录", "registration",
                     "work/registration/index", null, "Registration", "client", 2, 1, 1, 0, 1, null, new Date());
             sysMenusService.save(registration);
-            log.info("已补插种子菜单 menu_registration（操作日志）。");
+            log.info("已补插种子菜单 menu_registration（注册码记录）。");
+        } else if ("操作日志".equals(registration.getMenuName())) {
+            registration.setMenuName("注册码记录");
+            sysMenusService.updateById(registration);
+            log.info("已将 menu_registration 名称更正为注册码记录。");
         }
         SysMenus oplog = sysMenusService.getById("menu_oplog");
         if (oplog == null) {

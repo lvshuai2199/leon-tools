@@ -4,7 +4,7 @@
       <template #header>
         <div class="flex-x-between">
           <span>注册码生成</span>
-          <el-tag type="info" size="small">按配置生成 · 写入操作日志</el-tag>
+          <el-tag type="info" size="small">按配置生成 · 写入注册码记录</el-tag>
         </div>
       </template>
       <RegCodeGenerator />
