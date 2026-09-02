@@ -66,6 +66,8 @@ public class MenuDataSeeder implements CommandLineRunner {
                 "Role", "role", 2, 1, 1, 0, 1, null, now));
         menus.add(build("menu_menu", "menu_system", "路由配置", "menu", "system/menu/index", null,
                 "Menu", "menu", 3, 1, 1, 0, 1, null, now));
+        menus.add(build("menu_oplog", "menu_system", "操作日志", "oplog", "system/oplog/index", null,
+                "Oplog", "document", 4, 1, 1, 0, 1, null, now));
 
         sysMenusService.saveBatch(menus);
         log.info("sys_menus 为空，已初始化 {} 条默认路由配置。", menus.size());
@@ -107,6 +109,13 @@ public class MenuDataSeeder implements CommandLineRunner {
                     "work/registration/index", null, "Registration", "client", 2, 1, 1, 0, 1, null, new Date());
             sysMenusService.save(registration);
             log.info("已补插种子菜单 menu_registration（操作日志）。");
+        }
+        SysMenus oplog = sysMenusService.getById("menu_oplog");
+        if (oplog == null) {
+            oplog = build("menu_oplog", "menu_system", "操作日志", "oplog",
+                    "system/oplog/index", null, "Oplog", "document", 4, 1, 1, 0, 1, null, new Date());
+            sysMenusService.save(oplog);
+            log.info("已补插种子菜单 menu_oplog（操作日志）。");
         }
     }
 

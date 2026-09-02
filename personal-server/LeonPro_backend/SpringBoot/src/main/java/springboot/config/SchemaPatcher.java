@@ -76,6 +76,40 @@ public class SchemaPatcher implements CommandLineRunner {
         log.info("已创建表 tool_mindmap。");
     }
 
+    private void ensureOperationLogTable() {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                Integer.class,
+                "sys_operation_log");
+        if (count != null && count > 0) {
+            return;
+        }
+        jdbcTemplate.execute(
+                "CREATE TABLE `sys_operation_log` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '主键',"
+                        + "`operator_id` VARCHAR(64) DEFAULT NULL COMMENT '操作人ID',"
+                        + "`operator_name` VARCHAR(100) DEFAULT NULL COMMENT '操作人用户名',"
+                        + "`module` VARCHAR(50) DEFAULT NULL COMMENT '业务模块',"
+                        + "`action` VARCHAR(200) DEFAULT NULL COMMENT '动作摘要',"
+                        + "`request_method` VARCHAR(16) DEFAULT NULL COMMENT 'HTTP方法',"
+                        + "`request_uri` VARCHAR(500) DEFAULT NULL COMMENT '请求路径',"
+                        + "`request_params` TEXT COMMENT '脱敏后的请求参数',"
+                        + "`ip` VARCHAR(64) DEFAULT NULL COMMENT '客户端IP',"
+                        + "`user_agent` VARCHAR(500) DEFAULT NULL COMMENT '浏览器标识',"
+                        + "`status` VARCHAR(20) DEFAULT NULL COMMENT 'SUCCESS/FAIL/ERROR',"
+                        + "`result_msg` VARCHAR(500) DEFAULT NULL COMMENT '结果摘要',"
+                        + "`error_msg` TEXT COMMENT '失败或异常详情',"
+                        + "`cost_ms` BIGINT DEFAULT NULL COMMENT '耗时毫秒',"
+                        + "`create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '发生时间',"
+                        + "PRIMARY KEY (`id`),"
+                        + "KEY `idx_oplog_create_time` (`create_time`),"
+                        + "KEY `idx_oplog_operator_name` (`operator_name`),"
+                        + "KEY `idx_oplog_status` (`status`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统操作日志'");
+        log.info("已创建表 sys_operation_log。");
+    }
+
     private void ensureColumn(String table, String column, String alterSql) {
         Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.COLUMNS "

@@ -23,6 +23,13 @@ service.interceptors.request.use(
     } else {
       delete config.headers.Authorization;
     }
+    const user = useUserStoreHook().userInfo;
+    if (user?.id) {
+      config.headers["X-User-Id"] = String(user.id);
+    }
+    if (user?.username) {
+      config.headers["X-Username"] = encodeURIComponent(user.username);
+    }
     return config;
   },
   (error) => Promise.reject(error)
