@@ -2890,15 +2890,15 @@ def fullFunctionweldmulti():
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 快速编程工具
     $ LINE: (3, "快速编程工具")
-    full_repeatable(23)
+    full_repeatable(8)
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 点到点移动程序
     $ LINE: (4, "点到点移动程序")
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
-    #   Type: 路点_1（协同）
-    $ LINE: (5, "路点_1（协同）")
+    #   Type: 路点_1
+    $ LINE: (5, "路点_1")
     movej(get_inverse_kin(full_apply_touch_offset([0.5101771297493309, -0.14749999996000482, 0.5416881216253817, 0.1459333210338106, 2.0292330563845067E-10, -1.5707963267650713]), qnear=[0.0,-1.6144881566476783,-1.183670202361204,-1.7682973003419973,1.570796327,0.0]),1.396263401670578, 1.0471975511965976, 0, 0.0)
     # End: ELITECO Plugin Task Node
     in_welding_path = False
@@ -2972,23 +2972,40 @@ def fullFunctionweldmulti():
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
+    #   Type: 电弧跟踪开始 No.1
+    $ LINE: (7, "电弧跟踪开始 No.1")
+    if full_tracking_thread_id != 0 :
+      stop_thread(full_tracking_thread_id)
+      path_offset_clear()
+      full_tracking_thread_id = 0
+    full_tracking_thread_id = start_thread(full_arc_tracking, (0.01,3,1,False,0.0,0.5,0.5,1,1,0.100,0.100))
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 多层多道开始 No.1
-    $ LINE: (7, "多层多道开始 No.1")
+    $ LINE: (8, "多层多道开始 No.1")
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 直线焊接程序
-    $ LINE: (8, "直线焊接程序")
+    $ LINE: (9, "直线焊接程序")
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 多层多道结束
-    $ LINE: (14, "多层多道结束")
+    $ LINE: (15, "多层多道结束")
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
+    #   Type: 电弧跟踪结束
+    $ LINE: (16, "电弧跟踪结束")
+    stop_thread(full_tracking_thread_id)
+    full_tracking_thread_id = 0
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 多层多道
-    $ LINE: (15, "多层多道")
+    $ LINE: (17, "多层多道")
     full_multi_pass_process_index = 0
     full_multi_pass_bead_index = 0
     full_multi_pass_bead_count = 5
@@ -3000,7 +3017,7 @@ def fullFunctionweldmulti():
         in_welding_path = True
         full_current_mag_process = 0
         movep(full_apply_touch_offset([0.3686070665213629, 0.049597954249616626, 0.4701330723997333, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.3686063223477079, 0.16848840653003852, 0.47013363191647406, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.45806641299935613, 0.16848598029542114, 0.4701344392419976, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
+        movec(full_apply_touch_offset([0.3686063223477079, 0.16848840653003852, 0.47013363191647406, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]),full_apply_touch_offset([0.45806641299935613, 0.16848598029542114, 0.4701344392419976, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]),1.2, 0.006, 0.001,1)
         full_current_mag_process = -1
         in_welding_path = False
         in_welding_path = False
@@ -3012,7 +3029,7 @@ def fullFunctionweldmulti():
         in_welding_path = True
         full_current_mag_process = 0
         movep(full_apply_touch_offset([0.36696603199311356, 0.04459790416812401, 0.47513294356705876, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.36559997535041594, 0.17248365697325835, 0.4751336170792346, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.46107262951198086, 0.17248119581757734, 0.47513453076223455, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
+        movec(full_apply_touch_offset([0.36559997535041594, 0.17248365697325835, 0.4751336170792346, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]),full_apply_touch_offset([0.46107262951198086, 0.17248119581757734, 0.47513453076223455, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]),1.2, 0.006, 0.001,1)
         full_current_mag_process = -1
         in_welding_path = False
         in_welding_path = False
@@ -3024,7 +3041,7 @@ def fullFunctionweldmulti():
         in_welding_path = True
         full_current_mag_process = 0
         movep(full_apply_touch_offset([0.36538111508194293, 0.03959785415836181, 0.4801328174992244, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.36259362835312403, 0.17647890741647815, 0.48013360224199514, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.46407884602460553, 0.17647641133973355, 0.48013462228247134, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
+        movec(full_apply_touch_offset([0.36259362835312403, 0.17647890741647815, 0.48013360224199514, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]),full_apply_touch_offset([0.46407884602460553, 0.17647641133973355, 0.48013462228247134, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]),1.2, 0.006, 0.001,1)
         full_current_mag_process = -1
         in_welding_path = False
         in_welding_path = False
@@ -3036,7 +3053,7 @@ def fullFunctionweldmulti():
         in_welding_path = True
         full_current_mag_process = 0
         movep(full_apply_touch_offset([0.363846924235738, 0.034597804213438464, 0.48513269393059544, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.359587281355832, 0.18047415785969798, 0.4851335874047557, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.4670850625372302, 0.18047162686188975, 0.4851347138027083, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
+        movec(full_apply_touch_offset([0.359587281355832, 0.18047415785969798, 0.4851335874047557, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]),full_apply_touch_offset([0.4670850625372302, 0.18047162686188975, 0.4851347138027083, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]),1.2, 0.006, 0.001,1)
         full_current_mag_process = -1
         in_welding_path = False
         in_welding_path = False
@@ -3048,7 +3065,7 @@ def fullFunctionweldmulti():
         in_welding_path = True
         full_current_mag_process = 0
         movep(full_apply_touch_offset([0.36235887963201774, 0.02959775432749998, 0.49013257263553034, 0.14592623847560657, 3.087098134393247E-6, -1.570797324388992]),1.05, 0.006, 0.0)
-        movec_with_axis_group(pose_via = full_apply_touch_offset([0.3565809343585401, 0.1844694083029178, 0.4901335725675162, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]), pose_to = full_apply_touch_offset([0.4700912790498549, 0.18446684238404595, 0.4901348053229452, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]), frame = "workpiece_frame", a=1.2, v=0.006, r=0.001, mode=1, group_name = "positioner", axis_target = [0.000], axis_a = 0.5, axis_v = 0.5)
+        movec(full_apply_touch_offset([0.3565809343585401, 0.1844694083029178, 0.4901335725675162, 0.14592767803849319, 5.646201059447155E-6, -1.5708005393886584]),full_apply_touch_offset([0.4700912790498549, 0.18446684238404595, 0.4901348053229452, 0.1459321230287153, 1.970649742709273E-6, -1.5707991198506113]),1.2, 0.006, 0.001,1)
         full_current_mag_process = -1
         in_welding_path = False
         in_welding_path = False
@@ -3060,17 +3077,17 @@ def fullFunctionweldmulti():
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 多层多道开始 No.1
-    $ LINE: (16, "多层多道开始 No.1")
+    $ LINE: (18, "多层多道开始 No.1")
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 混合焊接程序
-    $ LINE: (17, "混合焊接程序")
+    $ LINE: (19, "混合焊接程序")
     # End: ELITECO Plugin Task Node
     # Begin: ELITECO Plugin Task Node
     #   Source: FullFunctionWelding, 1.3.0, ELITE ROBOTS
     #   Type: 多层多道结束
-    $ LINE: (26, "多层多道结束")
+    $ LINE: (28, "多层多道结束")
     # End: ELITECO Plugin Task Node
     # End: ELITECO Plugin Task Node
   end
