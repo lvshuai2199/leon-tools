@@ -77,6 +77,8 @@ function createSiteTile(site) {
   const link = document.createElement("a");
   link.className = "site-tile";
   link.href = site.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
   link.append(createFavicon(site.url, 28));
 
   const copy = document.createElement("span");
@@ -122,6 +124,8 @@ function createBookmarkLink(bookmark, index) {
   link.className = `bookmark-link${isPinned(bookmark) ? " is-pinned" : ""}${isHidden(bookmark) ? " is-hidden-bookmark" : ""}`;
   link.style.setProperty("--tile-index", String(index));
   link.href = mappedUrl;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
   link.draggable = true;
   link.dataset.bookmarkId = bookmark.id;
   link.dataset.parentId = bookmark.parentId;
@@ -476,7 +480,7 @@ async function openResult(result) {
   const url = result.type === "bookmark"
     ? resolveMappedUrl(result.url, preferences.prefixRules, result.ancestorIds)
     : result.url;
-  window.location.href = url;
+  await chrome.tabs.create({ url });
 }
 
 const runSearch = debounce(async () => {
@@ -529,7 +533,8 @@ elements.searchForm.addEventListener("submit", (event) => {
   }
   const query = elements.searchInput.value.trim();
   if (!query) return;
-  window.location.href = looksLikeUrl(query) ? toNavigableUrl(query) : getSearchUrl(query, preferences.searchEngine);
+  const url = looksLikeUrl(query) ? toNavigableUrl(query) : getSearchUrl(query, preferences.searchEngine);
+  chrome.tabs.create({ url });
 });
 document.addEventListener("keydown", (event) => {
   if (event.key === "Escape" && !elements.contextMenu.classList.contains("hidden")) {
