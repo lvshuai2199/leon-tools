@@ -69,20 +69,21 @@ if [[ ! -f "$DIST_DIR/index.html" ]]; then
 fi
 
 echo "上传 dist 到 $DEPLOY_REMOTE_DIR ..."
-"${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "mkdir -p '$DEPLOY_REMOTE_DIR' && rm -rf '$DEPLOY_REMOTE_DIR'/*"
+"${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "if sudo -n true 2>/dev/null; then sudo mkdir -p '$DEPLOY_REMOTE_DIR' && sudo chown -R '$DEPLOY_USER':'$DEPLOY_USER' '$DEPLOY_REMOTE_DIR'; else mkdir -p '$DEPLOY_REMOTE_DIR'; fi && rm -rf '$DEPLOY_REMOTE_DIR'/*"
 tar -cf - -C "$DIST_DIR" . | "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "tar -xf - -C '$DEPLOY_REMOTE_DIR'"
 
 echo "写入 Nginx 配置..."
 "${SCP_BIN[@]}" "${SCP_OPTS[@]}" "$NGINX_LOCAL" "${REMOTE}:/tmp/leonpro-nginx.conf"
 "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "set -e
-if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi
-cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'
-nginx -t
+SUDO=''; if sudo -n true 2>/dev/null; then SUDO=sudo; fi
+if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then \$SUDO cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi
+\$SUDO cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'
+\$SUDO nginx -t
 "
 
 if [[ "$NGINX_RELOAD" == "1" ]]; then
   echo "重载 Nginx..."
-  "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "systemctl reload nginx || nginx -s reload"
+  "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "if sudo -n true 2>/dev/null; then sudo systemctl reload nginx || sudo nginx -s reload; else systemctl reload nginx || nginx -s reload; fi"
 fi
 
 echo "完成：前端已放到 ${DEPLOY_HOST}:$DEPLOY_REMOTE_DIR"

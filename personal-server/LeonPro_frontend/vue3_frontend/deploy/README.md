@@ -20,8 +20,10 @@ cd personal-server/LeonPro_frontend/vue3_frontend
 
 本机内存紧张时，脚本用 `NODE_OPTIONS=--max-old-space-size=1024` 打包。若仍失败，可先关掉占内存的程序再执行。
 
-访问：`http://<服务器IP>/`  （登录页 `/#/login`）  
+访问：`http://124.220.57.33/`  （登录页 `/#/login`）  
 接口：浏览器请求 `/prod-api/...`，Nginx 转到 `8089`。
+
+非 root 账号（如 `ubuntu`）会通过 `sudo` 写 Nginx 配置并 reload。
 
 ## 服务器上查看
 

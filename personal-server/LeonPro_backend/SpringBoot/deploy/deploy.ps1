@@ -103,7 +103,7 @@ if (-not (Test-Path $JarPath)) {
 }
 
 Write-Host "在服务器创建目录 $DEPLOY_REMOTE_DIR ..."
-& ssh @sshArgs $remote "mkdir -p '$DEPLOY_REMOTE_DIR'"
+& ssh @sshArgs $remote "if sudo -n true 2>/dev/null; then sudo mkdir -p '$DEPLOY_REMOTE_DIR' && sudo chown -R '${DEPLOY_USER}:${DEPLOY_USER}' '$DEPLOY_REMOTE_DIR'; else mkdir -p '$DEPLOY_REMOTE_DIR'; fi"
 if ($LASTEXITCODE -ne 0) { throw "ssh mkdir 失败" }
 
 Write-Host "拷贝 jar 到 ${remote}:$DEPLOY_REMOTE_DIR/app.jar ..."
@@ -120,7 +120,7 @@ if ($LASTEXITCODE -ne 0) { throw "scp Docker 文件失败" }
 
 if ($DOCKER_UP -eq "1") {
     Write-Host "在服务器启动 Docker 容器..."
-    & ssh @sshArgs $remote "cd '$DEPLOY_REMOTE_DIR' && (docker compose up -d --build || docker-compose up -d --build)"
+    & ssh @sshArgs $remote "cd '$DEPLOY_REMOTE_DIR' && if sudo -n true 2>/dev/null; then sudo docker compose up -d --build || sudo docker-compose up -d --build; else docker compose up -d --build || docker-compose up -d --build; fi"
     if ($LASTEXITCODE -ne 0) { throw "docker compose 失败" }
 }
 
