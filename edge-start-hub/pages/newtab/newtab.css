@@ -45,7 +45,7 @@
 .workspace {
   width: min(1180px, calc(100% - 40px));
   margin: 0 auto;
-  padding: 30px 0 72px;
+  padding: 38px 0 72px;
 }
 
 .search-area {
@@ -59,18 +59,20 @@
   display: flex;
   align-items: center;
   gap: 9px;
-  margin-bottom: 20px;
+  margin-bottom: 22px;
+  padding-left: 12px;
+  border-left: 3px solid var(--accent);
 }
 
 .recommend-heading h1 {
   margin: 0;
-  font-size: 1.6rem;
+  font-size: 1.48rem;
   letter-spacing: 0;
 }
 
 .recommend-heading span {
-  color: #b8c0bc;
-  font-size: 1.7rem;
+  color: #aeb8b3;
+  font-size: 1.35rem;
 }
 
 .today {
@@ -88,7 +90,7 @@
   gap: 12px;
   padding: 0 16px 0 20px;
   border: 1px solid #b7c1bd;
-  border-radius: 7px;
+  border-radius: 8px;
   background: var(--surface);
   box-shadow: var(--shadow);
 }
@@ -184,16 +186,16 @@ kbd {
 }
 
 .content-section {
-  margin-top: 46px;
+  margin-top: 40px;
 }
 
 .section-heading {
   display: flex;
   align-items: end;
   justify-content: space-between;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
   border-bottom: 1px solid var(--line);
-  padding-bottom: 12px;
+  padding-bottom: 10px;
 }
 
 .section-heading h2 {
@@ -217,26 +219,30 @@ kbd {
 .site-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px 12px;
+  gap: 10px;
 }
 
 .site-tile {
   display: flex;
   min-width: 0;
-  min-height: 54px;
+  min-height: 58px;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 10px 13px;
   border: 1px solid var(--line);
-  border-radius: 6px;
+  border-radius: 7px;
   background: var(--surface);
   color: var(--ink);
   text-decoration: none;
+  box-shadow: 0 2px 8px rgba(23, 32, 29, 0.035);
+  transition: border-color 150ms ease, box-shadow 150ms ease, transform 150ms ease;
 }
 
 .site-tile:hover {
-  border-color: #aab5b0;
-  background: var(--surface-muted);
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
+  background: var(--surface);
+  box-shadow: 0 6px 16px rgba(23, 32, 29, 0.07);
+  transform: translateY(-1px);
 }
 
 .site-copy {
@@ -278,7 +284,7 @@ kbd {
 }
 
 .bookmark-group {
-  margin-bottom: 30px;
+  margin-bottom: 28px;
 }
 
 .bookmark-group:last-child {
@@ -314,28 +320,29 @@ kbd {
 .bookmark-list {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px 12px;
+  gap: 10px;
 }
 
 .bookmark-link {
   display: grid;
   min-width: 0;
-  min-height: 62px;
+  min-height: 64px;
   grid-template-columns: 30px 1fr auto;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
-  border: 1px solid #e1e6e3;
-  border-radius: 8px;
-  background: #f2f4f3;
+  padding: 10px 13px;
+  border: 1px solid #e2e7e4;
+  border-radius: 7px;
+  background: #fff;
   color: var(--ink);
   text-decoration: none;
+  box-shadow: 0 2px 8px rgba(23, 32, 29, 0.035);
   transition: border-color 150ms ease, transform 150ms ease, box-shadow 150ms ease;
 }
 
 .bookmark-link:hover {
-  border-color: #c3cec8;
-  box-shadow: 0 5px 14px rgba(23, 32, 29, 0.08);
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--line));
+  box-shadow: 0 6px 16px rgba(23, 32, 29, 0.07);
   transform: translateY(-1px);
 }
 
@@ -380,10 +387,14 @@ kbd {
   box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 36%, transparent);
 }
 
-.bookmark-link:nth-child(4n + 1) { background: #edf0fc; }
-.bookmark-link:nth-child(4n + 2) { background: #f1f1f0; }
-.bookmark-link:nth-child(4n + 3) { background: #f8f7f3; }
-.bookmark-link:nth-child(4n + 4) { background: #f2f5f2; }
+.bookmark-link:nth-child(4n + 1) { border-top-color: #c7d8d0; }
+.bookmark-link:nth-child(4n + 2) { border-top-color: #d3d8d5; }
+.bookmark-link:nth-child(4n + 3) { border-top-color: #d9d5c7; }
+.bookmark-link:nth-child(4n + 4) { border-top-color: #cbd8d2; }
+
+.bookmark-link.is-pinned {
+  border-color: #cbbd9a;
+}
 
 .bookmark-copy {
   min-width: 0;
@@ -587,5 +598,23 @@ kbd {
   .bookmark-list,
   .site-grid {
     grid-template-columns: 1fr;
+  }
+}
+
+@media (prefers-color-scheme: dark) {
+  .bookmark-link {
+    background: var(--surface);
+    border-color: var(--line);
+  }
+
+  .bookmark-link:nth-child(4n + 1),
+  .bookmark-link:nth-child(4n + 2),
+  .bookmark-link:nth-child(4n + 3),
+  .bookmark-link:nth-child(4n + 4) {
+    border-top-color: var(--line);
+  }
+
+  .bookmark-link.is-pinned {
+    border-color: #806f3e;
   }
 }
