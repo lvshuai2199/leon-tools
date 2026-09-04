@@ -1,0 +1,230 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDGE工作台设置</title>
+    <link rel="stylesheet" href="../../styles/base.css">
+    <link rel="stylesheet" href="settings.css">
+  </head>
+  <body>
+    <div class="settings-shell">
+      <aside class="sidebar">
+        <div class="sidebar-brand">
+          <span class="brand-mark">L</span>
+          <div>
+            <strong>EDGE工作台</strong>
+            <span>设置</span>
+          </div>
+        </div>
+        <nav aria-label="设置导航">
+          <a href="#general" data-view="general">
+            <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#sliders"></use></svg>
+            常规
+          </a>
+          <a href="#sites" data-view="sites">
+            <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#globe"></use></svg>
+            自定义网站
+          </a>
+          <a href="#mappings" data-view="mappings">
+            <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#route"></use></svg>
+            地址映射
+          </a>
+        </nav>
+        <button id="openNewTab" class="sidebar-link" type="button">
+          <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#external"></use></svg>
+          打开工作台
+        </button>
+      </aside>
+
+      <main class="settings-main">
+        <section id="generalView" class="settings-view" data-view-panel="general">
+          <header class="page-header">
+            <p>GENERAL</p>
+            <h1>常规设置</h1>
+            <span>控制启动方式、新标签页内容和默认搜索行为。</span>
+          </header>
+
+          <form id="generalForm">
+            <section class="setting-section">
+              <h2>启动与快捷键</h2>
+              <label class="setting-row">
+                <span class="setting-copy">
+                  <strong>Edge 启动时打开工作台</strong>
+                  <small>浏览器启动后额外创建一个工作台标签页；新标签页始终由本扩展接管。</small>
+                </span>
+                <input id="openOnStartup" class="switch-input" type="checkbox">
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+              <div class="setting-row">
+                <span class="setting-copy">
+                  <strong>快速检索</strong>
+                  <small>默认快捷键为 Ctrl+Shift+K，也可点击工具栏中的扩展图标。</small>
+                </span>
+                <button id="openShortcutSettings" class="secondary-button" type="button">
+                  <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#external"></use></svg>
+                  修改快捷键
+                </button>
+              </div>
+            </section>
+
+            <section class="setting-section">
+              <h2>页面模块</h2>
+              <label class="setting-row">
+                <span class="setting-copy"><strong>显示常用网页</strong><small>根据最近 30 天访问次数排序。</small></span>
+                <input id="showFrequent" class="switch-input" type="checkbox">
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+              <label class="setting-row">
+                <span class="setting-copy"><strong>显示自定义网站</strong><small>显示你固定在工作台上的网站。</small></span>
+                <input id="showCustomSites" class="switch-input" type="checkbox">
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+              <label class="setting-row">
+                <span class="setting-copy"><strong>显示主收藏夹</strong><small>按收藏夹文件夹分组展示所有链接。</small></span>
+                <input id="showBookmarks" class="switch-input" type="checkbox">
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+              <label class="setting-row">
+                <span class="setting-copy"><strong>显示已隐藏的收藏</strong><small>打开后可在工作台中找到已隐藏的书签，并选择“取消隐藏”。</small></span>
+                <input id="showHiddenBookmarks" class="switch-input" type="checkbox">
+                <span class="switch" aria-hidden="true"></span>
+              </label>
+            </section>
+
+            <section class="setting-section form-grid">
+              <h2>内容来源</h2>
+              <label class="field">
+                <span>主收藏夹文件夹</span>
+                <select id="bookmarkRootId"></select>
+                <small class="field-note">默认自动选择“收藏夹栏”。</small>
+              </label>
+              <label class="field">
+                <span>常用网页数量</span>
+                <input id="frequentLimit" type="number" min="4" max="24" step="1">
+              </label>
+              <label class="field">
+                <span>网页搜索引擎</span>
+                <select id="searchEngine">
+                  <option value="bing">Bing</option>
+                  <option value="google">Google</option>
+                  <option value="baidu">百度</option>
+                  <option value="duckduckgo">DuckDuckGo</option>
+                </select>
+              </label>
+            </section>
+
+            <div class="form-actions">
+              <button class="primary-button" type="submit">
+                <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#save"></use></svg>
+                保存设置
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section id="sitesView" class="settings-view hidden" data-view-panel="sites">
+          <header class="page-header page-header--actions">
+            <div>
+              <p>PINNED SITES</p>
+              <h1>自定义网站</h1>
+              <span>固定你经常使用、但不适合放进收藏夹的网站。</span>
+            </div>
+            <button id="addSite" class="secondary-button" type="button">
+              <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#plus"></use></svg>
+              添加网站
+            </button>
+          </header>
+          <form id="sitesForm">
+            <div id="siteRows" class="editor-list"></div>
+            <div class="form-actions">
+              <button class="primary-button" type="submit">
+                <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#save"></use></svg>
+                保存网站
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section id="mappingsView" class="settings-view hidden" data-view-panel="mappings">
+          <header class="page-header page-header--actions">
+            <div>
+              <p>SERVER ROUTING</p>
+              <h1>地址映射</h1>
+              <span>服务器变化后替换 URL 前缀，同时保留链接原有路径和参数。</span>
+            </div>
+            <button id="addRule" class="secondary-button" type="button">
+              <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#plus"></use></svg>
+              新建规则
+            </button>
+          </header>
+
+          <div class="mapping-callout">
+            <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#route"></use></svg>
+            <p><strong>点击时映射</strong>会在工作台打开链接前临时替换地址，不改原收藏夹。需要永久修改 IP 时，再执行“更新收藏夹”。</p>
+          </div>
+          <p id="mappingStatus" class="mapping-status" role="status"></p>
+
+          <form id="rulesForm">
+            <div id="ruleRows" class="editor-list"></div>
+            <div class="form-actions form-actions--split">
+              <button id="previewUpdates" class="secondary-button" type="button">
+                <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#refresh"></use></svg>
+                预览收藏夹更新
+              </button>
+              <button class="primary-button" type="submit">
+                <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#save"></use></svg>
+                保存映射规则
+              </button>
+            </div>
+          </form>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="previewDialog" class="preview-dialog">
+      <div class="dialog-header">
+        <div>
+          <p>BOOKMARK UPDATE</p>
+          <h2>收藏夹变更预览</h2>
+        </div>
+        <button id="closePreview" class="icon-button" type="button" title="关闭" aria-label="关闭">×</button>
+      </div>
+      <p id="previewSummary" class="preview-summary"></p>
+      <div id="previewList" class="preview-list"></div>
+      <div class="dialog-actions">
+        <button id="cancelPreview" class="secondary-button" type="button">取消</button>
+        <button id="applyUpdates" class="primary-button" type="button">更新收藏夹</button>
+      </div>
+    </dialog>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+    <template id="siteRowTemplate">
+      <article class="editor-row site-editor-row">
+        <span class="drag-index" aria-hidden="true"></span>
+        <label class="field"><span>名称</span><input data-field="name" type="text" maxlength="60" placeholder="例如：项目管理"></label>
+        <label class="field"><span>网址</span><input data-field="url" type="url" placeholder="https://example.com"></label>
+        <button class="icon-button remove-row" type="button" title="删除网站" aria-label="删除网站">
+          <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#trash"></use></svg>
+        </button>
+      </article>
+    </template>
+    <template id="ruleRowTemplate">
+      <article class="editor-row rule-editor-row">
+        <div class="rule-heading">
+          <label class="rule-enabled"><input data-field="enabled" type="checkbox"><span>启用</span></label>
+          <button class="icon-button remove-row" type="button" title="删除规则" aria-label="删除规则">
+            <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#trash"></use></svg>
+          </button>
+        </div>
+        <div class="rule-grid">
+          <label class="field"><span>规则名称</span><input data-field="name" type="text" maxlength="60" placeholder="例如：开发服务器"></label>
+          <label class="field"><span>绑定收藏夹文件夹</span><select data-field="folderId"></select><small class="field-note">留空表示应用到所有收藏夹。</small></label>
+              <label class="field field--wide"><span>旧地址前缀</span><textarea data-field="sourcePrefixes" spellcheck="false" placeholder="http://192.168.1.20:8080&#10;http://old-server.local:8080"></textarea><small class="field-note">每行一个，也支持用逗号或分号分隔；末尾的 /* 会自动忽略。</small></label>
+          <label class="field field--wide"><span>当前地址前缀</span><input data-field="targetPrefix" type="url" spellcheck="false" placeholder="http://192.168.1.35:8080"><small class="field-note">修改后，上一个当前地址会自动保留为旧地址。</small></label>
+        </div>
+      </article>
+    </template>
+    <script type="module" src="settings.js"></script>
+  </body>
+</html>

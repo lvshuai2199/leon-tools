@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "EDGE工作台",
+  "version": "1.1.0",
+  "description": "在新标签页集中搜索已打开标签、收藏夹和常用网页，并为服务器收藏夹映射可变地址。",
+  "permissions": [
+    "bookmarks",
+    "favicon",
+    "history",
+    "storage",
+    "tabs",
+    "windows"
+  ],
+  "host_permissions": [
+    "https://quickchart.io/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "搜索标签页和收藏夹",
+    "default_popup": "pages/search/index.html"
+  },
+  "chrome_url_overrides": {
+    "newtab": "pages/newtab/index.html"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+K",
+        "mac": "Command+Shift+K"
+      },
+      "description": "打开快速检索窗口"
+    }
+  },
+  "options_ui": {
+    "page": "pages/settings/index.html",
+    "open_in_tab": true
+  },
+  "icons": {
+    "16": "assets/icon-16.png",
+    "32": "assets/icon-32.png",
+    "48": "assets/icon-48.png",
+    "128": "assets/icon-128.png"
+  }
+}

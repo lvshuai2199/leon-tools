@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>快速检索</title>
+    <link rel="stylesheet" href="../../styles/base.css">
+    <link rel="stylesheet" href="search.css">
+  </head>
+  <body>
+    <main class="search-panel">
+      <form id="searchForm" class="popup-search" role="search">
+        <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#search"></use></svg>
+        <input id="searchInput" type="search" autocomplete="off" placeholder="搜索标签页、收藏夹或网页" aria-label="搜索" autofocus>
+        <kbd>Esc</kbd>
+      </form>
+      <div id="statusLine" class="status-line"></div>
+      <div id="results" class="result-list" role="listbox"></div>
+      <footer>
+        <span><kbd>↑↓</kbd> 选择　<kbd>Enter</kbd> 打开</span>
+      </footer>
+    </main>
+    <script type="module" src="search.js"></script>
+  </body>
+</html>

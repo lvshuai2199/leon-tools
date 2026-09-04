@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EDGE工作台</title>
+    <link rel="stylesheet" href="../../styles/base.css">
+    <link rel="stylesheet" href="newtab.css">
+  </head>
+  <body>
+    <main class="workspace">
+      <section class="search-area" aria-label="搜索">
+        <div class="recommend-heading">
+          <h1>推荐</h1>
+          <span aria-hidden="true">✧</span>
+        </div>
+        <form id="searchForm" class="search-box" role="search">
+          <svg class="icon" aria-hidden="true"><use href="../../assets/icons.svg#search"></use></svg>
+          <input id="searchInput" type="search" autocomplete="off" placeholder="搜索已打开标签、收藏夹或网页" aria-label="搜索">
+          <kbd>Ctrl K</kbd>
+        </form>
+        <div id="searchResults" class="search-results hidden" role="listbox"></div>
+      </section>
+
+      <section id="frequentSection" class="content-section">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">RECENT</p>
+            <h2>常用网页</h2>
+          </div>
+        </div>
+        <div id="frequentGrid" class="site-grid"></div>
+      </section>
+
+      <section id="customSection" class="content-section">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">PINNED</p>
+            <h2>我的网站</h2>
+          </div>
+          <button id="manageSites" class="text-button" type="button">管理</button>
+        </div>
+        <div id="customGrid" class="site-grid"></div>
+      </section>
+
+      <section id="bookmarksSection" class="content-section bookmarks-section">
+        <div class="section-heading">
+          <div>
+            <p class="section-kicker">FAVORITES</p>
+            <h2>全部收藏夹</h2>
+          </div>
+          <span id="bookmarkCount" class="count"></span>
+        </div>
+        <div id="bookmarkGroups" class="bookmark-groups"></div>
+      </section>
+    </main>
+
+    <div id="toast" class="toast hidden" role="status"></div>
+    <div id="bookmarkContextMenu" class="bookmark-context-menu hidden" role="menu" aria-label="书签操作">
+      <button type="button" role="menuitem" data-action="new-tab"><svg class="icon"><use href="../../assets/icons.svg#open-tab"></use></svg><span>在新标签页中打开</span></button>
+      <button type="button" role="menuitem" data-action="new-window"><svg class="icon"><use href="../../assets/icons.svg#window"></use></svg><span>在新窗口中打开</span></button>
+      <button type="button" role="menuitem" data-action="incognito"><svg class="icon"><use href="../../assets/icons.svg#incognito"></use></svg><span>在隐身窗口中打开</span></button>
+      <button type="button" role="menuitem" data-action="qr"><svg class="icon"><use href="../../assets/icons.svg#qr"></use></svg><span>展示二维码</span></button>
+      <div class="context-separator" role="separator"></div>
+      <button type="button" role="menuitem" data-action="pin"><svg class="icon"><use href="../../assets/icons.svg#pin"></use></svg><span>置顶</span></button>
+      <button type="button" role="menuitem" data-action="edit"><svg class="icon"><use href="../../assets/icons.svg#edit"></use></svg><span>编辑</span></button>
+      <button type="button" role="menuitem" data-action="copy"><svg class="icon"><use href="../../assets/icons.svg#link"></use></svg><span>复制网址</span></button>
+      <div class="context-separator" role="separator"></div>
+      <button type="button" role="menuitem" data-action="hide"><svg class="icon"><use href="../../assets/icons.svg#eye-off"></use></svg><span>隐藏</span></button>
+      <button type="button" role="menuitem" data-action="delete"><svg class="icon"><use href="../../assets/icons.svg#trash"></use></svg><span>删除</span></button>
+    </div>
+
+    <dialog id="bookmarkEditDialog" class="bookmark-dialog">
+      <form id="bookmarkEditForm" method="dialog">
+        <div class="dialog-header"><div><p>BOOKMARK</p><h2>编辑书签</h2></div><button id="closeBookmarkEdit" class="icon-button" type="button" aria-label="关闭">×</button></div>
+        <div class="dialog-form">
+          <label class="field"><span>名称</span><input id="bookmarkEditTitle" required maxlength="160"></label>
+          <label class="field"><span>网址</span><input id="bookmarkEditUrl" required type="url"></label>
+        </div>
+        <div class="dialog-actions"><button id="cancelBookmarkEdit" class="secondary-button" type="button">取消</button><button class="primary-button" type="submit">保存</button></div>
+      </form>
+    </dialog>
+
+    <dialog id="qrDialog" class="qr-dialog">
+      <div class="dialog-header"><div><p>QUICK RESPONSE</p><h2>书签二维码</h2></div><button id="closeQr" class="icon-button" type="button" aria-label="关闭">×</button></div>
+      <div class="qr-content"><div id="qrLoading" class="qr-loading">正在生成二维码...</div><img id="qrImage" class="qr-image hidden" alt="书签二维码"><p id="qrUrl" class="qr-url"></p><small>二维码按需由 QuickChart 生成，仅在点击此功能时发送当前网址。</small></div>
+    </dialog>
+    <script type="module" src="newtab.js"></script>
+  </body>
+</html>
