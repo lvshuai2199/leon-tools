@@ -95,20 +95,20 @@ Write-Host "Uploading archive ..."
 if ($LASTEXITCODE -ne 0) { throw "scp archive failed" }
 Remove-Item $tarPath -Force
 
-& ssh @sshArgs $remote "mkdir -p '$DEPLOY_REMOTE_DIR' && rm -rf '$DEPLOY_REMOTE_DIR'/* && tar -xf /tmp/leonpro-dist.tar -C '$DEPLOY_REMOTE_DIR' && rm -f /tmp/leonpro-dist.tar"
+& ssh @sshArgs $remote "if sudo -n true 2>/dev/null; then sudo mkdir -p '$DEPLOY_REMOTE_DIR' && sudo chown -R '${DEPLOY_USER}:${DEPLOY_USER}' '$DEPLOY_REMOTE_DIR'; else mkdir -p '$DEPLOY_REMOTE_DIR'; fi; rm -rf '$DEPLOY_REMOTE_DIR'/*; tar -xf /tmp/leonpro-dist.tar -C '$DEPLOY_REMOTE_DIR'; rm -f /tmp/leonpro-dist.tar"
 if ($LASTEXITCODE -ne 0) { throw "extract dist failed" }
 
 Write-Host "Writing nginx config $DEPLOY_NGINX_CONF ..."
 & scp @scpArgs $NginxConf "${remote}:/tmp/leonpro-nginx.conf"
 if ($LASTEXITCODE -ne 0) { throw "scp nginx.conf failed" }
 
-$installNginx = "set -e; if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi; cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'; nginx -t"
+$installNginx = "set -e; SUDO=''; if sudo -n true 2>/dev/null; then SUDO=sudo; fi; if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then `$SUDO cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi; `$SUDO cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'; `$SUDO nginx -t"
 & ssh @sshArgs $remote $installNginx
 if ($LASTEXITCODE -ne 0) { throw "nginx -t failed" }
 
 if ($NGINX_RELOAD -eq "1") {
     Write-Host "Reloading nginx ..."
-    & ssh @sshArgs $remote "systemctl reload nginx"
+    & ssh @sshArgs $remote "if sudo -n true 2>/dev/null; then sudo systemctl reload nginx; else systemctl reload nginx; fi"
     if ($LASTEXITCODE -ne 0) { throw "nginx reload failed" }
 }
 
