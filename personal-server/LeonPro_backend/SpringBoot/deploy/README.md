@@ -2,6 +2,8 @@
 
 需要上线时在本机执行 `deploy.ps1`（Windows）或 `deploy.sh`（Git Bash）。不要改服务器上已有的 MySQL 容器。
 
+新机器装 Nginx / Docker / `mysql8`：见 `personal-server/bootstrap/`。
+
 ## 服务器现状（2026-08-28）
 
 | 组件 | 说明 |

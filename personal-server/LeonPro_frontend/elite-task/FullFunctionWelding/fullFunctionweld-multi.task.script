@@ -756,6 +756,31 @@ def fullFunctionweldmulti():
           offset = path_offset_get(1)
       end
   end
+  # full_arc_tracking: 电弧跟踪主循环
+  # 根据焊接电流反馈，实时修正焊枪路径偏移（上下 / 左右）。
+  #
+  # 参数说明:
+  #   maxOffset  - 路径偏移上限
+  #   type       - 跟踪类型位掩码: bit0=上下跟踪, bit1=左右跟踪
+  #   rcTime     - 参考电流采样间隔
+  #   isConstant - True 时直接用 current 作参考电流，不再采样
+  #   current    - 参考/焊接电流 (A)
+  #   lrOffset   - 左右修正灵敏度
+  #   upOffset   - 上下修正灵敏度
+  #   startTime  - 启动后采样参考电流的时长
+  #   startCyc   - 左右修正生效前需完成的摆动周期数
+  #   udMax/lrMax- 上下/左右单次最大偏移量
+  #
+  # 逻辑概要:
+  # 1) 初始化卡尔曼滤波 + PID，开启 path_offset
+  # 2) 主循环:
+  #    - thread_id==0: 复位采样状态并清零偏移
+  #    - 未采到参考电流且非恒流: 启线程采样参考电流
+  #    - 否则进入跟踪:
+  #      * 由 full_tracking_frame 判断摆动方向
+  #      * 左右(type bit1): 一个摆动周期内比较左/右电流面积差 → 调 Y 偏移
+  #      * 上下(type bit0): 电流相对参考值偏差经滤波/PID → 调 Z 偏移
+  #      * path_offset_set 写入合成偏移
   def full_arc_tracking(maxOffset, type, rcTime=0.1, isConstant = False,current = 160.0, lrOffset = 0.5, upOffset = 0.5,startTime = 2.0,startCyc = 3,udMax = 0.005,lrMax = 0.005):
       import time
       global full_arc_alarm_thread_id

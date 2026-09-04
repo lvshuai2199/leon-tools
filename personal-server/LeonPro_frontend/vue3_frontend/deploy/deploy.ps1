@@ -102,7 +102,7 @@ Write-Host "Writing nginx config $DEPLOY_NGINX_CONF ..."
 & scp @scpArgs $NginxConf "${remote}:/tmp/leonpro-nginx.conf"
 if ($LASTEXITCODE -ne 0) { throw "scp nginx.conf failed" }
 
-$installNginx = "set -e; if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi; cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'; nginx -t"
+$installNginx = "set -e; if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi; cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'; sed -i 's/\r`$//' '$DEPLOY_NGINX_CONF'; nginx -t"
 & ssh @sshArgs $remote $installNginx
 if ($LASTEXITCODE -ne 0) { throw "nginx -t failed" }
 
