@@ -1,0 +1,7 @@
+node_modules
+dist
+unpackage
+deploy/deploy.env
+deploy/dist-upload.tar
+.DS_Store
+*.local

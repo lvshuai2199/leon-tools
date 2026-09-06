@@ -1,88 +1,95 @@
-const http = {
-	// baseUrl: "http://127.0.0.1:8089",
-	// 华为云公网
-	baseUrl: "http://106.12.12.111:8089",
+import { getUserInfo } from "@/utils/auth.js";
 
-	// 请求方法
+const http = {
+	// #ifdef H5
+	baseUrl: "/prod-api",
+	// #endif
+	// #ifndef H5
+	baseUrl: "http://106.12.12.111:8089",
+	// #endif
+
 	request(config) {
-		// 处理请求配置
 		config = beforeRequest(config);
 		config.url = this.baseUrl + config.url;
-		console.log(config.url);
 
-		// 如果是 POST 请求且没有指定 Content-Type，设置为 application/x-www-form-urlencoded
-		if (config.method === "POST" && !config.header) {
-			// config.header = { 'Content-Type': 'application/x-www-form-urlencoded' };
-			config.header = {
-				'Content-Type': 'application/json'
-			};
+		if (config.method === "POST" && !config.header["Content-Type"]) {
+			config.header["Content-Type"] = "application/json";
 		}
 
-		// 创建一个 Promise 对象
 		return new Promise((resolve, reject) => {
 			uni.request({
 				...config,
 				success: (res) => {
-					let response = beforeResponse(res);
-					resolve(response);
+					try {
+						const data = unwrapResponse(res);
+						resolve(data);
+					} catch (err) {
+						reject(err);
+					}
 				},
 				fail: (err) => {
-					errorHandle(err);
+					uni.showToast({
+						title: "网络异常，请稍后重试",
+						icon: "none",
+					});
 					reject(err);
-				}
+				},
 			});
 		});
 	},
 
-	// GET 请求
-	get(url, data, auth) {
+	get(url, data) {
 		return this.request({
-			url: url,
-			data: data,
-			auth: auth,
-			method: "GET"
+			url,
+			data,
+			method: "GET",
 		});
 	},
 
-	// POST 请求
-	post(url, data, auth) {
+	post(url, data) {
 		return this.request({
-			url: url,
-			data: data,
-			auth: auth,
-			method: "POST"
+			url,
+			data,
+			method: "POST",
 		});
-	}
+	},
 };
 
-// 请求拦截器
-const beforeRequest = (config) => {
-	console.log('请求拦截器', config);
-	// 在这里添加认证信息或其他请求配置
+function beforeRequest(config) {
+	config.header = config.header || {};
+	const user = getUserInfo();
+	if (user?.id) {
+		config.header["X-User-Id"] = String(user.id);
+	}
+	if (user?.username) {
+		config.header["X-Username"] = encodeURIComponent(user.username);
+	}
 	return config;
-};
+}
 
-// 响应拦截器
-const beforeResponse = (response) => {
-	console.log('响应拦截器', response);
-	// 在这里处理响应数据
-
-	console.log("响应拦截器数据")
-	console.log(response)
-	if (response.statusCode === 200) {
-		response = response.data
-		// this.messageToggle('success','Success');
+function unwrapResponse(response) {
+	if (response.statusCode !== 200) {
+		uni.showToast({
+			title: "请求失败",
+			icon: "none",
+		});
+		throw new Error("HTTP " + response.statusCode);
 	}
-	console.log("响应拦截器返回数据")
-	console.log(response)
-	return response;
-};
 
-// 异常处理器
-const errorHandle = (err) => {
-	console.log('网络异常，请求失败', err);
-	// 在这里处理异常情况
-	return err;
-};
+	const body = response.data;
+	if (!body || typeof body !== "object" || !("status" in body)) {
+		return body;
+	}
+
+	if (String(body.status) === "200") {
+		return body.data;
+	}
+
+	uni.showToast({
+		title: body.message || "请求失败",
+		icon: "none",
+	});
+	throw new Error(body.message || "请求失败");
+}
 
 export default http;

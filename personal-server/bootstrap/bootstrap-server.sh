@@ -13,6 +13,7 @@ ENV_FILE="${SCRIPT_DIR}/bootstrap.env"
 MYSQL_DIR="/opt/leonpro/mysql"
 BACKEND_DIR="/opt/leonpro/backend"
 WWW_DIR="/var/www/leonpro"
+WWW_H5_DIR="/var/www/leonpro-h5"
 TOOL_DIR="/var/www/tool"
 NGINX_CONF="/etc/nginx/sites-available/default"
 
@@ -66,7 +67,7 @@ apt-get install -y ca-certificates curl gnupg lsb-release apt-transport-https \
 log "安装 Nginx"
 apt-get install -y nginx
 systemctl enable nginx
-mkdir -p "${WWW_DIR}" "${TOOL_DIR}"
+mkdir -p "${WWW_DIR}" "${WWW_H5_DIR}" "${TOOL_DIR}"
 if [[ ! -f "${WWW_DIR}/index.html" ]]; then
   cat >"${WWW_DIR}/index.html" <<'HTML'
 <!doctype html><meta charset="utf-8"><title>LeonPro</title>

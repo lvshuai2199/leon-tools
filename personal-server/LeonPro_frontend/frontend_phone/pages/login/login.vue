@@ -1,163 +1,171 @@
 <template>
-	<view>
-		<!-- 显示用户信息 -->
-		<uni-notice-bar single text="使用手机号＋密码进行登录,初始密码为123456" v-if="!userInfo" />
+	<view class="login-page">
+		<view class="login-bg"></view>
+		<view class="login-card">
+			<view class="brand">
+				<image class="logo" src="/static/logo.png" mode="aspectFit"></image>
+				<text class="title">LeonPro</text>
+				<text class="subtitle">个人工具平台</text>
+			</view>
 
-		<view class="content">
-			<image class="logo" src="/static/logo.png"></image>
-			<!-- 登录表单 -->
-			<uni-forms ref="loginForm" :modelValue="loginInfo" :rules="rules">
-				<uni-forms-item label="账号:" name="phone">
-					<uni-easyinput v-model="loginInfo.username" placeholder="请输入账号" />
-				</uni-forms-item>
-				<uni-forms-item label="密码:" name="password">
-					<uni-easyinput type="password" v-model="loginInfo.password" placeholder="请输入密码" />
-				</uni-forms-item>
-				<uni-forms-item label="验证码:" name="captcha">
-					<uni-easyinput v-model="loginInfo.captchaCode" placeholder="请输入验证码" />
-				</uni-forms-item>
-				<!-- 显示验证码图片 -->
-				<image v-if="loginInfo.captchaBase64" :src="loginInfo.captchaBase64" class="captcha-image"
-					mode="aspectFit" />
-			</uni-forms>
-			<button type="default" @click="login">登录</button>
-			<navigator url="/pages/login/register" hover-class="other-navigator-hover">
-				<button type="default">注册</button>
-			</navigator>
+			<view class="field">
+				<text class="label">用户名</text>
+				<input
+					v-model="form.username"
+					class="input"
+					placeholder="请输入用户名"
+					confirm-type="next"
+				/>
+			</view>
+			<view class="field">
+				<text class="label">密码</text>
+				<input
+					v-model="form.password"
+					class="input"
+					password
+					placeholder="请输入密码"
+					confirm-type="done"
+					@confirm="handleLogin"
+				/>
+			</view>
+
+			<button class="submit" :loading="loading" :disabled="loading" @click="handleLogin">
+				登 录
+			</button>
 		</view>
-
-		<!-- 提示信息弹窗 -->
-		<uni-popup ref="message" type="message">
-			<uni-popup-message :type="msgType" :message="messageText" :duration="2000"></uni-popup-message>
-		</uni-popup>
 	</view>
 </template>
 
 <script>
-	import {
-		mapActions
-	} from 'vuex';
+	import { getUserInfo, setUserInfo } from "@/utils/auth.js";
 
 	export default {
 		data() {
 			return {
-				loginInfo: {
-					username: null,
-					password: null,
-					captchaKey: "abc",
-					captchaBase64: ''
+				loading: false,
+				form: {
+					username: "",
+					password: "",
 				},
-				userInfo: null,
-				msgType: null,
-				messageText: null,
-				rules: {
-					phone: {
-						required: true,
-						message: '账号不能为空',
-					},
-					password: {
-						required: true,
-						message: '密码不能为空',
-					},
-					captcha: {
-						required: true,
-						message: '验证码不能为空',
-					},
-				}
 			};
 		},
-		onLoad() {
-			this.getCaptcha();
+		onShow() {
+			if (getUserInfo()) {
+				uni.reLaunch({ url: "/pages/workspace/workspace" });
+			}
 		},
 		methods: {
-			...mapActions(['saveUserId', 'saveRoleId']),
-			async getCaptcha() {
-				const response = await this.$api.getcaptcha();
-				if (response.status === 200) {
-					this.loginInfo.captchaKey = response.data.captchaKey;
-					this.loginInfo.captchaBase64 = `data:image/png;base64,${response.data.captchaBase64}`;
-				} else {
-					this.messageToggle('error', '数据获取失败');
+			validate() {
+				if (!this.form.username.trim()) {
+					uni.showToast({ title: "请输入用户名", icon: "none" });
+					return false;
 				}
+				if (!this.form.password) {
+					uni.showToast({ title: "请输入密码", icon: "none" });
+					return false;
+				}
+				if (this.form.password.length < 6) {
+					uni.showToast({ title: "密码长度不能少于6位", icon: "none" });
+					return false;
+				}
+				return true;
 			},
-			async messageToggle(type, content) {
-				this.msgType = type;
-				this.messageText = content;
-				this.$refs.message.open();
-			},
-			async login() {
+			async handleLogin() {
+				if (!this.validate() || this.loading) return;
+				this.loading = true;
 				try {
-					await this.$refs.loginForm.validate(); // 验证表单
-					const response = await this.$api.syslogin(this.loginInfo);
-					if (response.status === 200) {
-						const userId = response.data?.id; // 获取用户 ID
-						const roleId = response.data?.roleId; // 获取用户 ID
-						if (userId) {
-							// 存储用户 ID
-							uni.setStorage({
-								key: 'userId',
-								data: userId, // 将 'USER_ID_VALUE' 替换为实际的用户 ID
-								success: function() {
-									console.log('用户 ID 存储成功');
-								},
-								fail: function() {
-									console.log('用户 ID 存储失败');
-								}
-							});
-							console.log('存储localstorage成功！');
-							const fetchData = () => {
-								// 使用箭头函数，保持 `this` 指向
-								this.saveUserId(userId); // 调用 Vuex action 保存用户 ID
-								this.saveRoleId(roleId);
-							};
-							console.log('用户 ID 已保存到 Vuex:', userId);
-							uni.showToast({
-								title: '登录成功',
-								icon: 'success'
-							});
-							uni.switchTab({
-								url: '/pages/index/index'
-							});
-						} else {
-							this.messageToggle('error', '用户 ID 不存在');
-						}
-					} else {
-						this.messageToggle('error', '登陆失败，请检查您的账号及密码是否正确');
+					const data = await this.$api.login(this.form);
+					if (!data || !data.username) {
+						uni.showToast({ title: "登录失败，请检查用户名或密码", icon: "none" });
+						return;
 					}
+					setUserInfo(data);
+					uni.showToast({ title: "登录成功", icon: "success" });
+					setTimeout(() => {
+						uni.reLaunch({ url: "/pages/workspace/workspace" });
+					}, 300);
 				} catch (error) {
-					console.log(error); // 打印错误信息
-					this.messageToggle('error', '表单验证失败');
+					console.error("登录失败", error);
+				} finally {
+					this.loading = false;
 				}
-			}
-		}
-	}
+			},
+		},
+	};
 </script>
 
-<style>
-	.content {
+<style scoped>
+	.login-page {
+		min-height: 100vh;
+		padding: calc(120rpx + env(safe-area-inset-top)) 48rpx 80rpx;
+		box-sizing: border-box;
+		background: linear-gradient(180deg, #1d4ed8 0%, #4080ff 42%, #f4f6fb 42%);
+	}
+
+	.login-card {
+		padding: 56rpx 40rpx 48rpx;
+		background: #fff;
+		border-radius: 24rpx;
+		box-shadow: 0 16rpx 48rpx rgba(29, 78, 216, 0.12);
+	}
+
+	.brand {
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		justify-content: center;
+		margin-bottom: 48rpx;
 	}
 
 	.logo {
-		height: 200rpx;
-		width: 200rpx;
-		margin-bottom: 10px;
+		width: 112rpx;
+		height: 112rpx;
+		margin-bottom: 16rpx;
 	}
 
-	button {
-		margin-top: 5rpx;
-		background-color: #3d4f7f;
+	.title {
+		font-size: 44rpx;
+		font-weight: 700;
+		color: #1f2937;
+	}
+
+	.subtitle {
+		margin-top: 8rpx;
+		font-size: 26rpx;
+		color: #6b7280;
+	}
+
+	.field {
+		margin-bottom: 28rpx;
+	}
+
+	.label {
+		display: block;
+		margin-bottom: 12rpx;
+		font-size: 26rpx;
+		color: #4b5563;
+	}
+
+	.input {
+		height: 88rpx;
+		padding: 0 24rpx;
+		font-size: 30rpx;
+		background: #f5f7fb;
+		border: 1px solid #e5e7eb;
+		border-radius: 16rpx;
+	}
+
+	.submit {
+		margin-top: 20rpx;
+		height: 92rpx;
+		line-height: 92rpx;
+		font-size: 32rpx;
 		color: #fff;
-		padding: 10rpx;
-		border-radius: 5rpx;
+		background: #4080ff;
+		border: none;
+		border-radius: 16rpx;
 	}
 
-	.captcha-image {
-		margin-top: 10rpx;
-		height: 60rpx;
-		margin-bottom: 10rpx;
+	.submit::after {
+		border: none;
 	}
 </style>
