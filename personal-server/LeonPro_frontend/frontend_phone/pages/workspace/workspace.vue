@@ -5,7 +5,7 @@
 				<text class="hello">你好，{{ displayName }}</text>
 				<text class="desc">为客户生成对应注册码</text>
 			</view>
-			<view class="logout" @click="handleLogout">退出</view>
+			<view class="logout" @tap.stop="handleLogout">退出</view>
 		</view>
 
 		<view class="card">
@@ -288,26 +288,20 @@
 					content: "确定退出当前账号？",
 					success: (res) => {
 						if (!res.confirm) return;
-						this.user = null;
-						clearUserInfo();
-						this.goLogin();
+						this.leaveToLogin();
 					},
 				});
 			},
-			goLogin() {
-				uni.reLaunch({
-					url: "/pages/login/login",
-					fail: () => {
-						uni.redirectTo({
-							url: "/pages/login/login",
-							fail: () => {
-								// #ifdef H5
-								window.location.replace((window.location.origin || "") + "/h5/");
-								// #endif
-							},
-						});
-					},
-				});
+			leaveToLogin() {
+				this.user = null;
+				clearUserInfo();
+				// #ifdef H5
+				const origin = window.location.origin || "";
+				const path = (window.location.pathname || "/h5/").replace(/\/?$/, "/");
+				window.location.replace(origin + path + "#/pages/login/login");
+				return;
+				// #endif
+				uni.reLaunch({ url: "/pages/login/login" });
 			},
 		},
 	};
