@@ -16,10 +16,9 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * 菜单种子数据初始化
- *
- * 首次启动（sys_menus 表为空）时，将当前系统全部路由写入数据库，
- * 前端「路由配置」模块与动态路由均以数据库为准。
+ * 菜单种子：仅在 sys_menus 为空时写入默认路由，或补插缺失的固定 id。
+ * 已有行（图标、名称、路径等）一律以数据库为准，启动时不再用代码覆盖。
+ * 侧边栏由 /auth/getMenuList 读表生成。
  */
 @Slf4j
 @Component
@@ -116,64 +115,30 @@ public class MenuDataSeeder implements CommandLineRunner {
         }
     }
 
-    /** 把注册码相关菜单收拢到同一目录下，并补齐缺失项 */
+    /** 只补缺失的注册码菜单，已有行完全以 sys_menus 为准 */
     private void groupRegCodeMenus() {
         Date now = new Date();
-        upsert(MENU_REGCODE_CENTER, "0", "注册码", "/regcode", "Layout", "/regcode/generate",
+        insertIfAbsent(MENU_REGCODE_CENTER, "0", "注册码", "/regcode", "Layout", "/regcode/generate",
                 "RegCodeCenter", "key", 2, 0, 1, 1, 0, now);
-        upsert(MENU_REGCODE, MENU_REGCODE_CENTER, "注册码生成", "generate", "tool/regcode/index",
+        insertIfAbsent(MENU_REGCODE, MENU_REGCODE_CENTER, "注册码生成", "generate", "tool/regcode/index",
                 null, "RegCode", "key", 1, 1, 1, 0, 0, now);
-        upsert(MENU_REGCODE_CONFIG, MENU_REGCODE_CENTER, "注册码配置", "config", "tool/regcode-config/index",
+        insertIfAbsent(MENU_REGCODE_CONFIG, MENU_REGCODE_CENTER, "注册码配置", "config", "tool/regcode-config/index",
                 null, "RegCodeConfig", "setting", 2, 1, 1, 0, 0, now);
-        upsert(MENU_REGCODE_USER, MENU_REGCODE_CENTER, "注册码用户", "user", "tool/regcode-user/index",
+        insertIfAbsent(MENU_REGCODE_USER, MENU_REGCODE_CENTER, "注册码用户", "user", "tool/regcode-user/index",
                 null, "RegCodeUser", "user", 3, 1, 1, 0, 1, now);
-        upsert(MENU_REGISTRATION, MENU_REGCODE_CENTER, "注册码记录", "records", "work/registration/index",
+        insertIfAbsent(MENU_REGISTRATION, MENU_REGCODE_CENTER, "注册码记录", "records", "work/registration/index",
                 null, "Registration", "client", 4, 1, 1, 0, 1, now);
     }
 
-    private void upsert(String id, String parentId, String menuName, String menuUrl, String component,
-                        String redirect, String routeName, String icon, Integer sortOrder,
-                        Integer menuType, Integer visible, Integer alwaysShow, Integer keepAlive, Date now) {
-        SysMenus menu = sysMenusService.getById(id);
-        if (menu == null) {
-            sysMenusService.save(build(id, parentId, menuName, menuUrl, component, redirect,
-                    routeName, icon, sortOrder, menuType, visible, alwaysShow, keepAlive, null, now));
-            log.info("已补插种子菜单 {}（{}）。", id, menuName);
+    private void insertIfAbsent(String id, String parentId, String menuName, String menuUrl, String component,
+                                String redirect, String routeName, String icon, Integer sortOrder,
+                                Integer menuType, Integer visible, Integer alwaysShow, Integer keepAlive, Date now) {
+        if (sysMenusService.getById(id) != null) {
             return;
         }
-        // 已有菜单只校正目录结构，不覆盖路由配置里改过的图标/名称/排序
-        boolean changed = false;
-        if (!parentId.equals(menu.getParentId())) {
-            menu.setParentId(parentId);
-            changed = true;
-        }
-        if (menuUrl != null && !menuUrl.equals(menu.getMenuUrl())) {
-            menu.setMenuUrl(menuUrl);
-            changed = true;
-        }
-        if (component != null && !component.equals(menu.getComponent())) {
-            menu.setComponent(component);
-            changed = true;
-        }
-        if (redirect != null && !redirect.equals(menu.getRedirect())) {
-            menu.setRedirect(redirect);
-            changed = true;
-        }
-        if (routeName != null && !routeName.equals(menu.getRouteName())) {
-            menu.setRouteName(routeName);
-            changed = true;
-        }
-        if (menuType != null && !menuType.equals(menu.getMenuType())) {
-            menu.setMenuType(menuType);
-            changed = true;
-        }
-        if ("操作日志".equals(menu.getMenuName()) && MENU_REGISTRATION.equals(id)) {
-            menu.setMenuName(menuName);
-            changed = true;
-        }
-        if (changed) {
-            sysMenusService.updateById(menu);
-        }
+        sysMenusService.save(build(id, parentId, menuName, menuUrl, component, redirect,
+                routeName, icon, sortOrder, menuType, visible, alwaysShow, keepAlive, null, now));
+        log.info("已补插种子菜单 {}（{}）。", id, menuName);
     }
 
     /** 已有任一注册码菜单的角色，补齐整组（含目录和注册码用户） */
