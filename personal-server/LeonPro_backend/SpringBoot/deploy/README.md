@@ -8,7 +8,7 @@
 
 | 组件 | 说明 |
 | --- | --- |
-| 主机 | `106.12.12.111`，目录 `/opt/leonpro/backend` |
+| 主机 | `124.220.57.33`（ubuntu），目录 `/opt/leonpro/backend` |
 | MySQL | 已有容器 `mysql8`，映射 `3306`。Java 用宿主机网络连 `127.0.0.1:3306` |
 | Redis | compose 里的 `leonpro-redis`，只绑 `127.0.0.1:6379` |
 | Java | 容器 `leonpro-backend`，`network_mode: host`，端口 `8089` |

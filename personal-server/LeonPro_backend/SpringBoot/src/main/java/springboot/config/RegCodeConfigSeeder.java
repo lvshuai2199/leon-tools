@@ -28,16 +28,27 @@ public class RegCodeConfigSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        if (this.regCodeConfigService.count() > 0) {
+        Date now = DateUtils.getNow();
+        if (this.regCodeConfigService.count() == 0) {
+            List<RegCodeConfig> rows = new ArrayList<>();
+            rows.add(row("rcc_weld", "通用", "焊接专机", "weld", "MD5", "auboweld", 1, now));
+            rows.add(row("rcc_pallet", "通用", "码垛专机", "pallet", "MD5", "aubo", 2, now));
+            rows.add(row("rcc_youbo", "友博", "CNC插件", "cnc", "MD5", "youbo_leon", 3, now));
+            rows.add(row("rcc_youbo_pe", "友博", "PE插件", "pe", "SHA-256", "youbo_leon", 4, now));
+            this.regCodeConfigService.saveBatch(rows);
+            log.info("reg_code_config 为空，已初始化 {} 条默认配置。", rows.size());
             return;
         }
-        Date now = DateUtils.getNow();
-        List<RegCodeConfig> rows = new ArrayList<>();
-        rows.add(row("rcc_weld", "通用", "焊接专机", "weld", "MD5", "auboweld", 1, now));
-        rows.add(row("rcc_pallet", "通用", "码垛专机", "pallet", "MD5", "aubo", 2, now));
-        rows.add(row("rcc_youbo", "友博", "CNC插件", "cnc", "MD5", "youbo_leon", 3, now));
-        this.regCodeConfigService.saveBatch(rows);
-        log.info("reg_code_config 为空，已初始化 {} 条默认配置。", rows.size());
+        ensureYouboPe(now);
+    }
+
+    /** 友博 PE 插件：与上下料小工具相同，原文 + youbo_leon，再 SHA-256 截取有效期 */
+    private void ensureYouboPe(Date now) {
+        if (this.regCodeConfigService.getById("rcc_youbo_pe") != null) {
+            return;
+        }
+        this.regCodeConfigService.save(row("rcc_youbo_pe", "友博", "PE插件", "pe", "SHA-256", "youbo_leon", 4, now));
+        log.info("已补插注册码配置 rcc_youbo_pe（友博 / PE插件 / SHA-256）。");
     }
 
     private RegCodeConfig row(String id, String company, String name, String componentName,

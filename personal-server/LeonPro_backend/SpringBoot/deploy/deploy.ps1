@@ -53,6 +53,23 @@ if (-not $DEPLOY_HOST -or -not $DEPLOY_USER -or -not $DEPLOY_REMOTE_DIR) {
     Write-Error "deploy.env 需要填写 DEPLOY_HOST / DEPLOY_USER / DEPLOY_REMOTE_DIR"
 }
 
+if (-not $DEPLOY_PASSWORD -and -not $DEPLOY_SSH_KEY) {
+    $bootstrapEnv = Join-Path $SpringBootDir "..\..\bootstrap\bootstrap.env"
+    if (Test-Path $bootstrapEnv) {
+        Get-Content $bootstrapEnv | ForEach-Object {
+            $line = $_.Trim()
+            if ($line -eq "" -or $line.StartsWith("#")) { return }
+            $idx = $line.IndexOf("=")
+            if ($idx -lt 1) { return }
+            $key = $line.Substring(0, $idx).Trim()
+            $value = $line.Substring($idx + 1).Trim()
+            if ($key -eq "DEPLOY_PASSWORD" -and $value) { $script:DEPLOY_PASSWORD = $value }
+            if ($key -eq "DEPLOY_SSH_KEY" -and $value) { $script:DEPLOY_SSH_KEY = $value }
+        }
+        Write-Host "Using login from bootstrap.env"
+    }
+}
+
 if (-not $DEPLOY_PORT) { $DEPLOY_PORT = "22" }
 if (-not $SKIP_BUILD) { $SKIP_BUILD = "0" }
 if (-not $DOCKER_UP) { $DOCKER_UP = "0" }
@@ -77,6 +94,7 @@ if ($DEPLOY_SSH_KEY) {
 }
 
 $remote = "${DEPLOY_USER}@${DEPLOY_HOST}"
+$sudo = if ($DEPLOY_USER -eq "root") { "" } else { "sudo " }
 
 if ($SKIP_BUILD -ne "1") {
     Write-Host "Maven 打包..."
@@ -103,11 +121,11 @@ if (-not (Test-Path $JarPath)) {
 }
 
 Write-Host "在服务器创建目录 $DEPLOY_REMOTE_DIR ..."
-& ssh @sshArgs $remote "mkdir -p '$DEPLOY_REMOTE_DIR'"
+& ssh @sshArgs $remote "${sudo}rm -rf /tmp/leonpro-backend-upload && mkdir -p /tmp/leonpro-backend-upload && ${sudo}mkdir -p '$DEPLOY_REMOTE_DIR'"
 if ($LASTEXITCODE -ne 0) { throw "ssh mkdir 失败" }
 
 Write-Host "拷贝 jar 到 ${remote}:$DEPLOY_REMOTE_DIR/app.jar ..."
-& scp @scpArgs $JarPath "${remote}:${DEPLOY_REMOTE_DIR}/app.jar"
+& scp @scpArgs $JarPath "${remote}:/tmp/leonpro-backend-upload/app.jar"
 if ($LASTEXITCODE -ne 0) { throw "scp jar 失败" }
 
 Write-Host "拷贝 Docker 文件..."
@@ -115,12 +133,15 @@ Write-Host "拷贝 Docker 文件..."
     (Join-Path $SpringBootDir "Dockerfile") `
     (Join-Path $SpringBootDir "docker-compose.yml") `
     (Join-Path $SpringBootDir ".dockerignore") `
-    "${remote}:${DEPLOY_REMOTE_DIR}/"
+    "${remote}:/tmp/leonpro-backend-upload/"
 if ($LASTEXITCODE -ne 0) { throw "scp Docker 文件失败" }
+
+& ssh @sshArgs $remote "${sudo}cp /tmp/leonpro-backend-upload/app.jar /tmp/leonpro-backend-upload/Dockerfile /tmp/leonpro-backend-upload/docker-compose.yml /tmp/leonpro-backend-upload/.dockerignore '$DEPLOY_REMOTE_DIR/' && rm -rf /tmp/leonpro-backend-upload"
+if ($LASTEXITCODE -ne 0) { throw "install backend files failed" }
 
 if ($DOCKER_UP -eq "1") {
     Write-Host "在服务器启动 Docker 容器..."
-    & ssh @sshArgs $remote "cd '$DEPLOY_REMOTE_DIR' && (docker compose up -d --build || docker-compose up -d --build)"
+    & ssh @sshArgs $remote "cd '$DEPLOY_REMOTE_DIR' && (${sudo}docker compose up -d --build || ${sudo}docker-compose up -d --build)"
     if ($LASTEXITCODE -ne 0) { throw "docker compose 失败" }
 }
 

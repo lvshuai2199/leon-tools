@@ -45,6 +45,22 @@ public class RoleDataSeeder implements CommandLineRunner {
         mergeDuplicateRoots(root.getId());
         assignRootToUnscopedAdmins(root.getId());
         ensureAdminUser(root.getId());
+        ensureRegCodeClientRole();
+    }
+
+    /** 手机端客户角色：默认无 PC 菜单，仅用于登录生成注册码 */
+    private void ensureRegCodeClientRole() {
+        if (sysRolesService.getById("role_regcode_client") != null) {
+            return;
+        }
+        jdbcTemplate.update(
+                "INSERT INTO sys_roles (id, role_name, description, is_disabled, create_time) VALUES (?, ?, ?, ?, ?)",
+                "role_regcode_client",
+                "注册码客户",
+                "仅可使用已分配的注册码生成能力，默认无后台菜单",
+                0,
+                new Date());
+        log.info("已初始化角色 注册码客户（id=role_regcode_client）。");
     }
 
     private SysRoles ensureCanonicalRoot() {

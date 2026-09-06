@@ -25,19 +25,26 @@ if (-not $DEPLOY_HOST -or -not $DEPLOY_USER -or -not $DEPLOY_REMOTE_DIR) {
 }
 
 if (-not $DEPLOY_PASSWORD -and -not $DEPLOY_SSH_KEY) {
-    $backendEnv = Join-Path $FrontendDir "..\..\LeonPro_backend\SpringBoot\deploy\deploy.env"
-    if (Test-Path $backendEnv) {
-        Get-Content $backendEnv | ForEach-Object {
+    $fallbackEnvs = @(
+        (Join-Path $FrontendDir "..\..\bootstrap\bootstrap.env"),
+        (Join-Path $FrontendDir "..\..\LeonPro_backend\SpringBoot\deploy\deploy.env")
+    )
+    foreach ($fallbackEnv in $fallbackEnvs) {
+        if (-not (Test-Path $fallbackEnv)) { continue }
+        Get-Content $fallbackEnv | ForEach-Object {
             $line = $_.Trim()
             if ($line -eq "" -or $line.StartsWith("#")) { return }
             $idx = $line.IndexOf("=")
             if ($idx -lt 1) { return }
             $key = $line.Substring(0, $idx).Trim()
             $value = $line.Substring($idx + 1).Trim()
-            if ($key -eq "DEPLOY_PASSWORD" -and $value) { $script:DEPLOY_PASSWORD = $value }
-            if ($key -eq "DEPLOY_SSH_KEY" -and $value) { $script:DEPLOY_SSH_KEY = $value }
+            if ($key -eq "DEPLOY_PASSWORD" -and $value -and -not $script:DEPLOY_PASSWORD) { $script:DEPLOY_PASSWORD = $value }
+            if ($key -eq "DEPLOY_SSH_KEY" -and $value -and -not $script:DEPLOY_SSH_KEY) { $script:DEPLOY_SSH_KEY = $value }
         }
-        Write-Host "Using login from backend deploy.env"
+        if ($DEPLOY_PASSWORD -or $DEPLOY_SSH_KEY) {
+            Write-Host "Using login from $fallbackEnv"
+            break
+        }
     }
 }
 
@@ -66,6 +73,7 @@ if ($DEPLOY_SSH_KEY) {
 }
 
 $remote = "${DEPLOY_USER}@${DEPLOY_HOST}"
+$sudo = if ($DEPLOY_USER -eq "root") { "" } else { "sudo " }
 
 if ($SKIP_BUILD -ne "1") {
     Write-Host "Building frontend..."
@@ -95,20 +103,20 @@ Write-Host "Uploading archive ..."
 if ($LASTEXITCODE -ne 0) { throw "scp archive failed" }
 Remove-Item $tarPath -Force
 
-& ssh @sshArgs $remote "mkdir -p '$DEPLOY_REMOTE_DIR' && rm -rf '$DEPLOY_REMOTE_DIR'/* && tar -xf /tmp/leonpro-dist.tar -C '$DEPLOY_REMOTE_DIR' && rm -f /tmp/leonpro-dist.tar"
+& ssh @sshArgs $remote "${sudo}mkdir -p '$DEPLOY_REMOTE_DIR' && ${sudo}rm -rf '$DEPLOY_REMOTE_DIR'/* && ${sudo}tar -xf /tmp/leonpro-dist.tar -C '$DEPLOY_REMOTE_DIR' && rm -f /tmp/leonpro-dist.tar"
 if ($LASTEXITCODE -ne 0) { throw "extract dist failed" }
 
 Write-Host "Writing nginx config $DEPLOY_NGINX_CONF ..."
 & scp @scpArgs $NginxConf "${remote}:/tmp/leonpro-nginx.conf"
 if ($LASTEXITCODE -ne 0) { throw "scp nginx.conf failed" }
 
-$installNginx = "set -e; if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi; cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'; sed -i 's/\r`$//' '$DEPLOY_NGINX_CONF'; nginx -t"
+$installNginx = "set -e; if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then ${sudo}cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi; ${sudo}cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'; ${sudo}sed -i 's/\r`$//' '$DEPLOY_NGINX_CONF'; ${sudo}nginx -t"
 & ssh @sshArgs $remote $installNginx
 if ($LASTEXITCODE -ne 0) { throw "nginx -t failed" }
 
 if ($NGINX_RELOAD -eq "1") {
     Write-Host "Reloading nginx ..."
-    & ssh @sshArgs $remote "systemctl reload nginx"
+    & ssh @sshArgs $remote "${sudo}systemctl reload nginx"
     if ($LASTEXITCODE -ne 0) { throw "nginx reload failed" }
 }
 
