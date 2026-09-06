@@ -29,6 +29,9 @@ public class ComRegistrationController {
     @Autowired
     private ComRegistrationService comRegistrationService;
 
+    @Autowired
+    private OperatorUtils operatorUtils;
+
     /**
      * 分页查询所有数据
      *
@@ -41,7 +44,14 @@ public class ComRegistrationController {
         LambdaQueryWrapper<ComRegistration> queryWrapper = new LambdaQueryWrapper<>();
         if (query != null) {
             if (query.getOperator() != null && !query.getOperator().isBlank()) {
-                queryWrapper.like(ComRegistration::getOperator, query.getOperator());
+                String keyword = query.getOperator().trim();
+                List<String> userIds = this.operatorUtils.findUserIdsByName(keyword);
+                queryWrapper.and(w -> {
+                    w.like(ComRegistration::getOperator, keyword);
+                    if (!userIds.isEmpty()) {
+                        w.or().in(ComRegistration::getOperator, userIds);
+                    }
+                });
             }
             if (query.getCompany() != null && !query.getCompany().isBlank()) {
                 queryWrapper.like(ComRegistration::getCompany, query.getCompany());
@@ -51,7 +61,9 @@ public class ComRegistrationController {
             }
         }
         queryWrapper.orderByDesc(ComRegistration::getCreateTime);
-        return ApiResponse.success(this.comRegistrationService.page(page, queryWrapper));
+        var result = this.comRegistrationService.page(page, queryWrapper);
+        result.getRecords().forEach(row -> row.setOperator(this.operatorUtils.toDisplayName(row.getOperator())));
+        return ApiResponse.success(result);
     }
 
     /**

@@ -92,7 +92,7 @@ function logout() {
         tagsViewStore.delAllViews();
       })
       .then(() => {
-        router.push(`/login?redirect=${route.fullPath}`);
+        router.replace({ path: "/login" });
       });
   });
 }

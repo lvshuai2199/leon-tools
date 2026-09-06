@@ -45,7 +45,7 @@
 				</view>
 
 				<view
-					v-for="field in visibleFields"
+					v-for="field in allFields"
 					:key="field"
 					class="result-row"
 				>
@@ -60,10 +60,6 @@
 					>
 						复制
 					</text>
-				</view>
-
-				<view v-if="hasHiddenFields" class="link" @click="expanded = !expanded">
-					{{ expanded ? "收起" : "展开更多" }}
 				</view>
 
 				<view class="actions">
@@ -87,7 +83,6 @@
 		"thirteenMonthValid",
 		"longTimeValid",
 	];
-	const DEFAULT_FIELDS = ["oneMonthValid", "longTimeValid"];
 	const VALIDITY_LABELS = {
 		oneMonthValid: "一个月",
 		twoMonthValid: "两个月",
@@ -120,7 +115,6 @@
 				configId: "",
 				regCode: "",
 				generating: false,
-				expanded: false,
 				isGenerated: false,
 				result: emptyResult(),
 			};
@@ -173,11 +167,8 @@
 			currentConfigName() {
 				return this.currentConfig?.name || this.currentConfig?.componentName || "";
 			},
-			visibleFields() {
-				return this.expanded ? ALL_FIELDS : DEFAULT_FIELDS;
-			},
-			hasHiddenFields() {
-				return !this.expanded && ALL_FIELDS.length > DEFAULT_FIELDS.length;
+			allFields() {
+				return ALL_FIELDS;
 			},
 		},
 		onLoad() {
@@ -219,7 +210,6 @@
 			onCompanyChange(event) {
 				this.companyName = this.companies[event.detail.value] || "";
 				this.configId = this.currentConfigs[0]?.id || "";
-				this.expanded = false;
 				this.resetResult();
 			},
 			onConfigChange(event) {
@@ -232,7 +222,6 @@
 			},
 			resetAll() {
 				this.regCode = "";
-				this.expanded = false;
 				this.resetResult();
 			},
 			async loadQuota() {
@@ -299,8 +288,24 @@
 					content: "确定退出当前账号？",
 					success: (res) => {
 						if (!res.confirm) return;
+						this.user = null;
 						clearUserInfo();
-						uni.reLaunch({ url: "/pages/login/login" });
+						this.goLogin();
+					},
+				});
+			},
+			goLogin() {
+				uni.reLaunch({
+					url: "/pages/login/login",
+					fail: () => {
+						uni.redirectTo({
+							url: "/pages/login/login",
+							fail: () => {
+								// #ifdef H5
+								window.location.replace((window.location.origin || "") + "/h5/");
+								// #endif
+							},
+						});
 					},
 				});
 			},

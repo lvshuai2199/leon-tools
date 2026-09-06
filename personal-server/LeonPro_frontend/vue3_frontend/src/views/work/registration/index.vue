@@ -5,7 +5,7 @@
         <el-form-item label="操作人员">
           <el-input
             v-model="queryParams.operator"
-            placeholder="用户 ID / 未知人员"
+            placeholder="用户名"
             clearable
             @keyup.enter="handleQuery"
           />

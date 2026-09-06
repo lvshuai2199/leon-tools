@@ -37,7 +37,7 @@
 </template>
 
 <script>
-	import { getUserInfo, setUserInfo } from "@/utils/auth.js";
+	import { consumeLogoutFlag, getUserInfo, setUserInfo } from "@/utils/auth.js";
 
 	export default {
 		data() {
@@ -50,7 +50,10 @@
 			};
 		},
 		onShow() {
-			if (getUserInfo()) {
+			if (consumeLogoutFlag()) {
+				return;
+			}
+			if (getUserInfo()?.id) {
 				uni.reLaunch({ url: "/pages/workspace/workspace" });
 			}
 		},
