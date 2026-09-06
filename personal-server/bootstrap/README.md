@@ -29,12 +29,21 @@ sudo bash /opt/leonpro/bootstrap/bootstrap-server.sh
 
 | 路径 / 容器 | 用途 |
 | --- | --- |
-| `/var/www/leonpro` | 前端静态文件 |
+| `/var/www/leonpro` | Web 前端静态文件 |
+| `/var/www/leonpro-h5` | uni-app H5（`/h5/`） |
 | `/opt/leonpro/backend` | 后端 jar / compose |
 | `mysql8` | MySQL 8.0，默认只绑 `127.0.0.1:3306` |
 | `leonpro_db_prod` / `leonpro_db_dev` | 已建库 |
 
-从旧机迁库：
+从旧机迁库（本机）：
+
+```powershell
+cd personal-server/bootstrap
+# 复制 migrate.env.example 为 migrate.env，填旧机 SSH
+.\migrate-db.ps1
+```
+
+手工迁库：
 
 ```bash
 # 旧机
