@@ -141,19 +141,39 @@ public class MenuDataSeeder implements CommandLineRunner {
             log.info("已补插种子菜单 {}（{}）。", id, menuName);
             return;
         }
-        menu.setParentId(parentId);
-        menu.setMenuName(menuName);
-        menu.setMenuUrl(menuUrl);
-        menu.setComponent(component);
-        menu.setRedirect(redirect);
-        menu.setRouteName(routeName);
-        menu.setIcon(icon);
-        menu.setSortOrder(sortOrder);
-        menu.setMenuType(menuType);
-        menu.setVisible(visible);
-        menu.setAlwaysShow(alwaysShow);
-        menu.setKeepAlive(keepAlive);
-        sysMenusService.updateById(menu);
+        // 已有菜单只校正目录结构，不覆盖路由配置里改过的图标/名称/排序
+        boolean changed = false;
+        if (!parentId.equals(menu.getParentId())) {
+            menu.setParentId(parentId);
+            changed = true;
+        }
+        if (menuUrl != null && !menuUrl.equals(menu.getMenuUrl())) {
+            menu.setMenuUrl(menuUrl);
+            changed = true;
+        }
+        if (component != null && !component.equals(menu.getComponent())) {
+            menu.setComponent(component);
+            changed = true;
+        }
+        if (redirect != null && !redirect.equals(menu.getRedirect())) {
+            menu.setRedirect(redirect);
+            changed = true;
+        }
+        if (routeName != null && !routeName.equals(menu.getRouteName())) {
+            menu.setRouteName(routeName);
+            changed = true;
+        }
+        if (menuType != null && !menuType.equals(menu.getMenuType())) {
+            menu.setMenuType(menuType);
+            changed = true;
+        }
+        if ("操作日志".equals(menu.getMenuName()) && MENU_REGISTRATION.equals(id)) {
+            menu.setMenuName(menuName);
+            changed = true;
+        }
+        if (changed) {
+            sysMenusService.updateById(menu);
+        }
     }
 
     /** 已有任一注册码菜单的角色，补齐整组（含目录和注册码用户） */
