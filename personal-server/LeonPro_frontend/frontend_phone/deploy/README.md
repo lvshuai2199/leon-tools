@@ -1,8 +1,10 @@
-# uni-app H5 部署（Linux Nginx）
+# 手机端 H5 部署（Linux Nginx）
 
-打成静态文件，放到服务器 `/var/www/leonpro-h5`，由已有 Nginx 提供 `/h5/`。接口走 `/prod-api/`，和 PC 端一样反代到本机 Java `127.0.0.1:8089`。
+Vue 3 + Vite 静态文件，放到服务器 `/var/www/leonpro-h5`，由已有 Nginx 提供 `/h5/`。接口走 `/prod-api/`，和 PC 端一样反代到本机 Java `127.0.0.1:8089`。
 
 单独目录，避免 Vue3 部署清空 `/var/www/leonpro` 时把手机端冲掉。
+
+当前只有登录和注册码生成，不再依赖 uni-app / 微信小程序。
 
 ## 本机准备
 
@@ -16,6 +18,6 @@ cd personal-server/LeonPro_frontend/frontend_phone
 .\deploy\deploy.ps1
 ```
 
-流程：`npm run build:h5` → 上传 `dist/build/h5/` → 写入 Nginx 配置 → `nginx -t` && `reload`。
+流程：`npm run build` → 上传 `dist/` → 写入 Nginx 配置 → `nginx -t` && `reload`。
 
 访问：`http://<服务器IP>/h5/`（当前新机示例：`http://124.220.57.33/h5/`）

@@ -1,7 +1,10 @@
-[官方文档网址](https://uniapp.dcloud.io/component/README?id=uniui)
+# LeonPro 手机 H5
 
-H5 部署到服务器：`.\deploy\deploy.ps1`，访问 `http://<服务器IP>/h5/`。详见 `deploy/README.md`。
+Vue 3 + Vite，只含登录和注册码生成。部署到 `/h5/`。
 
-本地 H5：`npm install` 后 `npm run dev:h5`。
+```powershell
+npm install
+npm run dev
+```
 
-微信小程序仍可用 HBuilderX 打开本目录运行。
+本地开发走 `/prod-api` 代理。启动台里的「手机 H5」会启动这个项目（端口 5173）。

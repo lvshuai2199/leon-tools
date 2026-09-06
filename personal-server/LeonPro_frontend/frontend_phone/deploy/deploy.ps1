@@ -3,7 +3,7 @@ $ErrorActionPreference = "Stop"
 $DeployDir = $PSScriptRoot
 $FrontendDir = Split-Path $DeployDir -Parent
 $EnvFile = Join-Path $DeployDir "deploy.env"
-$DistDir = Join-Path $FrontendDir "dist\build\h5"
+$DistDir = Join-Path $FrontendDir "dist"
 $NginxConf = Join-Path $FrontendDir "..\vue3_frontend\deploy\nginx.conf"
 
 if (-not (Test-Path $EnvFile)) {
@@ -76,19 +76,19 @@ $remote = "${DEPLOY_USER}@${DEPLOY_HOST}"
 $sudo = if ($DEPLOY_USER -eq "root") { "" } else { "sudo " }
 
 if ($SKIP_BUILD -ne "1") {
-    Write-Host "Building uni-app H5..."
+    Write-Host "Building phone H5..."
     Push-Location $FrontendDir
     try {
         $env:NODE_OPTIONS = "--max-old-space-size=1536"
-        npm run build:h5
-        if ($LASTEXITCODE -ne 0) { throw "uni-app H5 build failed" }
+        npm run build
+        if ($LASTEXITCODE -ne 0) { throw "phone H5 build failed" }
     } finally {
         Pop-Location
     }
 }
 
 if (-not (Test-Path (Join-Path $DistDir "index.html"))) {
-    Write-Error "dist/build/h5/index.html not found. Run npm run build:h5 first."
+    Write-Error "dist/index.html not found. Run npm run build first."
 }
 
 if (-not (Test-Path $NginxConf)) {
