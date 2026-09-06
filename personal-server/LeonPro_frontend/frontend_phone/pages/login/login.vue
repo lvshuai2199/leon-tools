@@ -37,7 +37,7 @@
 </template>
 
 <script>
-	import { consumeLogoutFlag, getUserInfo, setUserInfo } from "@/utils/auth.js";
+	import { canEnterApp, consumeLogoutFlag, getUserInfo, setUserInfo } from "@/utils/auth.js";
 
 	export default {
 		data() {
@@ -80,6 +80,10 @@
 					const data = await this.$api.login(this.form);
 					if (!data || !data.username) {
 						uni.showToast({ title: "登录失败，请检查用户名或密码", icon: "none" });
+						return;
+					}
+					if (!canEnterApp(data)) {
+						uni.showToast({ title: "仅注册码用户或 ROOT 可登录", icon: "none" });
 						return;
 					}
 					setUserInfo(data);

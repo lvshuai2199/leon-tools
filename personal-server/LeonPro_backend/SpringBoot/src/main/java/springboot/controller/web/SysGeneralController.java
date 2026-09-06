@@ -133,6 +133,12 @@ public class SysGeneralController {
                 return ApiResponse.failure("该用户角色已禁用");
             }
         }
+        String source = loginData.get("source");
+        if (source != null && ("app".equalsIgnoreCase(source) || "h5".equalsIgnoreCase(source))) {
+            if (!this.regCodeAccessService.canLoginMobile(user)) {
+                return ApiResponse.failure("仅注册码用户或 ROOT 可登录手机端");
+            }
+        }
         fillRoleName(user);
         return ApiResponse.success(user);
     }

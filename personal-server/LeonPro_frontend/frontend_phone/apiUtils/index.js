@@ -14,6 +14,7 @@ export default {
 		return http.post("/auth/login2", {
 			username: params.username,
 			password: params.password,
+			source: "app",
 		});
 	},
 

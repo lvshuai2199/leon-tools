@@ -72,7 +72,7 @@
 </template>
 
 <script>
-	import { getUserInfo, clearUserInfo } from "@/utils/auth.js";
+	import { canEnterApp, getUserInfo, clearUserInfo } from "@/utils/auth.js";
 	import api from "@/apiUtils/index.js";
 
 	const ALL_FIELDS = [
@@ -183,8 +183,9 @@
 		methods: {
 			ensureLogin() {
 				const user = getUserInfo();
-				if (!user) {
-					uni.reLaunch({ url: "/pages/login/login" });
+				if (!user || !canEnterApp(user)) {
+					clearUserInfo();
+					this.leaveToLogin();
 					return;
 				}
 				this.user = user;

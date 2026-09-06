@@ -50,3 +50,16 @@ export function consumeLogoutFlag() {
 export function isLoggedIn() {
 	return !!getUserInfo();
 }
+
+export function canEnterApp(user) {
+	if (!user) return false;
+	const roleId = String(user.roleId || "");
+	const roleName = String(user.roleName || "").toUpperCase();
+	if (roleId === "role_root" || roleName === "ROOT") {
+		return true;
+	}
+	if (roleId === "role_regcode_client") {
+		return true;
+	}
+	return !!(user.parentId && String(user.parentId).trim());
+}

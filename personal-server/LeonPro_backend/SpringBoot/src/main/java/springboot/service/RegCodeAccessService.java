@@ -47,7 +47,43 @@ public class RegCodeAccessService {
             return false;
         }
         SysUsers user = sysUsersService.getById(userId);
-        return user != null && ROLE_REGCODE_CLIENT_ID.equals(user.getRoleId());
+        return user != null && isRegCodeUser(user);
+    }
+
+    public boolean isRootUser(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        SysUsers user = sysUsersService.getById(userId);
+        if (user == null || user.getRoleId() == null || user.getRoleId().isBlank()) {
+            return false;
+        }
+        return RoleUtils.isRoot(sysRolesService.getById(user.getRoleId()));
+    }
+
+    /** 手机端仅允许 ROOT 或注册码子用户登录 */
+    public boolean canLoginMobile(SysUsers user) {
+        if (user == null) {
+            return false;
+        }
+        if (user.getRoleId() != null && !user.getRoleId().isBlank()
+                && RoleUtils.isRoot(sysRolesService.getById(user.getRoleId()))) {
+            return true;
+        }
+        return isRegCodeUser(user);
+    }
+
+    public boolean isRegCodeUser(SysUsers user) {
+        if (user == null) {
+            return false;
+        }
+        if (ROLE_REGCODE_CLIENT_ID.equals(user.getRoleId())) {
+            return true;
+        }
+        if (user.getParentId() != null && !user.getParentId().isBlank()) {
+            return true;
+        }
+        return getAssignment(user.getId()) != null;
     }
 
     public boolean isManager(String userId) {
@@ -101,6 +137,9 @@ public class RegCodeAccessService {
      * @return null 表示管理员可用全部；空列表表示无权；否则仅这些配置
      */
     public List<String> allowedConfigIds(String userId) {
+        if (isRootUser(userId)) {
+            return null;
+        }
         if (getAssignment(userId) != null) {
             return listAssignedConfigIds(userId);
         }
@@ -113,6 +152,9 @@ public class RegCodeAccessService {
     public String assertCanGenerate(String userId, String configId) {
         if (userId == null || userId.isBlank()) {
             return "请先登录";
+        }
+        if (isRootUser(userId)) {
+            return null;
         }
         RegCodeUser assignment = getAssignment(userId);
         if (assignment != null) {
