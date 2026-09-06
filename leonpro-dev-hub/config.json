@@ -1,0 +1,23 @@
+{
+  "hubPort": 3780,
+  "paths": {
+    "spring": "../personal-server/LeonPro_backend/SpringBoot",
+    "vue": "../personal-server/LeonPro_frontend/vue3_frontend",
+    "uni": "../personal-server/LeonPro_frontend/frontend_phone"
+  },
+  "urls": {
+    "localApi": "http://127.0.0.1:8089",
+    "remoteApi": "http://124.220.57.33",
+    "dbHost": "124.220.57.33"
+  },
+  "ports": {
+    "vue": 3000,
+    "uni": 5173,
+    "spring": 8089
+  },
+  "tunnel": {
+    "mysqlLocal": 13306,
+    "redisLocal": 16379,
+    "apiLocal": 18089
+  }
+}

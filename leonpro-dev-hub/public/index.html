@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LeonPro 本地启动台</title>
+    <link rel="stylesheet" href="/styles.css?v=3" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="top">
+        <div>
+          <h1>LeonPro 本地启动台</h1>
+          <p id="viewSub" class="sub">本机启停 Spring / Vue / 手机 H5</p>
+        </div>
+        <div class="header-right">
+          <div class="view-switch" id="viewSwitch">
+            <button type="button" data-view="local" class="active">本机运行</button>
+            <button type="button" data-view="remote">SSH / 部署</button>
+          </div>
+          <div class="actions view-only" data-for="local">
+            <button id="startAll" class="btn primary">一键开启全部</button>
+            <button id="stopAll" class="btn danger">一键关闭全部</button>
+          </div>
+          <div class="actions view-only hidden" data-for="remote">
+            <button id="deployAll" class="btn primary">一键部署全部</button>
+          </div>
+        </div>
+      </header>
+
+      <div class="stage" id="stageTrack" data-view="local">
+        <div class="stage-track">
+          <section class="stage-page" data-page="local">
+            <section class="grid">
+              <article class="card">
+                <h2>Spring Boot 数据库</h2>
+                <p class="hint">只影响本机后端。会先走 SSH 隧道连服务器 MySQL（公网 3306 不通）。Prod 用 <code>leonpro_db_prod</code>。</p>
+                <div class="seg" data-group="db">
+                  <button data-value="dev">Dev 库</button>
+                  <button data-value="prod">Prod 库</button>
+                </div>
+              </article>
+              <article class="card">
+                <h2>前端接口目标</h2>
+                <p class="hint">本地走本机 8089。服务器端经 SSH 转到本机 18089（公网 8089 不通）。</p>
+                <div class="seg" data-group="frontendTarget">
+                  <button data-value="local">本地 Spring Boot</button>
+                  <button data-value="remote">服务器端</button>
+                </div>
+                <p id="apiHint" class="target"></p>
+              </article>
+            </section>
+            <section id="services" class="services"></section>
+          </section>
+
+          <section class="stage-page" data-page="remote">
+            <section class="grid">
+              <article class="card">
+                <h2>SSH 连接</h2>
+                <p class="hint">账号来自 bootstrap.env / 各项目 deploy.env，不会在页面显示密码。</p>
+                <p id="sshHint" class="target"></p>
+                <p id="tunnelHint" class="target"></p>
+                <div class="actions">
+                  <button id="sshTest" class="btn">测试 SSH</button>
+                  <button id="tunnelStart" class="btn primary">连接隧道</button>
+                  <button id="tunnelStop" class="btn">断开隧道</button>
+                </div>
+              </article>
+              <article class="card">
+                <h2>部署到服务器</h2>
+                <p class="hint">调用对应目录的 deploy/deploy.ps1。Spring 走 Docker，Vue 到网站根目录，手机 H5 到 /h5/。</p>
+                <label class="check">
+                  <input id="skipBuild" type="checkbox" />
+                  跳过构建，只上传已有产物
+                </label>
+                <div id="deployList" class="deploy-list"></div>
+              </article>
+            </section>
+          </section>
+        </div>
+      </div>
+
+      <section class="card log-card">
+        <div class="log-head">
+          <h2>运行日志</h2>
+          <button id="clearLogs" class="btn ghost">清空</button>
+        </div>
+        <pre id="logs"></pre>
+      </section>
+    </main>
+    <script src="/app.js?v=3"></script>
+  </body>
+</html>

@@ -72,6 +72,7 @@ if (-not $DEPLOY_PASSWORD -and -not $DEPLOY_SSH_KEY) {
 
 if (-not $DEPLOY_PORT) { $DEPLOY_PORT = "22" }
 if (-not $SKIP_BUILD) { $SKIP_BUILD = "0" }
+if ($env:HUB_SKIP_BUILD -eq "0" -or $env:HUB_SKIP_BUILD -eq "1") { $SKIP_BUILD = $env:HUB_SKIP_BUILD }
 if (-not $DOCKER_UP) { $DOCKER_UP = "0" }
 if (-not $DEPLOY_PASSWORD) { $DEPLOY_PASSWORD = "" }
 if (-not $DEPLOY_SSH_KEY) { $DEPLOY_SSH_KEY = "" }
