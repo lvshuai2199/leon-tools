@@ -51,14 +51,35 @@ public class RegCodeAccessService {
     }
 
     public boolean isRootUser(String userId) {
-        if (userId == null || userId.isBlank()) {
+        return isRootUser(userId == null || userId.isBlank() ? null : sysUsersService.getById(userId));
+    }
+
+    public boolean isRootUser(SysUsers user) {
+        if (user == null) {
             return false;
         }
-        SysUsers user = sysUsersService.getById(userId);
-        if (user == null || user.getRoleId() == null || user.getRoleId().isBlank()) {
+        if (RoleUtils.isRoot(user.getRoleId(), user.getRoleName())) {
+            return true;
+        }
+        if (user.getRoleId() == null || user.getRoleId().isBlank()) {
             return false;
         }
         return RoleUtils.isRoot(sysRolesService.getById(user.getRoleId()));
+    }
+
+    public SysUsers findUser(String userId, String username) {
+        if (userId != null && !userId.isBlank()) {
+            SysUsers byId = sysUsersService.getById(userId.trim());
+            if (byId != null) {
+                return byId;
+            }
+        }
+        if (username == null || username.isBlank()) {
+            return null;
+        }
+        LambdaQueryWrapper<SysUsers> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysUsers::getUsername, username.trim());
+        return sysUsersService.getOne(wrapper, false);
     }
 
     /** 手机端仅允许 ROOT 或注册码子用户登录 */
@@ -137,6 +158,14 @@ public class RegCodeAccessService {
      * @return null 表示管理员可用全部；空列表表示无权；否则仅这些配置
      */
     public List<String> allowedConfigIds(String userId) {
+        return allowedConfigIds(userId == null || userId.isBlank() ? null : sysUsersService.getById(userId));
+    }
+
+    public List<String> allowedConfigIds(SysUsers user) {
+        if (isRootUser(user)) {
+            return null;
+        }
+        String userId = user == null ? null : user.getId();
         if (isRootUser(userId)) {
             return null;
         }

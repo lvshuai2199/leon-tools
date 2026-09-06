@@ -39,19 +39,24 @@ public class RegCodeConfigController {
         return ApiResponse.success(this.regCodeConfigService.page(page, buildQuery(query)));
     }
 
-    /** 生成页用：管理员看全部，客户仅看已分配配置 */
+    /** 生成页用：ROOT 看全部，客户仅看已分配配置 */
     @GetMapping("list")
     public ApiResponse listAll(RegCodeConfig query, HttpServletRequest request) {
+        return ApiResponse.success(listAvailable(query, RequestUserUtils.currentUserId(request), null));
+    }
+
+    @PostMapping("available")
+    public ApiResponse listAvailablePost(@RequestBody(required = false) java.util.Map<String, String> body,
+                                         HttpServletRequest request) {
         String userId = RequestUserUtils.currentUserId(request);
-        List<String> allowed = this.regCodeAccessService.allowedConfigIds(userId);
-        if (allowed != null && allowed.isEmpty()) {
-            return ApiResponse.success(Collections.emptyList());
+        String username = null;
+        if (body != null) {
+            if (userId == null || userId.isBlank()) {
+                userId = body.get("userId");
+            }
+            username = body.get("username");
         }
-        LambdaQueryWrapper<RegCodeConfig> wrapper = buildQuery(query);
-        if (allowed != null) {
-            wrapper.in(RegCodeConfig::getId, allowed);
-        }
-        return ApiResponse.success(this.regCodeConfigService.list(wrapper));
+        return ApiResponse.success(listAvailable(null, userId, username));
     }
 
     @GetMapping("{id}")
@@ -105,6 +110,19 @@ public class RegCodeConfigController {
             return ApiResponse.failure(deny);
         }
         return ApiResponse.success(this.regCodeConfigService.removeByIds(idList));
+    }
+
+    private List<RegCodeConfig> listAvailable(RegCodeConfig query, String userId, String username) {
+        springboot.domain.SysUsers user = this.regCodeAccessService.findUser(userId, username);
+        java.util.List<String> allowed = this.regCodeAccessService.allowedConfigIds(user);
+        if (allowed != null && allowed.isEmpty()) {
+            return Collections.emptyList();
+        }
+        LambdaQueryWrapper<RegCodeConfig> wrapper = buildQuery(query);
+        if (allowed != null) {
+            wrapper.in(RegCodeConfig::getId, allowed);
+        }
+        return this.regCodeConfigService.list(wrapper);
     }
 
     private LambdaQueryWrapper<RegCodeConfig> buildQuery(RegCodeConfig query) {

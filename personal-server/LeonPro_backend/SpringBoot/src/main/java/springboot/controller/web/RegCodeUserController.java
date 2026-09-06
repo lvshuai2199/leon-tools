@@ -83,11 +83,26 @@ public class RegCodeUserController {
 
     @GetMapping("myQuota")
     public ApiResponse myQuota(HttpServletRequest request) {
+        return quota(RequestUserUtils.currentUserId(request), null);
+    }
+
+    @PostMapping("myQuota")
+    public ApiResponse myQuotaPost(@RequestBody(required = false) java.util.Map<String, String> body,
+                                   HttpServletRequest request) {
         String userId = RequestUserUtils.currentUserId(request);
+        String username = body == null ? null : body.get("username");
         if (userId == null || userId.isBlank()) {
+            userId = body == null ? null : body.get("userId");
+        }
+        return quota(userId, username);
+    }
+
+    private ApiResponse quota(String userId, String username) {
+        springboot.domain.SysUsers user = this.regCodeAccessService.findUser(userId, username);
+        if (user == null) {
             return ApiResponse.failure("请先登录");
         }
-        return ApiResponse.success(regCodeAccessService.quotaOf(userId));
+        return ApiResponse.success(this.regCodeAccessService.quotaOf(user.getId()));
     }
 
     @PostMapping("save")

@@ -19,7 +19,7 @@ export default {
 	},
 
 	listRegCodeConfig() {
-		return http.get("/regCodeConfig/list", currentUserQuery());
+		return http.post("/regCodeConfig/available", currentUserQuery());
 	},
 
 	genTempRegCode(params) {
@@ -27,6 +27,6 @@ export default {
 	},
 
 	myQuota() {
-		return http.get("/regCodeUser/myQuota", currentUserQuery());
+		return http.post("/regCodeUser/myQuota", currentUserQuery());
 	},
 };

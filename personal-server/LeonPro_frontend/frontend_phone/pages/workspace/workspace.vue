@@ -136,8 +136,9 @@
 			companies() {
 				const names = [];
 				this.configs.forEach((item) => {
-					if (item.company && !names.includes(item.company)) {
-						names.push(item.company);
+					const company = item.company || "未分组";
+					if (!names.includes(company)) {
+						names.push(company);
 					}
 				});
 				return names;
@@ -146,7 +147,7 @@
 				return Math.max(this.companies.indexOf(this.companyName), 0);
 			},
 			currentConfigs() {
-				return this.configs.filter((item) => item.company === this.companyName);
+				return this.configs.filter((item) => (item.company || "未分组") === this.companyName);
 			},
 			configNames() {
 				return this.currentConfigs.map((item) => item.name || item.componentName || item.id);
