@@ -24,7 +24,10 @@ public class SchemaPatcher implements CommandLineRunner {
     public void run(String... args) {
         ensureColumn("com_registration", "operator",
                 "ALTER TABLE com_registration ADD COLUMN operator VARCHAR(100) DEFAULT NULL COMMENT '操作人员（用户ID，无则未知人员）'");
+        ensureColumn("sys_users", "parent_id",
+                "ALTER TABLE sys_users ADD COLUMN parent_id VARCHAR(64) DEFAULT NULL COMMENT '父用户ID，空表示主用户'");
         ensureRegCodeConfigTable();
+        ensureRegCodeUserTables();
         ensureToolMindmapTable();
     }
 
@@ -51,6 +54,43 @@ public class SchemaPatcher implements CommandLineRunner {
                         + "PRIMARY KEY (`id`)"
                         + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='注册码生成配置'");
         log.info("已创建表 reg_code_config。");
+    }
+
+    private void ensureRegCodeUserTables() {
+        ensureTable("reg_code_user",
+                "CREATE TABLE `reg_code_user` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '主键',"
+                        + "`user_id` VARCHAR(64) NOT NULL COMMENT '系统用户ID',"
+                        + "`generate_limit` INT DEFAULT 0 COMMENT '可生成次数',"
+                        + "`generate_used` INT DEFAULT 0 COMMENT '已使用次数',"
+                        + "`remark` VARCHAR(500) DEFAULT NULL COMMENT '备注',"
+                        + "`create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',"
+                        + "`update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',"
+                        + "PRIMARY KEY (`id`),"
+                        + "UNIQUE KEY `uk_reg_code_user_id` (`user_id`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='注册码客户账号'");
+        ensureTable("reg_code_user_config",
+                "CREATE TABLE `reg_code_user_config` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '主键',"
+                        + "`user_id` VARCHAR(64) NOT NULL COMMENT '系统用户ID',"
+                        + "`config_id` VARCHAR(64) NOT NULL COMMENT '注册码配置ID',"
+                        + "PRIMARY KEY (`id`),"
+                        + "KEY `idx_reg_code_user_config_user` (`user_id`),"
+                        + "KEY `idx_reg_code_user_config_cfg` (`config_id`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='注册码客户可用配置'");
+    }
+
+    private void ensureTable(String table, String ddl) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES "
+                        + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                Integer.class,
+                table);
+        if (count != null && count > 0) {
+            return;
+        }
+        jdbcTemplate.execute(ddl);
+        log.info("已创建表 {}。", table);
     }
 
     private void ensureToolMindmapTable() {

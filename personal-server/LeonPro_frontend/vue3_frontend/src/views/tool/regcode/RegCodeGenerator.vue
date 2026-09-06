@@ -1,10 +1,11 @@
 <template>
   <div class="regcode-generator">
-    <el-empty v-if="!loadingConfigs && companies.length === 0" description="暂无注册码配置">
-      <el-button type="primary" @click="goConfig">去添加配置</el-button>
-    </el-empty>
+    <el-empty v-if="!loadingConfigs && companies.length === 0" description="暂无可用注册码配置" />
 
     <el-form v-else label-width="88px" @submit.prevent>
+      <el-form-item v-if="quota && !quota.unlimited" label="剩余次数">
+        <el-tag type="warning">{{ quota.remaining ?? 0 }} / {{ quota.generateLimit ?? 0 }}</el-tag>
+      </el-form-item>
       <el-row :gutter="16">
         <el-col :span="12" :xs="24">
           <el-form-item label="公司">
@@ -75,6 +76,7 @@
 <script setup lang="ts">
 import RegistrationAPI, { type TempRegCodeVO } from "@/api/registration";
 import RegCodeConfigAPI, { type RegCodeConfigVO } from "@/api/tool/regcode-config";
+import RegCodeUserAPI, { type RegCodeQuotaVO } from "@/api/tool/regcode-user";
 import { useUserStore } from "@/store/modules/user";
 import {
   ALL_VALIDITY_FIELDS,
@@ -83,10 +85,10 @@ import {
   type ValidityKey,
 } from "./config";
 
-const router = useRouter();
 const userStore = useUserStore();
 
 const configs = ref<RegCodeConfigVO[]>([]);
+const quota = ref<RegCodeQuotaVO | null>(null);
 const loadingConfigs = ref(false);
 const companyName = ref("");
 const configId = ref("");
@@ -154,14 +156,20 @@ function resetAll() {
   resetResult();
 }
 
-function goConfig() {
-  router.push("/tool/regcode-config");
-}
-
 function copyText(text: string) {
   navigator.clipboard.writeText(text).then(() => {
     ElMessage.success("已复制");
   });
+}
+
+function loadQuota() {
+  RegCodeUserAPI.myQuota()
+    .then((data) => {
+      quota.value = data || null;
+    })
+    .catch((error) => {
+      console.error(error);
+    });
 }
 
 function loadConfigs() {
@@ -201,6 +209,7 @@ function handleGenerate() {
       Object.assign(result, data);
       isGenerated.value = true;
       ElMessage.success("生成成功");
+      loadQuota();
     })
     .catch((error) => {
       console.error(error);
@@ -211,6 +220,7 @@ function handleGenerate() {
 }
 
 onMounted(() => {
+  loadQuota();
   loadConfigs();
 });
 </script>

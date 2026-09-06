@@ -53,6 +53,11 @@ public class SysUsers implements Serializable {
     private String roleId;
 
     /**
+     * 父用户 ID；为空表示主用户，有值表示注册码子用户
+     */
+    private String parentId;
+
+    /**
      * 角色名称（非表字段，登录时回填）
      */
     @TableField(exist = false)

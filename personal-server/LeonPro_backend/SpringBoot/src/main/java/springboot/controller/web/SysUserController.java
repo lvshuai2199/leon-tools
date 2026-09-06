@@ -64,7 +64,9 @@ public class SysUserController {
         if (sysUsers.getUsername() != null) {
             queryWrapper.like(SysUsers::getUsername, sysUsers.getUsername());
         }
-        // 其他条件可以继续添加
+        // 用户管理只展示主用户：排除子用户和注册码客户角色
+        queryWrapper.and(w -> w.isNull(SysUsers::getParentId).or().eq(SysUsers::getParentId, ""));
+        queryWrapper.and(w -> w.isNull(SysUsers::getRoleId).or().ne(SysUsers::getRoleId, "role_regcode_client"));
 
         // 执行分页查询
         return ApiResponse.success(this.sysUsersService.page(page, queryWrapper));

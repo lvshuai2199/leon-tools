@@ -21,6 +21,7 @@ CREATE TABLE `sys_users` (
   `email`       VARCHAR(150) DEFAULT NULL COMMENT '邮箱',
   `created_at`  DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `role_id`     VARCHAR(64)  DEFAULT NULL COMMENT '角色ID (sys_roles.id)',
+  `parent_id`   VARCHAR(64)  DEFAULT NULL COMMENT '父用户ID，空表示主用户',
   PRIMARY KEY (`id`),
   UNIQUE KEY `uk_username` (`username`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='系统用户表';
@@ -151,6 +152,32 @@ CREATE TABLE `reg_code_config` (
   `update_time`    DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='注册码生成配置';
+
+-- ============================================================
+-- 7c. reg_code_user - 注册码客户账号
+-- ============================================================
+DROP TABLE IF EXISTS `reg_code_user`;
+CREATE TABLE `reg_code_user` (
+  `id`             VARCHAR(64)  NOT NULL COMMENT '主键',
+  `user_id`        VARCHAR(64)  NOT NULL COMMENT '系统用户ID',
+  `generate_limit` INT          DEFAULT 0 COMMENT '可生成次数',
+  `generate_used`  INT          DEFAULT 0 COMMENT '已使用次数',
+  `remark`         VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  `create_time`    DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time`    DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_reg_code_user_id` (`user_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='注册码客户账号';
+
+DROP TABLE IF EXISTS `reg_code_user_config`;
+CREATE TABLE `reg_code_user_config` (
+  `id`        VARCHAR(64) NOT NULL COMMENT '主键',
+  `user_id`   VARCHAR(64) NOT NULL COMMENT '系统用户ID',
+  `config_id` VARCHAR(64) NOT NULL COMMENT '注册码配置ID',
+  PRIMARY KEY (`id`),
+  KEY `idx_reg_code_user_config_user` (`user_id`),
+  KEY `idx_reg_code_user_config_cfg` (`config_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='注册码客户可用配置';
 
 -- ============================================================
 -- 8. extern_wallet - 外部钱包表

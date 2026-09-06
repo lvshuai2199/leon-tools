@@ -1,6 +1,7 @@
 package springboot.controller.web;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import springboot.DTO.RegCode;
 import springboot.domain.*;
@@ -54,6 +55,9 @@ public class SysGeneralController {
 
     @Autowired
     private RegCodeConfigService regCodeConfigService;
+
+    @Autowired
+    private RegCodeAccessService regCodeAccessService;
 
     @PostMapping("captcha")
     public ApiResponse getCaptcha() {
@@ -278,12 +282,26 @@ public class SysGeneralController {
     }
 
     @PostMapping("genTempRegCode")
-    public ApiResponse genTempRegCode(@RequestBody RegCode regCode){
+    public ApiResponse genTempRegCode(@RequestBody RegCode regCode, HttpServletRequest request){
 
         RegCode one = regCode;
+        String operatorId = RequestUserUtils.currentUserId(request);
+        if (operatorId == null || operatorId.isBlank()) {
+            operatorId = one.getApplyId();
+        }
+        one.setApplyId(operatorId);
+
         RegCodeConfig config = resolveRegCodeConfig(one);
         if (config == null && (one.getRegCodeType() == null || one.getRegCodeType() == 0)) {
             return ApiResponse.failure("请选择注册码配置或类型");
+        }
+        if (config != null) {
+            String deny = this.regCodeAccessService.assertCanGenerate(operatorId, config.getId());
+            if (deny != null) {
+                return ApiResponse.failure(deny);
+            }
+        } else if (!this.regCodeAccessService.isManager(operatorId)) {
+            return ApiResponse.failure("无权使用未分配的注册码类型");
         }
 
         String suffix;
@@ -335,6 +353,7 @@ public class SysGeneralController {
                 : "临时注册码生成");
         record.setCreateTime(DateUtils.getNow());
         this.comRegistrationService.save(record);
+        this.regCodeAccessService.consumeQuota(operatorId);
 
         return ApiResponse.success(one);
     }

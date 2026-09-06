@@ -2,14 +2,18 @@ package springboot.controller.web;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.web.bind.annotation.*;
 import springboot.domain.RegCodeConfig;
+import springboot.service.RegCodeAccessService;
 import springboot.service.RegCodeConfigService;
 import springboot.utils.ApiResponse;
 import springboot.utils.DateUtils;
+import springboot.utils.RequestUserUtils;
 
 import java.io.Serializable;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -23,15 +27,31 @@ public class RegCodeConfigController {
     @Autowired
     private RegCodeConfigService regCodeConfigService;
 
+    @Autowired
+    private RegCodeAccessService regCodeAccessService;
+
     @GetMapping("getAll")
-    public ApiResponse selectAll(Page<RegCodeConfig> page, RegCodeConfig query) {
+    public ApiResponse selectAll(Page<RegCodeConfig> page, RegCodeConfig query, HttpServletRequest request) {
+        String err = this.regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        if (err != null) {
+            return ApiResponse.failure(err);
+        }
         return ApiResponse.success(this.regCodeConfigService.page(page, buildQuery(query)));
     }
 
-    /** 生成页用：全部配置，按排序 */
+    /** 生成页用：管理员看全部，客户仅看已分配配置 */
     @GetMapping("list")
-    public ApiResponse listAll(RegCodeConfig query) {
-        return ApiResponse.success(this.regCodeConfigService.list(buildQuery(query)));
+    public ApiResponse listAll(RegCodeConfig query, HttpServletRequest request) {
+        String userId = RequestUserUtils.currentUserId(request);
+        List<String> allowed = this.regCodeAccessService.allowedConfigIds(userId);
+        if (allowed != null && allowed.isEmpty()) {
+            return ApiResponse.success(Collections.emptyList());
+        }
+        LambdaQueryWrapper<RegCodeConfig> wrapper = buildQuery(query);
+        if (allowed != null) {
+            wrapper.in(RegCodeConfig::getId, allowed);
+        }
+        return ApiResponse.success(this.regCodeConfigService.list(wrapper));
     }
 
     @GetMapping("{id}")
@@ -40,7 +60,11 @@ public class RegCodeConfigController {
     }
 
     @PostMapping("add")
-    public ApiResponse insert(@RequestBody RegCodeConfig entity) {
+    public ApiResponse insert(@RequestBody RegCodeConfig entity, HttpServletRequest request) {
+        String deny = this.regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        if (deny != null) {
+            return ApiResponse.failure(deny);
+        }
         String err = validate(entity, true);
         if (err != null) {
             return ApiResponse.failure(err);
@@ -58,7 +82,11 @@ public class RegCodeConfigController {
     }
 
     @PostMapping("update")
-    public ApiResponse update(@RequestBody RegCodeConfig entity) {
+    public ApiResponse update(@RequestBody RegCodeConfig entity, HttpServletRequest request) {
+        String deny = this.regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        if (deny != null) {
+            return ApiResponse.failure(deny);
+        }
         if (entity.getId() == null || entity.getId().isBlank()) {
             return ApiResponse.failure("缺少主键");
         }
@@ -71,7 +99,11 @@ public class RegCodeConfigController {
     }
 
     @PostMapping("del")
-    public ApiResponse delete(@RequestBody List<String> idList) {
+    public ApiResponse delete(@RequestBody List<String> idList, HttpServletRequest request) {
+        String deny = this.regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        if (deny != null) {
+            return ApiResponse.failure(deny);
+        }
         return ApiResponse.success(this.regCodeConfigService.removeByIds(idList));
     }
 
