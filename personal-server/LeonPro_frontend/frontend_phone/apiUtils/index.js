@@ -1,4 +1,13 @@
 import http from "@/apiUtils/request.js";
+import { getUserInfo } from "@/utils/auth.js";
+
+function currentUserQuery() {
+	const user = getUserInfo() || {};
+	return {
+		userId: user.id || undefined,
+		username: user.username || undefined,
+	};
+}
 
 export default {
 	login(params) {
@@ -9,7 +18,7 @@ export default {
 	},
 
 	listRegCodeConfig() {
-		return http.get("/regCodeConfig/list");
+		return http.get("/regCodeConfig/list", currentUserQuery());
 	},
 
 	genTempRegCode(params) {
@@ -17,6 +26,6 @@ export default {
 	},
 
 	myQuota() {
-		return http.get("/regCodeUser/myQuota");
+		return http.get("/regCodeUser/myQuota", currentUserQuery());
 	},
 };

@@ -116,16 +116,22 @@ public class SysGeneralController {
     @PostMapping("/login2")
     public ApiResponse login2(@RequestBody Map<String, String> loginData) {
         // 获取登录数据
-        String username = loginData.get("username");
-        String password = loginData.get("password");
+        String username = loginData.get("username") == null ? "" : loginData.get("username").trim();
+        String password = loginData.get("password") == null ? "" : loginData.get("password");
 
         // 通过用户名和密码检索数据库中是否存在对应的数据项
         LambdaQueryWrapper<SysUsers> lambdaQueryWrapper = new LambdaQueryWrapper<>();
         lambdaQueryWrapper.eq(SysUsers::getUsername, username).eq(SysUsers::getPassword, password);
-        SysUsers user = this.sysUsersService.getOne(lambdaQueryWrapper);
+        SysUsers user = this.sysUsersService.getOne(lambdaQueryWrapper, false);
         // 校验用户名和密码
         if (user == null) {
             return ApiResponse.failure("用户不存在");
+        }
+        if (user.getRoleId() != null && !user.getRoleId().isBlank()) {
+            SysRoles role = sysRolesService.getById(user.getRoleId());
+            if (role != null && role.getIsDisabled() != null && role.getIsDisabled() != 0) {
+                return ApiResponse.failure("该用户角色已禁用");
+            }
         }
         fillRoleName(user);
         return ApiResponse.success(user);
@@ -148,7 +154,7 @@ public class SysGeneralController {
         // 用户 → 角色
         LambdaQueryWrapper<SysUsers> userWrapper = new LambdaQueryWrapper<>();
         userWrapper.eq(SysUsers::getUsername, username);
-        SysUsers user = sysUsersService.getOne(userWrapper);
+        SysUsers user = sysUsersService.getOne(userWrapper, false);
         if (user == null || user.getRoleId() == null || user.getRoleId().isEmpty()) {
             return ApiResponse.success(Collections.emptyList());
         }

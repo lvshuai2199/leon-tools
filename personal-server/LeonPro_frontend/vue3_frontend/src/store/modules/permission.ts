@@ -22,7 +22,7 @@ export const usePermissionStore = defineStore("permission", () => {
    * @returns Promise<RouteRecordRaw[]> 解析后的动态路由列表
    */
   function generateRoutes() {
-    return new Promise<RouteRecordRaw[]>((resolve, reject) => {
+    return new Promise<RouteRecordRaw[]>((resolve) => {
       // 携带当前登录用户名，后端按角色返回可访问菜单
       const username = useUserStoreHook().userInfo?.username;
       MenuAPI.getRoutes(username)
@@ -33,7 +33,11 @@ export const usePermissionStore = defineStore("permission", () => {
           resolve(dynamicRoutes);
         })
         .catch((error) => {
-          reject(error);
+          console.error(error);
+          // 角色未配菜单或接口失败时仍保持登录，避免被踢回登录页
+          routes.value = [...constantRoutes];
+          isRoutesLoaded.value = true;
+          resolve([]);
         });
     });
   }

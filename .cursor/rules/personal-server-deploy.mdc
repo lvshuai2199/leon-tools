@@ -1,0 +1,18 @@
+---
+description: personal-server 三端必须先整理提交再部署
+globs: personal-server/**
+alwaysApply: false
+---
+
+# personal-server 部署顺序
+
+对 `personal-server` 的后端、Vue3、uni-app H5，用户说「部署」时按这个顺序做：
+
+1. **先整理提交**：看 `git status` / `git diff` / `git log`，把本次业务改动收干净后提交。不要提交 `deploy.env`、`bootstrap.env`、`migrate.env`、密码、以及 `node_modules`。
+2. **再部署三端**：依次或并行跑
+   - `personal-server/LeonPro_backend/SpringBoot/deploy/deploy.ps1`
+   - `personal-server/LeonPro_frontend/vue3_frontend/deploy/deploy.ps1`
+   - `personal-server/LeonPro_frontend/frontend_phone/deploy/deploy.ps1`
+3. 用 `http://<主机>/`、`/h5/`、`/prod-api/` 做一次可达性检查。
+
+没有未提交改动时，直接部署并说明工作区是干净的。

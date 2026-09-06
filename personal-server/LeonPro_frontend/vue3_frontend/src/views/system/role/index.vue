@@ -274,7 +274,7 @@ function handleSubmit() {
     const api = formData.id ? RoleAPI.update(formData) : RoleAPI.add(formData);
     api
       .then(() => {
-        ElMessage.success(formData.id ? "修改成功" : "新增成功");
+        ElMessage.success(formData.id ? "修改成功" : "新增成功，请点击「权限」勾选该角色可访问的菜单");
         handleCloseDialog();
         handleQuery();
       })

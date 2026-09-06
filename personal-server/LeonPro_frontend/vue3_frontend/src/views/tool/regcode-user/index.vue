@@ -260,6 +260,11 @@ function loadParents() {
     });
 }
 
+function refreshOptions() {
+  loadParents();
+  loadConfigs();
+}
+
 function loadConfigs() {
   RegCodeConfigAPI.list()
     .then((data) => {
@@ -297,6 +302,7 @@ function resetQuery() {
 }
 
 function openDialog(row?: RegCodeUserVO) {
+  refreshOptions();
   if (row) {
     dialog.title = "编辑注册码用户";
     Object.assign(formData, {
@@ -361,9 +367,12 @@ function handleDelete(row: RegCodeUserVO) {
 }
 
 onMounted(() => {
-  loadParents();
-  loadConfigs();
+  refreshOptions();
   loadData();
+});
+
+onActivated(() => {
+  refreshOptions();
 });
 </script>
 

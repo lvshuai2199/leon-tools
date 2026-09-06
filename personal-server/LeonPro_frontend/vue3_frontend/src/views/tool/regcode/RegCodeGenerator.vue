@@ -223,6 +223,11 @@ onMounted(() => {
   loadQuota();
   loadConfigs();
 });
+
+onActivated(() => {
+  loadQuota();
+  loadConfigs();
+});
 </script>
 
 <style lang="scss" scoped>

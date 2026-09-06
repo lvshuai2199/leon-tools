@@ -9,12 +9,15 @@
 		</view>
 
 		<view class="card">
-			<view v-if="quota && !quota.unlimited" class="quota">
+			<view v-if="quota" class="quota">
 				<text class="quota-label">剩余次数</text>
-				<text class="quota-value">{{ quota.remaining || 0 }} / {{ quota.generateLimit || 0 }}</text>
+				<text class="quota-value">{{ quotaText }}</text>
 			</view>
 
-			<view v-if="!loadingConfigs && companies.length === 0" class="empty">
+			<view v-if="loadingConfigs" class="empty">
+				<text>正在加载可用配置...</text>
+			</view>
+			<view v-else-if="companies.length === 0" class="empty">
 				<text>暂无可用注册码，请联系管理员分配</text>
 			</view>
 			<view v-else class="form">
@@ -25,7 +28,7 @@
 					</picker>
 				</view>
 				<view class="field">
-					<text class="label">名称</text>
+					<text class="label">组件名称</text>
 					<picker :range="configNames" :value="configIndex" @change="onConfigChange">
 						<view class="picker">{{ currentConfigName || "选择名称" }}</view>
 					</picker>
@@ -74,6 +77,7 @@
 
 <script>
 	import { getUserInfo, clearUserInfo } from "@/utils/auth.js";
+	import api from "@/apiUtils/index.js";
 
 	const ALL_FIELDS = [
 		"oneMonthValid",
@@ -122,8 +126,18 @@
 			};
 		},
 		computed: {
+			api() {
+				return this.$api || api;
+			},
 			displayName() {
 				return this.user?.nickname || this.user?.username || "用户";
+			},
+			quotaText() {
+				if (!this.quota) return "-";
+				if (this.quota.unlimited) return "不限";
+				const remaining = this.quota.remaining ?? 0;
+				const limit = this.quota.generateLimit ?? 0;
+				return remaining + " / " + limit;
 			},
 			companies() {
 				const names = [];
@@ -141,7 +155,7 @@
 				return this.configs.filter((item) => item.company === this.companyName);
 			},
 			configNames() {
-				return this.currentConfigs.map((item) => item.name);
+				return this.currentConfigs.map((item) => item.name || item.componentName || item.id);
 			},
 			configIndex() {
 				return Math.max(
@@ -157,7 +171,7 @@
 				);
 			},
 			currentConfigName() {
-				return this.currentConfig?.name || "";
+				return this.currentConfig?.name || this.currentConfig?.componentName || "";
 			},
 			visibleFields() {
 				return this.expanded ? ALL_FIELDS : DEFAULT_FIELDS;
@@ -165,6 +179,9 @@
 			hasHiddenFields() {
 				return !this.expanded && ALL_FIELDS.length > DEFAULT_FIELDS.length;
 			},
+		},
+		onLoad() {
+			this.ensureLogin();
 		},
 		onShow() {
 			this.ensureLogin();
@@ -184,8 +201,20 @@
 				this.loadQuota();
 			},
 			applyDefaultSelection() {
-				this.companyName = this.companies[0] || "";
-				this.configId = this.currentConfigs[0]?.id || "";
+				const list = Array.isArray(this.configs) ? this.configs : [];
+				const company = this.companies[0] || list[0]?.company || "";
+				this.companyName = company;
+				const first = list.find((item) => item.company === company) || list[0];
+				this.configId = first?.id || "";
+			},
+			normalizeConfigs(data) {
+				if (Array.isArray(data)) {
+					return data;
+				}
+				if (data && Array.isArray(data.records)) {
+					return data.records;
+				}
+				return [];
 			},
 			onCompanyChange(event) {
 				this.companyName = this.companies[event.detail.value] || "";
@@ -208,7 +237,7 @@
 			},
 			async loadQuota() {
 				try {
-					this.quota = await this.$api.myQuota();
+					this.quota = (await this.api.myQuota()) || null;
 				} catch (error) {
 					console.error(error);
 				}
@@ -216,10 +245,12 @@
 			async loadConfigs() {
 				this.loadingConfigs = true;
 				try {
-					this.configs = (await this.$api.listRegCodeConfig()) || [];
+					this.configs = this.normalizeConfigs(await this.api.listRegCodeConfig());
 					this.applyDefaultSelection();
+					this.$nextTick(() => this.applyDefaultSelection());
 				} catch (error) {
 					console.error(error);
+					this.configs = [];
 				} finally {
 					this.loadingConfigs = false;
 				}
@@ -239,7 +270,7 @@
 				}
 				this.generating = true;
 				try {
-					const data = await this.$api.genTempRegCode({
+					const data = await this.api.genTempRegCode({
 						regCode: this.regCode,
 						configId: this.currentConfig.id,
 						company: this.currentConfig.company,

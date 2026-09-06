@@ -15,7 +15,9 @@ import springboot.service.SysUsersService;
 import springboot.utils.RoleUtils;
 
 import java.util.Date;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * 保证系统始终只有一条内置 ROOT（id=role_root）。
@@ -48,19 +50,35 @@ public class RoleDataSeeder implements CommandLineRunner {
         ensureRegCodeClientRole();
     }
 
-    /** 手机端客户角色：默认无 PC 菜单，仅用于登录生成注册码 */
+    /** 注册码子用户角色：可登录并使用已分配的注册码生成 */
     private void ensureRegCodeClientRole() {
-        if (sysRolesService.getById("role_regcode_client") != null) {
-            return;
+        if (sysRolesService.getById("role_regcode_client") == null) {
+            jdbcTemplate.update(
+                    "INSERT INTO sys_roles (id, role_name, description, is_disabled, create_time) VALUES (?, ?, ?, ?, ?)",
+                    "role_regcode_client",
+                    "注册码客户",
+                    "仅可使用已分配的注册码生成能力",
+                    0,
+                    new Date());
+            log.info("已初始化角色 注册码客户（id=role_regcode_client）。");
         }
-        jdbcTemplate.update(
-                "INSERT INTO sys_roles (id, role_name, description, is_disabled, create_time) VALUES (?, ?, ?, ?, ?)",
-                "role_regcode_client",
-                "注册码客户",
-                "仅可使用已分配的注册码生成能力，默认无后台菜单",
-                0,
-                new Date());
-        log.info("已初始化角色 注册码客户（id=role_regcode_client）。");
+        grantClientGenerateMenus();
+    }
+
+    /** 注册码子用户登录后至少能进「注册码 / 注册码生成」 */
+    private void grantClientGenerateMenus() {
+        List<String> owned = sysRoleMenuService.getMenuIdsByRole("role_regcode_client");
+        Set<String> have = owned == null ? new HashSet<>() : new HashSet<>(owned);
+        for (String menuId : List.of(MenuDataSeeder.MENU_REGCODE_CENTER, MenuDataSeeder.MENU_REGCODE)) {
+            if (have.contains(menuId)) {
+                continue;
+            }
+            SysRoleMenu row = new SysRoleMenu();
+            row.setRoldId("role_regcode_client");
+            row.setMenuId(menuId);
+            sysRoleMenuService.save(row);
+            log.info("已为角色 role_regcode_client 分配菜单 {}。", menuId);
+        }
     }
 
     private SysRoles ensureCanonicalRoot() {

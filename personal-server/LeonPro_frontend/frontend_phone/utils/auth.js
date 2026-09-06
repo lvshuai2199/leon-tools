@@ -3,8 +3,17 @@ const USER_ID_KEY = "userId";
 
 export function getUserInfo() {
 	try {
-		const user = uni.getStorageSync(USER_KEY);
-		return user && user.id ? user : null;
+		let user = uni.getStorageSync(USER_KEY);
+		if (typeof user === "string" && user) {
+			user = JSON.parse(user);
+		}
+		if (!user || typeof user !== "object") {
+			return null;
+		}
+		if (!user.id && user.userId) {
+			user.id = user.userId;
+		}
+		return user.id || user.username ? user : null;
 	} catch (e) {
 		return null;
 	}

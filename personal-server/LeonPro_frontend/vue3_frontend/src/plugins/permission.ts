@@ -52,9 +52,8 @@ export function setupPermission() {
         return { ...to, replace: true };
       } catch (error) {
         console.error(error);
-        await useUserStore().clearUserData();
         NProgress.done();
-        return loginRedirect(to);
+        return { path: "/dashboard", replace: true };
       }
     }
 

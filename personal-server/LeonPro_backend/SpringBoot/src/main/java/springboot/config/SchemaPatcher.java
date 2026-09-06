@@ -11,7 +11,7 @@ import org.springframework.stereotype.Component;
  */
 @Slf4j
 @Component
-@Order(1)
+@Order(0)
 public class SchemaPatcher implements CommandLineRunner {
 
     private final JdbcTemplate jdbcTemplate;

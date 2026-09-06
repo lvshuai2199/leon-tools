@@ -167,12 +167,13 @@ const rules = {
     },
   ],
   email: [{ type: "email", message: "邮箱格式不正确", trigger: "blur" }],
+  roleId: [{ required: true, message: "请选择角色", trigger: "change" }],
 };
 
 /** 加载角色列表（供下拉选择） */
 function loadRoles() {
   RoleAPI.getPage({ current: 1, size: 999 }).then((data) => {
-    roleOptions.value = data.records || [];
+    roleOptions.value = (data.records || []).filter((item) => item.id !== "role_regcode_client");
   });
 }
 
@@ -212,6 +213,7 @@ function resetQuery() {
 }
 
 function openDialog(row?: UserPageVO) {
+  loadRoles();
   if (row) {
     dialog.title = "编辑用户";
     Object.assign(formData, {

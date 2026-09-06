@@ -5,7 +5,7 @@ const http = {
 	baseUrl: "/prod-api",
 	// #endif
 	// #ifndef H5
-	baseUrl: "http://106.12.12.111:8089",
+	baseUrl: "http://124.220.57.33:8089",
 	// #endif
 
 	request(config) {
