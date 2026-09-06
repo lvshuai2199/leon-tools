@@ -42,8 +42,16 @@ public class RegCodeAccessService {
         this.regCodeUserConfigService = regCodeUserConfigService;
     }
 
-    public boolean isManager(String userId) {
+    public boolean isClient(String userId) {
         if (userId == null || userId.isBlank()) {
+            return false;
+        }
+        SysUsers user = sysUsersService.getById(userId);
+        return user != null && ROLE_REGCODE_CLIENT_ID.equals(user.getRoleId());
+    }
+
+    public boolean isManager(String userId) {
+        if (userId == null || userId.isBlank() || isClient(userId)) {
             return false;
         }
         SysUsers user = sysUsersService.getById(userId);
@@ -93,6 +101,9 @@ public class RegCodeAccessService {
      * @return null 表示管理员可用全部；空列表表示无权；否则仅这些配置
      */
     public List<String> allowedConfigIds(String userId) {
+        if (getAssignment(userId) != null) {
+            return listAssignedConfigIds(userId);
+        }
         if (isManager(userId)) {
             return null;
         }
@@ -103,49 +114,53 @@ public class RegCodeAccessService {
         if (userId == null || userId.isBlank()) {
             return "请先登录";
         }
+        RegCodeUser assignment = getAssignment(userId);
+        if (assignment != null) {
+            if (configId == null || configId.isBlank()) {
+                return "请选择注册码配置";
+            }
+            List<String> configIds = listAssignedConfigIds(userId);
+            if (!configIds.contains(configId)) {
+                return "无权使用该注册码配置";
+            }
+            int used = assignment.getGenerateUsed() == null ? 0 : assignment.getGenerateUsed();
+            int limit = assignment.getGenerateLimit() == null ? 0 : assignment.getGenerateLimit();
+            if (used >= limit) {
+                return "生成次数已用完";
+            }
+            return null;
+        }
         if (isManager(userId)) {
             return null;
         }
-        if (configId == null || configId.isBlank()) {
-            return "请选择注册码配置";
-        }
-        RegCodeUser assignment = getAssignment(userId);
-        if (assignment == null) {
-            return "未分配注册码生成权限";
-        }
-        List<String> configIds = listAssignedConfigIds(userId);
-        if (!configIds.contains(configId)) {
-            return "无权使用该注册码配置";
-        }
-        int used = assignment.getGenerateUsed() == null ? 0 : assignment.getGenerateUsed();
-        int limit = assignment.getGenerateLimit() == null ? 0 : assignment.getGenerateLimit();
-        if (used >= limit) {
-            return "生成次数已用完";
-        }
-        return null;
+        return "未分配注册码生成权限";
     }
 
     public RegCodeQuotaVO quotaOf(String userId) {
         RegCodeQuotaVO vo = new RegCodeQuotaVO();
+        RegCodeUser assignment = getAssignment(userId);
+        if (assignment != null) {
+            vo.setUnlimited(false);
+            int used = assignment.getGenerateUsed() == null ? 0 : assignment.getGenerateUsed();
+            int limit = assignment.getGenerateLimit() == null ? 0 : assignment.getGenerateLimit();
+            vo.setGenerateUsed(used);
+            vo.setGenerateLimit(limit);
+            vo.setRemaining(Math.max(limit - used, 0));
+            return vo;
+        }
         if (isManager(userId)) {
             vo.setUnlimited(true);
             return vo;
         }
         vo.setUnlimited(false);
-        RegCodeUser assignment = getAssignment(userId);
-        int used = assignment == null || assignment.getGenerateUsed() == null ? 0 : assignment.getGenerateUsed();
-        int limit = assignment == null || assignment.getGenerateLimit() == null ? 0 : assignment.getGenerateLimit();
-        vo.setGenerateUsed(used);
-        vo.setGenerateLimit(limit);
-        vo.setRemaining(Math.max(limit - used, 0));
+        vo.setGenerateUsed(0);
+        vo.setGenerateLimit(0);
+        vo.setRemaining(0);
         return vo;
     }
 
     @Transactional(rollbackFor = Exception.class)
     public void consumeQuota(String userId) {
-        if (isManager(userId)) {
-            return;
-        }
         RegCodeUser assignment = getAssignment(userId);
         if (assignment == null) {
             return;

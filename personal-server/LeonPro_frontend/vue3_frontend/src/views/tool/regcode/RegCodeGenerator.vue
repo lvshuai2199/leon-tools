@@ -3,8 +3,10 @@
     <el-empty v-if="!loadingConfigs && companies.length === 0" description="暂无可用注册码配置" />
 
     <el-form v-else label-width="88px" @submit.prevent>
-      <el-form-item v-if="quota && !quota.unlimited" label="剩余次数">
-        <el-tag type="warning">{{ quota.remaining ?? 0 }} / {{ quota.generateLimit ?? 0 }}</el-tag>
+      <el-form-item v-if="quota" label="剩余次数">
+        <el-tag :type="quota.unlimited ? 'info' : 'warning'">
+          {{ quota.unlimited ? "不限" : `${quota.remaining ?? 0} / ${quota.generateLimit ?? 0}` }}
+        </el-tag>
       </el-form-item>
       <el-row :gutter="16">
         <el-col :span="12" :xs="24">

@@ -79,6 +79,17 @@ public class RoleDataSeeder implements CommandLineRunner {
             sysRoleMenuService.save(row);
             log.info("已为角色 role_regcode_client 分配菜单 {}。", menuId);
         }
+        LambdaQueryWrapper<SysRoleMenu> extra = new LambdaQueryWrapper<>();
+        extra.eq(SysRoleMenu::getRoldId, "role_regcode_client");
+        extra.in(SysRoleMenu::getMenuId, List.of(
+                MenuDataSeeder.MENU_REGCODE_CONFIG,
+                MenuDataSeeder.MENU_REGCODE_USER,
+                MenuDataSeeder.MENU_REGISTRATION));
+        long removed = sysRoleMenuService.count(extra);
+        if (removed > 0) {
+            sysRoleMenuService.remove(extra);
+            log.info("已移除角色 role_regcode_client 上误加的管理菜单 {} 条。", removed);
+        }
     }
 
     private SysRoles ensureCanonicalRoot() {

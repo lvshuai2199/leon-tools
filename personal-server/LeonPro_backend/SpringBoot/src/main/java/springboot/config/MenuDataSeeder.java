@@ -6,6 +6,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.stereotype.Component;
 import springboot.domain.SysMenus;
 import springboot.domain.SysRoleMenu;
+import springboot.service.RegCodeAccessService;
 import springboot.service.SysMenusService;
 import springboot.service.SysRoleMenuService;
 
@@ -152,6 +153,9 @@ public class MenuDataSeeder implements CommandLineRunner {
             }
         }
         for (String roleId : roleIds) {
+            if (RegCodeAccessService.ROLE_REGCODE_CLIENT_ID.equals(roleId)) {
+                continue;
+            }
             List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(roleId);
             Set<String> owned = menuIds == null ? new HashSet<>() : new HashSet<>(menuIds);
             for (String menuId : REGCODE_MENU_IDS) {
