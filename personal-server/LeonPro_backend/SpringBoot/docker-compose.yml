@@ -17,6 +17,7 @@ services:
     environment:
       SPRING_PROFILES_ACTIVE: prod
       MYSQL_HOST: 127.0.0.1
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-Root@123456}
       REDIS_HOST: 127.0.0.1
     depends_on:
       - redis

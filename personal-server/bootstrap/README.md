@@ -1,13 +1,22 @@
 # LeonPro 新服务器一键初始化
 
-在 **Ubuntu / Debian** 上安装 Nginx、Docker，并用 Docker 启动与现网一致的 `mysql8`（3306）。Redis 和 Java 后端仍由现有 `deploy.ps1` 拉起，本脚本不装业务容器。
+在 **Ubuntu / Debian** 上安装 Nginx、Docker，并用 Docker 启动与现网一致的 `mysql8`（3306）。Redis 和 Java 后端仍由现有 `deploy.sh` / `deploy.ps1` 拉起，本脚本不装业务容器。
 
 可重复执行：已安装的包会跳过，MySQL 数据卷 `/opt/leonpro/mysql/data` 不会删除。
+
+当前生产机：`124.220.57.33`，用户 `ubuntu`（sudo）。
 
 ## 本机执行（推荐）
 
 1. 复制 `env.example` 为 `bootstrap.env`，填写新机器 IP 和 `MYSQL_ROOT_PASSWORD`（与 `application-prod.yml` 一致，或之后改后端环境变量）。
-2. PowerShell：
+2. Linux：
+
+```bash
+cd personal-server/bootstrap
+bash bootstrap.sh
+```
+
+Windows PowerShell：
 
 ```powershell
 cd personal-server/bootstrap
@@ -53,6 +62,6 @@ docker exec mysql8 mysqldump -uroot -p --single-transaction --databases leonpro_
 docker exec -i mysql8 mysql -uroot -p < dump.sql
 ```
 
-然后在本机分别跑前端、后端 `deploy.ps1`。
+然后在本机分别跑前端、后端 `deploy.sh` / `deploy.ps1`。
 
 需要公网连 3306 时，把 `MYSQL_PUBLISH` 改成 `0.0.0.0:3306:3306` 后重跑脚本（仍建议只走 SSH 隧道）。

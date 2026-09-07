@@ -131,6 +131,7 @@ systemctl start docker
 if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
   usermod -aG docker "${SUDO_USER}" || true
   log "已将 ${SUDO_USER} 加入 docker 组（需重新登录后生效）"
+  chown -R "${SUDO_USER}:${SUDO_USER}" /opt/leonpro /var/www/leonpro /var/www/leonpro-h5 || true
 fi
 
 mkdir -p /etc/docker
@@ -208,6 +209,10 @@ if [[ "${SETUP_UFW}" == "1" ]]; then
   ufw --force enable
 fi
 
+if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
+  chown -R "${SUDO_USER}:${SUDO_USER}" /opt/leonpro/backend /var/www/leonpro /var/www/leonpro-h5 || true
+fi
+
 log "完成"
 echo "----------------------------------------"
 echo "Nginx:     systemctl status nginx"
@@ -221,5 +226,5 @@ echo
 echo "接下来："
 echo "  1. 旧机导出：docker exec mysql8 mysqldump -uroot -p --databases leonpro_db_prod leonpro_db_dev > dump.sql"
 echo "  2. 新机导入：docker exec -i mysql8 mysql -uroot -p < dump.sql"
-echo "  3. 本机执行前端/后端 deploy.ps1 发布应用"
+echo "  3. 本机执行前端/后端 deploy.sh 或 deploy.ps1"
 echo "----------------------------------------"

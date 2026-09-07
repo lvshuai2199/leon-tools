@@ -122,7 +122,7 @@ if (-not (Test-Path $JarPath)) {
 }
 
 Write-Host "在服务器创建目录 $DEPLOY_REMOTE_DIR ..."
-& ssh @sshArgs $remote "${sudo}rm -rf /tmp/leonpro-backend-upload && mkdir -p /tmp/leonpro-backend-upload && ${sudo}mkdir -p '$DEPLOY_REMOTE_DIR'"
+& ssh @sshArgs $remote "${sudo}rm -rf /tmp/leonpro-backend-upload && mkdir -p /tmp/leonpro-backend-upload && ${sudo}mkdir -p '$DEPLOY_REMOTE_DIR' && ${sudo}chown -R '${DEPLOY_USER}:${DEPLOY_USER}' '$DEPLOY_REMOTE_DIR'"
 if ($LASTEXITCODE -ne 0) { throw "ssh mkdir 失败" }
 
 Write-Host "拷贝 jar 到 ${remote}:$DEPLOY_REMOTE_DIR/app.jar ..."

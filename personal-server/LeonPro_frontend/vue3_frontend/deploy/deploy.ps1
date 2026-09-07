@@ -104,7 +104,7 @@ Write-Host "Uploading archive ..."
 if ($LASTEXITCODE -ne 0) { throw "scp archive failed" }
 Remove-Item $tarPath -Force
 
-& ssh @sshArgs $remote "${sudo}mkdir -p '$DEPLOY_REMOTE_DIR' && ${sudo}rm -rf '$DEPLOY_REMOTE_DIR'/* && ${sudo}tar -xf /tmp/leonpro-dist.tar -C '$DEPLOY_REMOTE_DIR' && rm -f /tmp/leonpro-dist.tar"
+& ssh @sshArgs $remote "${sudo}mkdir -p '$DEPLOY_REMOTE_DIR' && ${sudo}chown -R '${DEPLOY_USER}:${DEPLOY_USER}' '$DEPLOY_REMOTE_DIR' && ${sudo}rm -rf '$DEPLOY_REMOTE_DIR'/* && ${sudo}tar -xf /tmp/leonpro-dist.tar -C '$DEPLOY_REMOTE_DIR' && rm -f /tmp/leonpro-dist.tar"
 if ($LASTEXITCODE -ne 0) { throw "extract dist failed" }
 
 Write-Host "Writing nginx config $DEPLOY_NGINX_CONF ..."

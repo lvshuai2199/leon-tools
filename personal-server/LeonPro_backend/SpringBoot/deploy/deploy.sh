@@ -71,7 +71,7 @@ if [[ ! -f "$JAR_PATH" ]]; then
 fi
 
 echo "在服务器创建目录 $DEPLOY_REMOTE_DIR ..."
-"${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "mkdir -p '$DEPLOY_REMOTE_DIR'"
+"${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "if sudo -n true 2>/dev/null; then sudo mkdir -p '$DEPLOY_REMOTE_DIR' && sudo chown -R '$DEPLOY_USER':'$DEPLOY_USER' '$DEPLOY_REMOTE_DIR'; else mkdir -p '$DEPLOY_REMOTE_DIR'; fi"
 
 echo "拷贝 jar 到 ${REMOTE}:$DEPLOY_REMOTE_DIR/app.jar ..."
 "${SCP_BIN[@]}" "${SCP_OPTS[@]}" "$JAR_PATH" "${REMOTE}:${DEPLOY_REMOTE_DIR}/app.jar"
@@ -85,7 +85,7 @@ echo "拷贝 Docker 文件..."
 
 if [[ "$DOCKER_UP" == "1" ]]; then
   echo "在服务器启动 Docker 容器..."
-  "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "cd '$DEPLOY_REMOTE_DIR' && (docker compose up -d --build || docker-compose up -d --build)"
+  "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "cd '$DEPLOY_REMOTE_DIR' && if sudo -n true 2>/dev/null; then sudo docker compose up -d --build || sudo docker-compose up -d --build; else docker compose up -d --build || docker-compose up -d --build; fi"
 fi
 
 echo "完成：jar 已放到 ${DEPLOY_HOST}:$DEPLOY_REMOTE_DIR"
