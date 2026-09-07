@@ -87,11 +87,28 @@ public class RegCodeAccessService {
         if (user == null) {
             return false;
         }
-        if (user.getRoleId() != null && !user.getRoleId().isBlank()
-                && RoleUtils.isRoot(sysRolesService.getById(user.getRoleId()))) {
+        if (isRootUser(user)) {
             return true;
         }
         return isRegCodeUser(user);
+    }
+
+    /** Web 管理端不允许注册码子用户登录，仅能使用手机端生成页 */
+    public boolean canLoginWeb(SysUsers user) {
+        if (user == null) {
+            return false;
+        }
+        if (isRootUser(user)) {
+            return true;
+        }
+        return !isRegCodeUser(user);
+    }
+
+    public boolean isRootUser(SysUsers user) {
+        if (user == null || user.getRoleId() == null || user.getRoleId().isBlank()) {
+            return false;
+        }
+        return RoleUtils.isRoot(sysRolesService.getById(user.getRoleId()));
     }
 
     public boolean isRegCodeUser(SysUsers user) {

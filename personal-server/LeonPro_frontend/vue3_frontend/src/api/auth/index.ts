@@ -22,6 +22,7 @@ const AuthAPI = {
       data: {
         username: data.username,
         password: data.password,
+        source: "web",
       },
       headers: {
         "Content-Type": "application/json",
@@ -97,6 +98,8 @@ export interface LoginUserVO {
   roleId?: string;
   /** 角色名称（登录时由后端回填） */
   roleName?: string;
+  /** 父用户 ID；有值表示注册码子用户 */
+  parentId?: string;
 }
 
 /** 验证码信息 */

@@ -81,6 +81,8 @@ export interface UserInfo {
   roleId?: string;
   /** 角色名称 */
   roleName?: string;
+  /** 父用户 ID；有值表示注册码子用户 */
+  parentId?: string;
 
   /** 兼容模板原有字段（提供默认值避免报错） */
   userId?: number;

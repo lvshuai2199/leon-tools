@@ -1,8 +1,10 @@
 import type { RouteLocationNormalized, RouteRecordRaw } from "vue-router";
+import { ElMessage } from "element-plus";
 import NProgress from "@/utils/nprogress";
 import { getAccessToken } from "@/utils/auth";
 import router from "@/router";
 import { usePermissionStore, useUserStore } from "@/store";
+import { isRegCodeClientUser, WEB_REGCODE_LOGIN_BLOCKED } from "@/utils/role";
 
 const PUBLIC_PATHS = new Set(["/login", "/trace", "/tool/trace"]);
 
@@ -14,7 +16,17 @@ export function setupPermission() {
   router.beforeEach(async (to) => {
     NProgress.start();
 
-    const isLogin = !!getAccessToken();
+    let isLogin = !!getAccessToken();
+    const userStore = useUserStore();
+    if (isLogin && isRegCodeClientUser(userStore.userInfo)) {
+      await userStore.clearUserData();
+      isLogin = false;
+      if (to.path !== "/login" && !isPublicPath(to.path)) {
+        ElMessage.warning(WEB_REGCODE_LOGIN_BLOCKED);
+        NProgress.done();
+        return { path: "/login" };
+      }
+    }
     if (to.path === "/login") {
       if (isLogin) {
         return { path: "/" };

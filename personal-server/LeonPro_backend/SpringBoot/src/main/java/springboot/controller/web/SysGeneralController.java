@@ -138,6 +138,8 @@ public class SysGeneralController {
             if (!this.regCodeAccessService.canLoginMobile(user)) {
                 return ApiResponse.failure("仅注册码用户或 ROOT 可登录手机端");
             }
+        } else if (!this.regCodeAccessService.canLoginWeb(user)) {
+            return ApiResponse.failure("注册码用户请使用手机端登录，无法访问 Web 管理端");
         }
         fillRoleName(user);
         return ApiResponse.success(user);
