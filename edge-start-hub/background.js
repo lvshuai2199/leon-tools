@@ -1,12 +1,27 @@
+import { rememberRecentTab, syncRecentTabs } from "./shared/browser-data.js";
 import { getPreferences } from "./shared/storage.js";
 
+const rememberTab = (tab) => {
+  rememberRecentTab(tab).catch(() => {});
+};
+
+chrome.tabs.onCreated.addListener(rememberTab);
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.url || changeInfo.status === "complete") rememberTab(tab);
+});
+chrome.tabs.onActivated.addListener(({ tabId }) => {
+  chrome.tabs.get(tabId).then(rememberTab).catch(() => {});
+});
+
 chrome.runtime.onInstalled.addListener(({ reason }) => {
+  syncRecentTabs().catch(() => {});
   if (reason === "install") {
     chrome.runtime.openOptionsPage();
   }
 });
 
 chrome.runtime.onStartup.addListener(async () => {
+  await syncRecentTabs();
   const preferences = await getPreferences();
   if (!preferences.openOnStartup) return;
 

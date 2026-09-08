@@ -1,5 +1,5 @@
 import { findMainBookmarkFolder, flattenBookmarks, getBookmarkTree } from "../../shared/bookmarks.js";
-import { getFrequentPages, getSearchUrl, looksLikeUrl, toNavigableUrl } from "../../shared/browser-data.js";
+import { getRecentTabs, getSearchUrl, looksLikeUrl, toNavigableUrl } from "../../shared/browser-data.js";
 import { getPreferences } from "../../shared/storage.js";
 import { resolveMappedUrl } from "../../shared/url-rules.js";
 import { createFavicon, debounce } from "../../shared/ui.js";
@@ -17,6 +17,9 @@ let results = [];
 let selectedIndex = 0;
 let requestSequence = 0;
 
+const RECENT_ITEM_LIMIT = 80;
+const MATCH_ITEM_LIMIT = 12;
+
 function matches(item, query) {
   const haystack = `${item.title || item.name || ""} ${item.url || ""} ${(item.path || []).join(" ")}`.toLowerCase();
   return haystack.includes(query.toLowerCase());
@@ -26,7 +29,7 @@ function deduplicateGroups(groups) {
   const seen = new Set();
   return groups.flatMap((group) => group.items.flatMap((item) => {
     if (!item.url) return [];
-    const key = group.type === "tab" ? `tab:${item.id}` : item.url;
+    const key = group.type === "tab" ? `tab:${item.id ?? item.url}` : item.url;
     if (seen.has(key)) return [];
     seen.add(key);
     return [{ ...item, type: group.type, group: group.label }];
@@ -35,29 +38,33 @@ function deduplicateGroups(groups) {
 
 async function search(query) {
   if (!query) {
-    const frequent = await getFrequentPages(Math.min(preferences.frequentLimit, 8));
-    return frequent.map((item) => ({ ...item, type: "history", group: "常用网页" }));
+    const tabs = await getRecentTabs(RECENT_ITEM_LIMIT);
+    return deduplicateGroups([
+      { label: "最近打开的标签页", type: "tab", items: tabs }
+    ]);
   }
 
   const [tabs, history] = await Promise.all([
     chrome.tabs.query({}),
-    chrome.history.search({ text: query, maxResults: 15, startTime: 0 })
+    chrome.history.search({ text: query, maxResults: Math.max(MATCH_ITEM_LIMIT * 2, 15), startTime: 0 })
   ]);
   return deduplicateGroups([
-    { label: "已打开的标签页", type: "tab", items: tabs.filter((item) => matches(item, query)).slice(0, 8) },
-    { label: "收藏夹", type: "bookmark", items: bookmarks.filter((item) => matches(item, query)).slice(0, 8) },
-    { label: "我的网站", type: "custom", items: preferences.customSites.filter((item) => matches(item, query)).slice(0, 6) },
-    { label: "历史记录", type: "history", items: history.slice(0, 8) }
+    { label: "已打开的标签页", type: "tab", items: tabs.filter((item) => matches(item, query)).slice(0, MATCH_ITEM_LIMIT) },
+    { label: "收藏夹", type: "bookmark", items: bookmarks.filter((item) => matches(item, query)).slice(0, MATCH_ITEM_LIMIT) },
+    { label: "我的网站", type: "custom", items: preferences.customSites.filter((item) => matches(item, query)).slice(0, MATCH_ITEM_LIMIT) },
+    { label: "历史记录", type: "history", items: history.slice(0, MATCH_ITEM_LIMIT) }
   ]);
 }
 
 function render() {
   elements.results.replaceChildren();
-  elements.statusLine.textContent = elements.searchInput.value.trim() ? `${results.length} 个匹配结果` : "常用网页";
+  elements.statusLine.textContent = elements.searchInput.value.trim() ? `${results.length} 个匹配结果` : "最近打开的标签页记录";
   if (!results.length) {
     const empty = document.createElement("div");
     empty.className = "empty";
-    empty.textContent = "没有找到本地结果，按 Enter 使用默认搜索引擎检索网页";
+    empty.textContent = elements.searchInput.value.trim()
+      ? "没有找到本地结果，按 Enter 使用默认搜索引擎检索网页"
+      : "暂无最近标签页记录";
     elements.results.append(empty);
     return;
   }
@@ -75,6 +82,7 @@ function render() {
     row.type = "button";
     row.className = `result-row${index === selectedIndex ? " is-active" : ""}`;
     row.dataset.index = String(index);
+    row.dataset.remembered = String(Boolean(result.isRemembered));
     row.setAttribute("role", "option");
     row.setAttribute("aria-selected", String(index === selectedIndex));
     row.append(createFavicon(result.url, 24));
@@ -89,7 +97,7 @@ function render() {
     copy.append(title, url);
     const action = document.createElement("span");
     action.className = "result-action";
-    action.textContent = index === selectedIndex ? "Enter" : "";
+    action.textContent = index === selectedIndex ? (result.isRemembered ? "重新打开" : "Enter") : "";
     row.append(copy, action);
     row.addEventListener("mousemove", () => {
       if (selectedIndex !== index) {
@@ -107,17 +115,23 @@ function updateSelection() {
     const active = Number(row.dataset.index) === selectedIndex;
     row.classList.toggle("is-active", active);
     row.setAttribute("aria-selected", String(active));
-    row.querySelector(".result-action").textContent = active ? "Enter" : "";
+    row.querySelector(".result-action").textContent = active
+      ? (row.dataset.remembered === "true" ? "重新打开" : "Enter")
+      : "";
     if (active) row.scrollIntoView({ block: "nearest" });
   });
 }
 
 async function openResult(result) {
-  if (result.type === "tab") {
-    await chrome.tabs.update(result.id, { active: true });
-    if (result.windowId) await chrome.windows.update(result.windowId, { focused: true });
-    window.close();
-    return;
+  if (result.type === "tab" && result.id != null) {
+    try {
+      await chrome.tabs.update(result.id, { active: true });
+      if (result.windowId) await chrome.windows.update(result.windowId, { focused: true });
+      window.close();
+      return;
+    } catch {
+      // A remembered tab may have been closed since the popup was opened.
+    }
   }
   const url = result.type === "bookmark"
     ? resolveMappedUrl(result.url, preferences.prefixRules, result.ancestorIds)

@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "EDGE工作台",
-  "version": "1.1.0",
-  "description": "在新标签页集中搜索已打开标签、收藏夹和常用网页，并为服务器收藏夹映射可变地址。",
+  "version": "1.1.2",
+  "description": "在新标签页集中搜索最近标签页、历史记录和收藏夹，并为服务器收藏夹映射可变地址。",
   "permissions": [
     "bookmarks",
     "favicon",
@@ -19,7 +19,7 @@
     "type": "module"
   },
   "action": {
-    "default_title": "搜索标签页和收藏夹",
+    "default_title": "查看最近打开的标签页",
     "default_popup": "pages/search/index.html"
   },
   "chrome_url_overrides": {
