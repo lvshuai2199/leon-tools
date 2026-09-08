@@ -104,13 +104,6 @@ public class RegCodeAccessService {
         return !isRegCodeUser(user);
     }
 
-    public boolean isRootUser(SysUsers user) {
-        if (user == null || user.getRoleId() == null || user.getRoleId().isBlank()) {
-            return false;
-        }
-        return RoleUtils.isRoot(sysRolesService.getById(user.getRoleId()));
-    }
-
     public boolean isRegCodeUser(SysUsers user) {
         if (user == null) {
             return false;
