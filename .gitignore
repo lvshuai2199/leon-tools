@@ -15,6 +15,10 @@ personal-server/LeonPro_backend/SpringBoot/logtest_result.txt
 # 后端外部日志目录（LOG_PATH 指向的可写目录）
 leonpro_logs/
 
+# robotScriptDebug 运行时生成的 Python 字节码
+robotScriptDebug/**/__pycache__/
+robotScriptDebug/**/*.py[cod]
+
 # 前端 vite dev 日志 / 验证截图
 personal-server/LeonPro_frontend/_vite.log
 personal-server/LeonPro_frontend/_verify_*.png
