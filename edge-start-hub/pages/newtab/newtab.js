@@ -73,7 +73,22 @@ function showToast(message, type = "success") {
   showToast.timer = setTimeout(() => elements.toast.classList.add("hidden"), 2600);
 }
 
-function createSiteTile(site) {
+function getPagePathLabel(url) {
+  try {
+    const parsed = new URL(url);
+    const path = `${parsed.pathname}${parsed.search}${parsed.hash}`;
+    return `${parsed.host}${path === "/" ? "" : path}`;
+  } catch {
+    return url;
+  }
+}
+
+function getFrequentTitle(site) {
+  const title = String(site.title || site.name || "").trim();
+  return title || getHostLabel(site.url);
+}
+
+function createSiteTile(site, options = {}) {
   const link = document.createElement("a");
   link.className = "site-tile";
   link.href = site.url;
@@ -85,10 +100,10 @@ function createSiteTile(site) {
   copy.className = "site-copy";
   const name = document.createElement("span");
   name.className = "site-name";
-  name.textContent = site.title || site.name || getHostLabel(site.url);
+  name.textContent = options.showPath ? getFrequentTitle(site) : (site.title || site.name || getHostLabel(site.url));
   const host = document.createElement("span");
   host.className = "site-host";
-  host.textContent = getHostLabel(site.url);
+  host.textContent = options.showPath ? getPagePathLabel(site.url) : getHostLabel(site.url);
   copy.append(name, host);
   link.append(copy);
   return link;
@@ -97,7 +112,9 @@ function createSiteTile(site) {
 function renderFrequent() {
   elements.frequentSection.classList.toggle("hidden", !preferences.showFrequent);
   elements.frequentGrid.replaceChildren();
-  for (const page of frequentPages) elements.frequentGrid.append(createSiteTile(page));
+  for (const page of frequentPages) {
+    elements.frequentGrid.append(createSiteTile(page, { showPath: true }));
+  }
   if (frequentPages.length === 0) {
     const empty = document.createElement("div");
     empty.className = "empty-state";
