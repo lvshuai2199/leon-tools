@@ -4,13 +4,13 @@
 
 ## 发给别人安装
 
-在本机编译后运行 `pack.ps1`，把生成的文件发给对方即可：
+双击 `pack.bat`（或运行 `pack.ps1`）会先编译再打包。安装包在 `dist` 里，文件名带时间戳，例如：
 
 ```
-cursor-usage-widget\dist\CursorUsage-Setup.exe
+cursor-usage-widget\dist\CursorUsage-Setup-20260911-143500.exe
 ```
 
-对方双击安装，选一个目录即可。无需 Visual Studio。卸载用安装目录里的 `卸载.bat`。
+每次打包文件名都不同，发给别人时不会和旧包重名。对方双击安装，选一个目录即可。无需 Visual Studio。卸载用安装目录里的 `卸载.bat`。
 
 ## 本机从源码安装
 

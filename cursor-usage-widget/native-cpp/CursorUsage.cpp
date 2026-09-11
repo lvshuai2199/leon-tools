@@ -639,6 +639,7 @@ struct App {
     bool dragging = false;
     POINT press{};
     int pressY = 0;
+    int pressLaunch = -1;
     Snapshot snap;
     ULONG_PTR gdip = 0;
     bool tracking = false;
@@ -658,7 +659,6 @@ static int QuickTilePx() { return QuickIconPx() + QuickTilePad() * 2; }
 static int QuickGap() { int n = S(12); return n < 10 ? 10 : n; }
 static int QuickPad() { int n = S(14); return n < 12 ? 12 : n; }
 static int QuickRowGap() { return QuickGap(); }
-static int QuickBlockHSide();
 
 // Follow Windows app theme. Icons: light #202022 / dark #E8E8EA. Ring hues stay.
 static bool ReadAppsDark() {
@@ -673,11 +673,13 @@ static bool ReadAppsDark() {
     return r == ERROR_SUCCESS && type == REG_DWORD && light == 0;
 }
 
+static void Repaint(HWND h);
+
 static void RefreshTheme(HWND h) {
     bool dark = ReadAppsDark();
     if (dark == g.dark && h) return;
     g.dark = dark;
-    if (h) InvalidateRect(h, nullptr, FALSE);
+    if (h) Repaint(h);
 }
 
 static Color IconInk() {
@@ -714,13 +716,11 @@ static int StripH() {
     float contentBottom = lastY + r + (float)S(11) + (float)S(10);
     return (int)(contentBottom + topPad + 0.5f);
 }
-static int QuickColW() {
-    return QuickPad() * 2 + QuickTilePx() * 4 + QuickGap() * 3;
-}
+static int QuickColW();
 static int PanelW() {
-    if (g.dockEdge == 2)
-        return S(BASE_PANEL_W) + S(16) + QuickColW();
-    return S(BASE_PANEL_W);
+    int qw = QuickColW();
+    if (qw <= 0) return S(BASE_PANEL_W);
+    return S(BASE_PANEL_W) + S(16) + qw;
 }
 static int MeterH() { return S(57); }
 static int ExpandedChromeH() {
@@ -732,11 +732,16 @@ static int TokenListH() {
     if (n < 1 && !g.snap.topModel.empty()) n = 1;
     return S(26) + S(16) + n * S(16) + S(18);
 }
+static int QuickContentH();
 static int ExpandedWantH() {
     int h;
     if (!g.snap.ok) h = ExpandedChromeH() + S(28);
     else h = ExpandedChromeH() + TokenListH() + S(14);
-    if (g.dockEdge != 2) h += QuickBlockHSide();
+    int qh = QuickContentH();
+    if (qh > 0) {
+        int need = S(46) + qh + S(12);
+        if (need > h) h = need;
+    }
     return h;
 }
 static int ExpandedH() {
@@ -879,6 +884,8 @@ static RECT Work() {
     RECT r; SystemParametersInfo(SPI_GETWORKAREA, 0, &r, 0); return r;
 }
 
+static void SyncHotspots(HWND h);
+
 static void KeepTopMost(HWND h) {
     if (!h) return;
     LONG_PTR ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
@@ -891,7 +898,25 @@ static void KeepTopMost(HWND h) {
 static void ApplyRegion(HWND h) {
     int w = WinW();
     int hh = WinH();
-    SetWindowRgn(h, nullptr, FALSE);
+    if (w < 8 || hh < 8) {
+        SetWindowRgn(h, nullptr, FALSE);
+        return;
+    }
+    int r = S(12);
+    if (r < 8) r = 8;
+    HRGN round = CreateRoundRectRgn(0, 0, w + 1, hh + 1, r * 2, r * 2);
+    HRGN flat = nullptr;
+    if (g.dockEdge == 2)
+        flat = CreateRectRgn(0, 0, w + 1, r + 2);
+    else if (g.dockEdge == 1)
+        flat = CreateRectRgn(w - r - 1, 0, w + 1, hh + 1);
+    else
+        flat = CreateRectRgn(0, 0, r + 2, hh + 1);
+    if (flat) {
+        CombineRgn(round, round, flat, RGN_OR);
+        DeleteObject(flat);
+    }
+    SetWindowRgn(h, round, TRUE);
 }
 
 static void Place(HWND h) {
@@ -915,6 +940,7 @@ static void Place(HWND h) {
     KeepTopMost(h);
     ApplyRegion(h);
     RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+    SyncHotspots(h);
 }
 
 static void DragMove(HWND h) {
@@ -942,13 +968,14 @@ typedef BOOL(WINAPI* SetWindowCompositionAttributeFn)(HWND, WINCOMPDATA*);
 static void Acrylic(HWND h) {
     LONG ex = GetWindowLong(h, GWL_EXSTYLE);
     SetWindowLong(h, GWL_EXSTYLE, (ex | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST) & ~WS_EX_APPWINDOW);
-    // Per-pixel alpha via UpdateLayeredWindow; no color-key.
-    // Accent blur is always a rectangle and shows as the left white frame outside the pill.
+    // Constant alpha: the whole window (clipped by region) receives mouse hits.
+    // Per-pixel UpdateLayeredWindow treats low-alpha icon pixels as click-through.
+    SetLayeredWindowAttributes(h, 0, 255, LWA_ALPHA);
     DWM_BLURBEHIND bb{};
     bb.dwFlags = DWM_BB_ENABLE;
     bb.fEnable = FALSE;
     DwmEnableBlurBehindWindow(h, &bb);
-    int ncrp = 1; // DWMNCRP_DISABLED — skips DWM’s dark frame
+    int ncrp = 1;
     DwmSetWindowAttribute(h, 2, &ncrp, sizeof(ncrp));
     HMODULE u = GetModuleHandleW(L"user32.dll");
     auto fn = (SetWindowCompositionAttributeFn)GetProcAddress(u, "SetWindowCompositionAttribute");
@@ -994,7 +1021,8 @@ static int Meter(Graphics& gph, Font& ui, Font& sm, int x, int y, int width, con
     else swprintf(right, 32, L"%.0f%%", pct);
     DrawRight(gph, right, sm, muted, (float)(width - S(22)), (float)y);
     y += S(32);
-    int barW = width - S(44);
+    int barW = (width - x) - S(24);
+    if (barW < 8) barW = 8;
     RoundBar(gph, (float)x, (float)y, (float)barW, (float)S(5),
              g.dark ? Color(255, 0x3A, 0x3E, 0x44) : Color(255, 228, 230, 233));
     float fill = (float)(std::max(0.0, std::min(100.0, pct)) / 100.0 * barW);
@@ -1279,8 +1307,14 @@ static void AddBodyPath(GraphicsPath& body, float w, float hh, float rad, float 
 
 // ---- quick launch / installed apps ----
 static void Place(HWND h);
+static void Paint(HWND h, HDC hdc);
+static void Repaint(HWND h) {
+    if (!h || !IsWindow(h)) return;
+    InvalidateRect(h, nullptr, FALSE);
+    UpdateWindow(h);
+}
 
-static const int kMaxShortcuts = 24;
+static const int kMaxShortcuts = 9;
 static const int IDM_MANAGE_APPS = 199;
 static const int IDM_LAUNCH_BASE = 200;
 
@@ -1575,16 +1609,27 @@ static void SaveShortcuts() {
 static bool SameExe(const std::wstring& a, const std::wstring& b) {
     if (a.empty() || b.empty()) return false;
     if (_wcsicmp(a.c_str(), b.c_str()) == 0) return true;
-    return _wcsicmp(FileNameOf(a).c_str(), FileNameOf(b).c_str()) == 0;
+    std::wstring na = FileNameOf(a);
+    std::wstring nb = FileNameOf(b);
+    if (_wcsicmp(na.c_str(), nb.c_str()) != 0) return false;
+    const wchar_t* skip[] = {
+        L"explorer.exe", L"svchost.exe", L"runtimebroker.exe",
+        L"applicationframehost.exe", L"cursorusage.exe"
+    };
+    for (auto s : skip)
+        if (_wcsicmp(na.c_str(), s) == 0) return false;
+    return true;
 }
 
 struct FindAppWnd {
     std::wstring target;
+    DWORD selfPid = 0;
     HWND best = nullptr;
 };
 
 static BOOL CALLBACK EnumAppWndProc(HWND hwnd, LPARAM lp) {
     auto* st = (FindAppWnd*)lp;
+    if (hwnd == g.hwnd) return TRUE;
     if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER)) return TRUE;
     LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
     if (ex & WS_EX_TOOLWINDOW) return TRUE;
@@ -1593,7 +1638,7 @@ static BOOL CALLBACK EnumAppWndProc(HWND hwnd, LPARAM lp) {
     if (rc.right - rc.left < 40 || rc.bottom - rc.top < 40) return TRUE;
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
-    if (!pid) return TRUE;
+    if (!pid || pid == st->selfPid) return TRUE;
     HANDLE ph = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
     if (!ph) return TRUE;
     wchar_t buf[MAX_PATH] = {};
@@ -1608,38 +1653,74 @@ static BOOL CALLBACK EnumAppWndProc(HWND hwnd, LPARAM lp) {
 
 static void ForceForeground(HWND w) {
     if (!w || !IsWindow(w)) return;
-    HWND fg = GetForegroundWindow();
-    DWORD cur = GetCurrentThreadId();
-    DWORD fgTid = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
-    DWORD tgTid = GetWindowThreadProcessId(w, nullptr);
-    if (IsIconic(w)) ShowWindow(w, SW_RESTORE);
-    ShowWindow(w, SW_SHOW);
-    if (fgTid && fgTid != cur) AttachThreadInput(cur, fgTid, TRUE);
-    if (tgTid && tgTid != cur) AttachThreadInput(cur, tgTid, TRUE);
-    BringWindowToTop(w);
+    if (IsIconic(w)) ShowWindowAsync(w, SW_RESTORE);
+    else ShowWindowAsync(w, SW_SHOW);
+    SetWindowPos(w, HWND_TOP, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE);
+    AllowSetForegroundWindow(ASFW_ANY);
     SetForegroundWindow(w);
-    SetActiveWindow(w);
-    if (fgTid && fgTid != cur) AttachThreadInput(cur, fgTid, FALSE);
-    if (tgTid && tgTid != cur) AttachThreadInput(cur, tgTid, FALSE);
 }
 
 static HWND FindRunningWindow(const std::wstring& target) {
     if (target.empty() || !EndsWithI(target, L".exe")) return nullptr;
     FindAppWnd st;
     st.target = target;
+    st.selfPid = GetCurrentProcessId();
     EnumWindows(EnumAppWndProc, (LPARAM)&st);
     return st.best;
 }
 
-static int QuickContentH() {
-    int n = (int)g_shortcuts.size();
-    if (n <= 0) return S(40);
-    int cols = 4;
-    int rows = (n + cols - 1) / cols;
-    return QuickPad() * 2 + rows * QuickTilePx() + (rows - 1) * QuickRowGap();
+struct LaunchJob {
+    std::wstring path;
+    std::wstring target;
+};
+
+static DWORD WINAPI LaunchThread(LPVOID p) {
+    auto* job = (LaunchJob*)p;
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    HWND running = FindRunningWindow(job->target);
+    if (running) {
+        ForceForeground(running);
+    } else {
+        SHELLEXECUTEINFOW sei{ sizeof(sei) };
+        sei.fMask = SEE_MASK_FLAG_NO_UI;
+        sei.lpVerb = L"open";
+        sei.lpFile = job->path.c_str();
+        sei.nShow = SW_SHOWNORMAL;
+        ShellExecuteExW(&sei);
+    }
+    CoUninitialize();
+    delete job;
+    return 0;
 }
 
-static int QuickBlockHSide() { return S(12) + QuickContentH(); }
+static int QuickRowsUsed() {
+    int n = (int)g_shortcuts.size();
+    if (n <= 0) return 0;
+    if (n >= 3) return 3;
+    return n;
+}
+
+static int QuickColsUsed() {
+    int n = (int)g_shortcuts.size();
+    if (n <= 0) return 0;
+    int rows = QuickRowsUsed();
+    int cols = (n + rows - 1) / rows;
+    if (cols > 3) cols = 3;
+    return cols;
+}
+
+static int QuickColW() {
+    int cols = QuickColsUsed();
+    if (cols <= 0) return 0;
+    return QuickPad() * 2 + QuickTilePx() * cols + QuickGap() * (cols - 1);
+}
+
+static int QuickContentH() {
+    int rows = QuickRowsUsed();
+    if (rows <= 0) return 0;
+    return QuickPad() * 2 + rows * QuickTilePx() + (rows - 1) * QuickRowGap();
+}
 
 struct ManageDlg {
     HWND hwnd = nullptr;
@@ -1694,7 +1775,7 @@ static void ApplyShortcutPaths(const std::vector<std::wstring>& paths) {
     SaveShortcuts();
     if (g.hwnd) {
         Place(g.hwnd);
-        InvalidateRect(g.hwnd, nullptr, FALSE);
+        Repaint(g.hwnd);
     }
 }
 
@@ -1743,7 +1824,7 @@ static void ManageAddBrowse() {
     }
     for (auto& fp : files) {
         if ((int)g_manage.selected.size() >= kMaxShortcuts) {
-            MessageBoxW(g_manage.hwnd, L"最多 24 个启动程序", L"选择启动程序", MB_OK | MB_ICONINFORMATION);
+            MessageBoxW(g_manage.hwnd, L"最多 9 个启动程序（3 行 3 列）", L"选择启动程序", MB_OK | MB_ICONINFORMATION);
             break;
         }
         InstalledApp a;
@@ -1831,7 +1912,7 @@ static LRESULT CALLBACK ManageProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                             g_manage.rebuilding = true;
                             ListView_SetCheckState(g_manage.list, pnm->iItem, FALSE);
                             g_manage.rebuilding = false;
-                            MessageBoxW(h, L"最多 24 个启动程序", L"选择启动程序", MB_OK | MB_ICONINFORMATION);
+                            MessageBoxW(h, L"最多 9 个启动程序（3 行 3 列）", L"选择启动程序", MB_OK | MB_ICONINFORMATION);
                         } else g_manage.selected.insert(key);
                     } else g_manage.selected.erase(key);
                 }
@@ -1883,13 +1964,7 @@ static void DrawQuickLaunch(Graphics& gph, Font& ui, float x, float y, float qw,
     g_quickRect.bottom = (LONG)(y + qh);
     g_quickHit = true;
     if (g_shortcuts.empty()) {
-        SolidBrush br(Color(255, 0x78, 0x7D, 0x85));
-        const wchar_t* t = L"\u6dfb\u52a0\u5e38\u7528\u8f6f\u4ef6";
-        RectF layout(x, y, qw, qh);
-        StringFormat fmt;
-        fmt.SetAlignment(StringAlignmentCenter);
-        fmt.SetLineAlignment(StringAlignmentCenter);
-        gph.DrawString(t, -1, &ui, layout, &fmt, &br);
+        g_quickHit = false;
         return;
     }
     int icon = QuickIconPx();
@@ -1897,17 +1972,19 @@ static void DrawQuickLaunch(Graphics& gph, Font& ui, float x, float y, float qw,
     int gap = QuickGap();
     int pad = QuickPad();
     int rowGap = QuickRowGap();
-    int cols = (int)((qw - pad * 2 + gap) / (tile + gap));
+    int rows = QuickRowsUsed();
+    int cols = QuickColsUsed();
+    if (rows < 1) rows = 1;
     if (cols < 1) cols = 1;
-    if (cols > 8) cols = 8;
+    (void)cols;
     DWORD now = GetTickCount();
     auto oldInterp = gph.GetInterpolationMode();
     gph.SetInterpolationMode(InterpolationModeHighQualityBicubic);
     float rad = (float)S(10);
     if (rad < 8.f) rad = 8.f;
     for (int i = 0; i < (int)g_shortcuts.size(); ++i) {
-        int col = i % cols;
-        int row = i / cols;
+        int col = i / rows;
+        int row = i % rows;
         float ix = x + pad + col * (tile + gap);
         float iy = y + pad + row * (tile + rowGap);
         float scale = 1.f;
@@ -1965,32 +2042,72 @@ static void DrawQuickLaunch(Graphics& gph, Font& ui, float x, float y, float qw,
     gph.SetInterpolationMode(oldInterp);
 }
 
+static bool QuickLayout(float* qx, float* qy, float* qw, float* qh) {
+    int qpw = QuickColW();
+    if (qpw <= 0 || !g.expanded) return false;
+    int usageW = S(BASE_PANEL_W);
+    int split = S(16);
+    *qw = (float)qpw;
+    *qh = (float)QuickContentH();
+    if (*qh < (float)S(40)) *qh = (float)S(40);
+    *qy = (float)S(46);
+    *qx = (float)(usageW + split);
+    return true;
+}
+
+static POINT ClientFromWindow(HWND h, POINT screen) {
+    RECT wr{};
+    GetWindowRect(h, &wr);
+    screen.x -= wr.left;
+    screen.y -= wr.top;
+    return screen;
+}
+
+static POINT ClientFromLParam(HWND h, LPARAM l, bool screen) {
+    POINT pt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
+    if (screen) return ClientFromWindow(h, pt);
+    return pt;
+}
+
 static int HitQuickIndex(int mx, int my) {
-    if (!g_quickHit) return -2;
-    if (mx < g_quickRect.left || my < g_quickRect.top || mx >= g_quickRect.right || my >= g_quickRect.bottom)
-        return -2;
-    if (g_shortcuts.empty()) return -1;
-    float x = (float)g_quickRect.left;
-    float y = (float)g_quickRect.top;
-    float qw = (float)(g_quickRect.right - g_quickRect.left);
+    if (g_shortcuts.empty()) return -2;
+    float x = 0, y = 0, qw = 0, qh = 0;
+    if (!QuickLayout(&x, &y, &qw, &qh)) return -2;
+    if (mx < x || my < y || mx >= x + qw || my >= y + qh) return -2;
     int tile = QuickTilePx();
     int gap = QuickGap();
     int pad = QuickPad();
     int rowGap = QuickRowGap();
-    int cols = (int)((qw - pad * 2 + gap) / (tile + gap));
-    if (cols < 1) cols = 1;
-    if (cols > 8) cols = 8;
-    int hitX = gap / 2;
-    int hitY = rowGap / 2;
+    int rows = QuickRowsUsed();
+    if (rows < 1) rows = 1;
+    int hitX = gap / 2 + 4;
+    int hitY = rowGap / 2 + 4;
+    int best = -1;
+    int bestD = 0x7fffffff;
     for (int i = 0; i < (int)g_shortcuts.size(); ++i) {
-        int col = i % cols;
-        int row = i / cols;
+        int col = i / rows;
+        int row = i % rows;
         int ix = (int)(x + pad + col * (tile + gap));
         int iy = (int)(y + pad + row * (tile + rowGap));
         if (mx >= ix - hitX && my >= iy - hitY && mx < ix + tile + hitX && my < iy + tile + hitY)
             return i;
+        int cx = ix + tile / 2;
+        int cy = iy + tile / 2;
+        int dx = mx - cx, dy = my - cy;
+        int d = dx * dx + dy * dy;
+        if (d < bestD) { bestD = d; best = i; }
     }
-    return -2;
+    return best;
+}
+
+static int HitQuickFromMsg(HWND h, LPARAM l, bool screen) {
+    POINT a = ClientFromLParam(h, l, screen);
+    int qi = HitQuickIndex(a.x, a.y);
+    if (qi >= 0) return qi;
+    POINT sp{};
+    GetCursorPos(&sp);
+    POINT b = ClientFromWindow(h, sp);
+    return HitQuickIndex(b.x, b.y);
 }
 
 static void BeginLaunchAnim(int idx) {
@@ -1999,21 +2116,100 @@ static void BeginLaunchAnim(int idx) {
     g.holdUntil = g_launchAnimAt + kLaunchAnimMs + 200;
     if (g.hwnd) {
         SetTimer(g.hwnd, 3, 16, nullptr);
-        InvalidateRect(g.hwnd, nullptr, FALSE);
+        Repaint(g.hwnd);
+    }
+}
+
+static HWND g_hotspot[9]{};
+static void LaunchShortcut(int idx);
+
+static LRESULT CALLBACK HotspotProc(HWND hs, UINT m, WPARAM w, LPARAM l) {
+    if (m == WM_LBUTTONDOWN || m == WM_LBUTTONDBLCLK) {
+        int idx = (int)GetWindowLongPtrW(hs, GWLP_USERDATA);
+        LaunchShortcut(idx);
+        return 0;
+    }
+    if (m == WM_PAINT) {
+        PAINTSTRUCT ps;
+        BeginPaint(hs, &ps);
+        EndPaint(hs, &ps);
+        return 0;
+    }
+    if (m == WM_ERASEBKGND) return 1;
+    if (m == WM_NCHITTEST) return HTCLIENT;
+    return DefWindowProcW(hs, m, w, l);
+}
+
+static void SyncHotspots(HWND parent) {
+    if (!parent) return;
+    static bool reg = false;
+    if (!reg) {
+        WNDCLASSEXW wc{ sizeof(wc) };
+        wc.lpfnWndProc = HotspotProc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);
+        wc.lpszClassName = L"CursorUsageHotspot";
+        RegisterClassExW(&wc);
+        reg = true;
+    }
+    float x = 0, y = 0, qw = 0, qh = 0;
+    bool show = g.expanded && QuickLayout(&x, &y, &qw, &qh) && !g_shortcuts.empty();
+    int tile = QuickTilePx();
+    int gap = QuickGap();
+    int pad = QuickPad();
+    int rowGap = QuickRowGap();
+    int rows = QuickRowsUsed();
+    if (rows < 1) rows = 1;
+    for (int i = 0; i < kMaxShortcuts; ++i) {
+        if (!show || i >= (int)g_shortcuts.size()) {
+            if (g_hotspot[i]) ShowWindow(g_hotspot[i], SW_HIDE);
+            continue;
+        }
+        int col = i / rows;
+        int row = i % rows;
+        int ix = (int)(x + pad + col * (tile + gap));
+        int iy = (int)(y + pad + row * (tile + rowGap));
+        if (!g_hotspot[i]) {
+            g_hotspot[i] = CreateWindowExW(WS_EX_LAYERED,
+                L"CursorUsageHotspot", L"", WS_CHILD | WS_VISIBLE,
+                ix, iy, tile, tile, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
+            if (g_hotspot[i])
+                SetLayeredWindowAttributes(g_hotspot[i], 0, 1, LWA_ALPHA);
+        } else {
+            SetWindowPos(g_hotspot[i], HWND_TOP, ix, iy, tile, tile,
+                         SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        }
+        if (g_hotspot[i]) SetWindowLongPtrW(g_hotspot[i], GWLP_USERDATA, i);
+    }
+}
+
+static void DestroyHotspots() {
+    for (int i = 0; i < kMaxShortcuts; ++i) {
+        if (g_hotspot[i]) {
+            DestroyWindow(g_hotspot[i]);
+            g_hotspot[i] = nullptr;
+        }
     }
 }
 
 static void LaunchShortcut(int idx) {
     if (idx < 0 || idx >= (int)g_shortcuts.size()) return;
     BeginLaunchAnim(idx);
-    HWND running = FindRunningWindow(g_shortcuts[idx].target);
-    if (running) {
-        ForceForeground(running);
-        if (g.hwnd) KeepTopMost(g.hwnd);
-        return;
+    auto* job = new LaunchJob;
+    job->path = g_shortcuts[idx].path;
+    job->target = g_shortcuts[idx].target;
+    HANDLE th = CreateThread(nullptr, 0, LaunchThread, job, 0, nullptr);
+    if (th) CloseHandle(th);
+    else {
+        delete job;
+        SHELLEXECUTEINFOW sei{ sizeof(sei) };
+        sei.fMask = SEE_MASK_ASYNCOK | SEE_MASK_FLAG_NO_UI;
+        sei.lpVerb = L"open";
+        sei.lpFile = g_shortcuts[idx].path.c_str();
+        sei.nShow = SW_SHOWNORMAL;
+        ShellExecuteExW(&sei);
     }
-    ShellExecuteW(nullptr, L"open", g_shortcuts[idx].path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    if (g.hwnd) KeepTopMost(g.hwnd);
 }
 
 static void DrawQuickEmpty(Graphics& gph, Font& ui, float x, float y, float qw, float qh) {
@@ -2036,11 +2232,12 @@ static void Paint(HWND h, HDC hdc) {
     int w = rc.right, hh = rc.bottom;
     if (w <= 0 || hh <= 0) return;
 
+    HDC compat = hdc ? hdc : GetDC(h);
     void* bits = nullptr;
-    HDC mem = CreateCompatibleDC(hdc);
+    HDC mem = CreateCompatibleDC(compat);
     HBITMAP bmp = MakeDib(w, hh, &bits);
     HGDIOBJ old = bmp ? SelectObject(mem, bmp) : nullptr;
-    HDC target = bmp ? mem : hdc;
+    HDC target = bmp ? mem : compat;
 
     {
     Graphics gph(target);
@@ -2048,18 +2245,18 @@ static void Paint(HWND h, HDC hdc) {
     gph.SetPixelOffsetMode(PixelOffsetModeHighQuality);
     gph.SetCompositingQuality(CompositingQualityHighQuality);
     gph.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
-    gph.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-    gph.Clear(Color(0, 0, 0, 0));
+    BYTE ba = (BYTE)(255 * g.bgAlpha / 100);
+    if (ba < 1) ba = 1;
+    Color washTop = g.dark ? Color(255, 0x2A, 0x2A, 0x2E) : Color(255, 255, 255, 255);
+    Color washBot = g.dark ? Color(255, 0x1E, 0x1E, 0x22) : Color(255, 238, 239, 242);
+    gph.Clear(washTop);
     GraphicsPath body;
     float rad = (float)S(12);
     AddBodyPath(body, (float)w, (float)hh, rad, 2.0f);
-    BYTE ba = (BYTE)(255 * g.bgAlpha / 100);
-    if (ba < 1) ba = 1;
-    Color washTop = g.dark ? Color(ba, 0x2A, 0x2A, 0x2E) : Color(ba, 255, 255, 255);
-    Color washBot = g.dark ? Color(ba, 0x1E, 0x1E, 0x22) : Color(ba, 238, 239, 242);
-    LinearGradientBrush wash(PointF(0.f, 0.f), PointF(0.f, (float)hh), washTop, washBot);
+    Color fillTop = g.dark ? Color(ba, 0x2A, 0x2A, 0x2E) : Color(ba, 255, 255, 255);
+    Color fillBot = g.dark ? Color(ba, 0x1E, 0x1E, 0x22) : Color(ba, 238, 239, 242);
+    LinearGradientBrush wash(PointF(0.f, 0.f), PointF(0.f, (float)hh), fillTop, fillBot);
     gph.FillPath(&wash, &body);
-    gph.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
     Pen rim(g.dark ? Color(255, 0x3A, 0x3A, 0x40) : Color(255, 0xD8, 0xDC, 0xE1), 1.0f);
     rim.SetAlignment(PenAlignmentInset);
     rim.SetLineJoin(Gdiplus::LineJoinRound);
@@ -2106,52 +2303,48 @@ static void Paint(HWND h, HDC hdc) {
 
 
         int pad = S(20);
-        int usageW = w;
-        float quickX = 0.f, quickY = 0.f, quickW = 0.f, quickH = 0.f;
-        if (g.dockEdge == 2) {
-            usageW = S(BASE_PANEL_W);
-            quickW = (float)QuickColW();
-            quickX = (float)usageW + (float)S(16);
-            quickY = (float)S(46);
-            quickH = (float)(hh - S(46) - S(12));
-            if (quickH < (float)S(40)) quickH = (float)S(40);
-        }
-        DrawTitleMark(gph, (float)pad, (float)S(14));
-        gph.DrawString(L"Cursor 用量", -1, &title, PointF((float)pad + 20.f, (float)S(14)), &white);
+        int usageW = S(BASE_PANEL_W);
+        float quickX = 0, quickY = 0, quickW = 0, quickH = 0;
+        bool showQ = QuickLayout(&quickX, &quickY, &quickW, &quickH);
+        int usageLeft = 0;
+        int ux = usageLeft + pad;
+        int ur = usageLeft + usageW;
+        DrawTitleMark(gph, (float)ux, (float)S(14));
+        gph.DrawString(L"Cursor 用量", -1, &title, PointF((float)ux + 20.f, (float)S(14)), &white);
         int y = S(46);
         if (!g.snap.ok) {
-            DrawRight(gph, L"\u672a\u8bfb\u5230", ui, muted, (float)(w - pad), (float)S(16));
-            gph.DrawString(L"\u672a\u8bfb\u5230\u7528\u91cf", -1, &ui, PointF((float)pad, (float)S(46)), &muted);
+            DrawRight(gph, L"\u672a\u8bfb\u5230", ui, muted, (float)(ur - pad), (float)S(16));
+            gph.DrawString(L"\u672a\u8bfb\u5230\u7528\u91cf", -1, &ui, PointF((float)ux, (float)S(46)), &muted);
         } else {
             if (!g.snap.membership.empty())
-                DrawRight(gph, Utf8ToWide(g.snap.membership), ui, muted, (float)(usageW - pad), (float)S(16));
+                DrawRight(gph, Utf8ToWide(g.snap.membership), ui, muted, (float)(ur - pad), (float)S(16));
             y = S(46);
-            y = Meter(gph, ui, sm, pad, y, usageW, L"Auto", g.snap.autoP, L"");
-            y = Meter(gph, ui, sm, pad, y, usageW, L"Models", g.snap.api, L"");
-            y = Meter(gph, ui, sm, pad, y, usageW, L"API", g.snap.total, L"");
+            y = Meter(gph, ui, sm, ux, y, ur, L"Auto", g.snap.autoP, L"");
+            y = Meter(gph, ui, sm, ux, y, ur, L"Models", g.snap.api, L"");
+            y = Meter(gph, ui, sm, ux, y, ur, L"API", g.snap.total, L"");
             if (g.showBot)
-                y = Meter(gph, ui, sm, pad, y, usageW, L"Bot", g.snap.botP, L"", g.snap.botKnown);
+                y = Meter(gph, ui, sm, ux, y, ur, L"Bot", g.snap.botP, L"", g.snap.botKnown);
         }
 
         g_quickHit = false;
-        if (g.dockEdge == 2 && quickW > 1.f)
+        if (showQ)
             DrawQuickLaunch(gph, ui, quickX, quickY, quickW, quickH);
 
         if (g.snap.ok) {
         int viewY = y + S(8);
         int ty = viewY;
-        gph.DrawString(L"今日 Token", -1, &ui, PointF((float)pad, (float)ty), &white);
-        DrawRight(gph, FormatTok(g.snap.today()), num, white, (float)(usageW - pad), (float)ty);
+        gph.DrawString(L"今日 Token", -1, &ui, PointF((float)ux, (float)ty), &white);
+        DrawRight(gph, FormatTok(g.snap.today()), num, white, (float)(ur - pad), (float)ty);
         ty += S(24);
         std::wstring detail = L"入 " + FormatTok(g.snap.tin) + L"  ·  出 " + FormatTok(g.snap.tout);
         if (g.snap.tcache) detail += L"  ·  缓存 " + FormatTok(g.snap.tcache);
-        gph.DrawString(detail.c_str(), -1, &sm, PointF((float)pad, (float)ty), &muted);
+        gph.DrawString(detail.c_str(), -1, &sm, PointF((float)ux, (float)ty), &muted);
         ty += S(16);
         for (auto& row : g.snap.models) {
             std::wstring name = Utf8ToWide(row.name);
             if (name.size() > 20) name = name.substr(0, 19) + L"…";
-            gph.DrawString(name.c_str(), -1, &sm, PointF((float)pad, (float)ty), &muted);
-            DrawRight(gph, FormatTok(row.tokens), sm, muted, (float)(usageW - pad), (float)ty);
+            gph.DrawString(name.c_str(), -1, &sm, PointF((float)ux, (float)ty), &muted);
+            DrawRight(gph, FormatTok(row.tokens), sm, muted, (float)(ur - pad), (float)ty);
             ty += S(16);
         }
         ty += S(4);
@@ -2161,58 +2354,23 @@ static void Paint(HWND h, HDC hdc) {
             std::wstring err = Utf8ToWide(g.snap.error);
             wcsncpy(foot, err.c_str(), 63); foot[63] = 0;
         }
-        gph.DrawString(foot, -1, &sm, PointF((float)pad, (float)ty), &muted);
+        gph.DrawString(foot, -1, &sm, PointF((float)ux, (float)ty), &muted);
         } else {
             std::wstring err = g.snap.error.empty() ? L"未读到用量" : Utf8ToWide(g.snap.error);
-            gph.DrawString(err.c_str(), -1, &sm, PointF((float)pad, (float)(y + S(28))), &muted);
-        }
-
-        if (g.dockEdge != 2) {
-            float qy = (float)(y + S(12));
-            if (g.snap.ok) {
-                // Place under token list: reuse ExpandedChromeH + TokenListH layout.
-                qy = (float)(ExpandedChromeH() + TokenListH() + S(12));
-            } else {
-                qy = (float)(y + S(28) + S(12));
-            }
-            float qh = (float)QuickContentH();
-            DrawQuickLaunch(gph, ui, (float)pad, qy, (float)(w - pad * 2), qh);
+            gph.DrawString(err.c_str(), -1, &sm, PointF((float)ux, (float)(y + S(28))), &muted);
         }
 
     }
     }
 
-    if (bmp && bits) {
-        // Premultiply for UpdateLayeredWindow (ULW_ALPHA).
-        auto* px = (BYTE*)bits;
-        int n = w * hh;
-        for (int i = 0; i < n; ++i) {
-            BYTE* p = px + i * 4;
-            BYTE a = p[3];
-            p[0] = (BYTE)((p[0] * a) / 255);
-            p[1] = (BYTE)((p[1] * a) / 255);
-            p[2] = (BYTE)((p[2] * a) / 255);
-        }
-        POINT ptSrc{ 0, 0 };
-        SIZE sz{ w, hh };
-        POINT ptDst{};
-        RECT wr{}; GetWindowRect(h, &wr);
-        ptDst.x = wr.left; ptDst.y = wr.top;
-        BLENDFUNCTION bf{};
-        bf.BlendOp = AC_SRC_OVER;
-        bf.SourceConstantAlpha = 255;
-        bf.AlphaFormat = AC_SRC_ALPHA;
-        HDC screen = GetDC(nullptr);
-        UpdateLayeredWindow(h, screen, &ptDst, &sz, mem, &ptSrc, 0, &bf, ULW_ALPHA);
-        ReleaseDC(nullptr, screen);
-        SelectObject(mem, old);
-        DeleteObject(bmp);
-    } else if (bmp) {
-        BitBlt(hdc, 0, 0, w, hh, mem, 0, 0, SRCCOPY);
+    if (bmp) {
+        HDC dest = hdc ? hdc : compat;
+        BitBlt(dest, 0, 0, w, hh, mem, 0, 0, SRCCOPY);
         SelectObject(mem, old);
         DeleteObject(bmp);
     }
     DeleteDC(mem);
+    if (!hdc && compat) ReleaseDC(h, compat);
 }
 
 static DWORD WINAPI FetchThread(LPVOID) {
@@ -2260,7 +2418,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
                 g_launchAnim = -1;
                 KillTimer(h, 3);
             }
-            InvalidateRect(h, nullptr, FALSE);
+            Repaint(h);
             return 0;
         }
         if (w == 4) { KeepTopMost(h); return 0; }
@@ -2276,7 +2434,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (s) { g.snap = *s; delete s; }
         g.scrollY = ClampI(g.scrollY, 0, MaxScroll());
         if (g.expanded) Place(h);
-        InvalidateRect(h, nullptr, FALSE);
+        Repaint(h);
         return 0;
     }
     case WM_PAINT: {
@@ -2290,16 +2448,33 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_NCCALCSIZE:
         if (w) return 0;
         break;
+    case WM_NCHITTEST:
+        return HTCLIENT;
+    case WM_NCLBUTTONDOWN:
     case WM_LBUTTONDOWN: {
-        POINT pt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
-        if (g.expanded && MaxScroll() > 0 && pt.y >= TokenViewY()) {
+        bool nc = (m == WM_NCLBUTTONDOWN);
+        POINT cpt = ClientFromLParam(h, l, nc);
+        g.pressLaunch = -1;
+        if (g.expanded) {
+            int qi = HitQuickFromMsg(h, l, nc);
+            if (qi >= 0) {
+                g.pressLaunch = qi;
+                g.dragging = false;
+                g.scrolling = false;
+                SetCapture(h);
+                LaunchShortcut(qi);
+                return 0;
+            }
+        }
+        if (g.expanded && MaxScroll() > 0 && cpt.y >= TokenViewY()) {
             g.scrolling = true;
-            g.press = pt;
+            g.press = cpt;
             SetCapture(h);
             return 0;
         }
-        ClientToScreen(h, &pt);
-        g.press = pt;
+        POINT sp{};
+        GetCursorPos(&sp);
+        g.press = sp;
         g.pressY = g.y;
         g.dragging = false;
         g.scrolling = false;
@@ -2308,17 +2483,21 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     case WM_MOUSEMOVE:
         if (g.expanded && !g.tracking) TrackLeave(h);
+        if (g.pressLaunch >= 0) return 0;
         if (GetCapture() == h && g.scrolling) {
             int dy = GET_Y_LPARAM(l) - g.press.y;
             g.press.y = GET_Y_LPARAM(l);
             g.scrollY = ClampI(g.scrollY + dy * MaxScroll() / (std::max)(1, TokenViewH() - 16), 0, MaxScroll());
-            InvalidateRect(h, nullptr, FALSE);
+            Repaint(h);
             return 0;
         }
         if (GetCapture() == h && !g.scrolling) {
             POINT pt;
             GetCursorPos(&pt);
-            if (abs(pt.y - g.press.y) > 4 || abs(pt.x - g.press.x) > 4) {
+            int ax = abs(pt.x - g.press.x);
+            int ay = abs(pt.y - g.press.y);
+            int along = (g.dockEdge == 2) ? ax : ay;
+            if (along > 10 && along >= ax && along >= ay) {
                 g.dragging = true;
                 if (g.dockEdge == 2)
                     g.y = g.pressY + (pt.x - g.press.x);
@@ -2332,12 +2511,16 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (g.expanded && MaxScroll() > 0) {
             int delta = GET_WHEEL_DELTA_WPARAM(w);
             g.scrollY = ClampI(g.scrollY - delta / WHEEL_DELTA * S(28), 0, MaxScroll());
-            InvalidateRect(h, nullptr, FALSE);
+            Repaint(h);
             return 0;
         }
         break;
-    case WM_LBUTTONUP:
+    case WM_NCLBUTTONUP:
+    case WM_LBUTTONUP: {
+        int launch = g.pressLaunch;
+        g.pressLaunch = -1;
         ReleaseCapture();
+        if (launch >= 0) return 0;
         if (g.scrolling) {
             g.scrolling = false;
             return 0;
@@ -2347,8 +2530,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             ApplyRegion(h);
             SaveConfig();
         } else if (g.expanded) {
-            POINT cpt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
-            int qi = HitQuickIndex(cpt.x, cpt.y);
+            int qi = HitQuickFromMsg(h, l, m == WM_NCLBUTTONUP);
             if (qi == -1) OpenManageShortcuts();
             else if (qi >= 0) LaunchShortcut(qi);
         } else {
@@ -2360,6 +2542,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             TrackLeave(h);
         }
         return 0;
+    }
     case WM_MOUSELEAVE:
         g.tracking = false;
         if (!g.expanded) return 0;
@@ -2435,7 +2618,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (cmd == 31 || cmd == 32 || cmd == 33 || cmd == 34) {
             int amap[] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,85,70,55 };
             g.bgAlpha = amap[cmd];
-            InvalidateRect(h, nullptr, FALSE);
+            Repaint(h);
             SaveConfig();
         }
         if (cmd == 14) DestroyWindow(h);
@@ -2446,6 +2629,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     case WM_DESTROY:
         SaveConfig();
+        DestroyHotspots();
         FreeShortcutIcons();
         KillTimer(h, 1);
         KillTimer(h, 2);
@@ -2458,6 +2642,12 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 }
 
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
+    // Must run before any USER32/GDI call, or mouse coords drift when the window is not at (0,0).
+    using SetDpiCtxFn = BOOL (WINAPI*)(HANDLE);
+    auto setDpi = (SetDpiCtxFn)GetProcAddress(GetModuleHandleW(L"user32.dll"), "SetProcessDpiAwarenessContext");
+    if (!setDpi || !setDpi((HANDLE)-4))
+        SetProcessDPIAware();
+
     HANDLE mu = CreateMutexW(nullptr, TRUE, L"CursorUsageWidgetCpp");
     if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
@@ -2466,7 +2656,6 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     LoadConfig();
     LoadShortcuts();
     g.dark = ReadAppsDark();
-    SetProcessDPIAware();
     Gdiplus::GdiplusStartupInput in;
     Gdiplus::GdiplusStartup(&g.gdip, &in, nullptr);
 
