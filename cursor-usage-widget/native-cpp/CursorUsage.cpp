@@ -4,6 +4,7 @@
 #include <windowsx.h>
 #include <objidl.h>
 #include <shellapi.h>
+#include <commdlg.h>
 #include <winhttp.h>
 #include <gdiplus.h>
 #include <dwmapi.h>
@@ -12,22 +13,29 @@
 #include <map>
 #include <cmath>
 #include <cctype>
-#include <cstdio>
 #include <cstring>
 #include <ctime>
 #include <sstream>
 #include <algorithm>
 #include <fstream>
 #include <regex>
+#include <set>
+#include <shlobj.h>
+#include <shlwapi.h>
+#include <commctrl.h>
+#include <commoncontrols.h>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
 #pragma comment(lib, "gdiplus.lib")
 #pragma comment(lib, "winhttp.lib")
 #pragma comment(lib, "shell32.lib")
+#pragma comment(lib, "comdlg32.lib")
 #pragma comment(lib, "ole32.lib")
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "advapi32.lib")
+#pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "shlwapi.lib")
 
 using Gdiplus::Graphics;
 using Gdiplus::Pen;
@@ -50,6 +58,8 @@ using Gdiplus::LinearGradientBrush;
 using Gdiplus::PenAlignmentInset;
 using Gdiplus::PixelOffsetModeHighQuality;
 using Gdiplus::CompositingQualityHighQuality;
+using Gdiplus::Bitmap;
+using Gdiplus::InterpolationModeHighQualityBicubic;
 
 static const int BASE_STRIP_W = 64;
 static const int BASE_STRIP_H = 220;
@@ -539,7 +549,7 @@ static Snapshot FetchUsage() {
     J jp = JwtPayload(ses.access);
     ses.sub = jp.str("sub");
     s.email = ses.email;
-    s.membership = ses.membership;
+    // Cached stripe membership is only applied after a real usage payload lands.
     if (JwtExpired(ses.access)) RefreshToken(ses);
 
     auto call = [&](const std::wstring& host, const std::wstring& path, const std::string& method,
@@ -573,16 +583,38 @@ static Snapshot FetchUsage() {
     else
         sprintf(dayBody, "{\"startDate\":%lld,\"endDate\":%lld}", startMs, endMs);
 
+    bool gotUsage = false;
+    auto takePlan = [&](const J& j) {
+        if (j.t != J::OBJ || j.o.empty()) return;
+        ApplyPlan(s, j);
+        if (WalkPlan(j) || j.get("membershipType") || j.get("displayMessage")
+            || j.get("namedModelSelectedDisplayMessage") || j.get("autoModelSelectedDisplayMessage"))
+            gotUsage = true;
+    };
     J sum = call(L"cursor.com", L"/api/usage-summary", "GET", "", true);
-    ApplyPlan(s, sum);
+    takePlan(sum);
     J period = call(L"cursor.com", L"/api/dashboard/get-current-period-usage", "POST", "{}", true);
-    ApplyPlan(s, period);
+    takePlan(period);
     J rpc = call(L"api2.cursor.sh", L"/aiserver.v1.DashboardService/GetCurrentPeriodUsage", "POST", "{}", false);
-    ApplyPlan(s, rpc);
+    takePlan(rpc);
     J sand = call(L"api2.cursor.sh", L"/aiserver.v1.DashboardService/GetSandUsageStatus", "POST", "{}", false);
     ApplySandUsage(s, sand);
     J agg = call(L"cursor.com", L"/api/dashboard/get-aggregated-usage-events", "POST", dayBody, true);
-    SumAgg(s, agg);
+    if (agg.t == J::OBJ && !agg.o.empty()) SumAgg(s, agg);
+
+    if (!gotUsage) {
+        s.ok = false;
+        s.membership.clear();
+        s.autoP = s.api = s.total = s.botP = 0;
+        s.botKnown = false;
+        s.tin = s.tout = s.tcache = s.twrite = 0;
+        s.models.clear();
+        s.topModel.clear();
+        if (s.error.empty()) s.error = "未读到用量";
+        return s;
+    }
+    if (s.membership.empty() && !ses.membership.empty())
+        s.membership = ses.membership;
     s.ok = true;
     return s;
 }
@@ -602,7 +634,7 @@ static std::wstring FormatTok(long long n) {
 struct App {
     HWND hwnd = nullptr;
     bool expanded = false;
-    bool dockRight = true;
+    int dockEdge = 1; // 0 left, 1 right, 2 top
     int y = -1;
     bool dragging = false;
     POINT press{};
@@ -613,22 +645,100 @@ struct App {
     DWORD holdUntil = 0;
     int scale = 80;
     bool showBot = false;
+    int bgAlpha = 100; // card fill only: 100/85/70/55
     int scrollY = 0;
     bool scrolling = false;
+    bool dark = false;
 } g;
 
 static int S(int v) { return (int)(v * g.scale / 100.0 + 0.5); }
-static int StripW() { return S(BASE_STRIP_W); }
-static int StripH() { return S(g.showBot ? BASE_STRIP_H + 64 : BASE_STRIP_H); }
-static int PanelW() { return S(BASE_PANEL_W); }
+static int QuickIconPx() { int n = S(40); return n < 36 ? 36 : n; }
+static int QuickTilePad() { int n = S(8); return n < 7 ? 7 : n; }
+static int QuickTilePx() { return QuickIconPx() + QuickTilePad() * 2; }
+static int QuickGap() { int n = S(12); return n < 10 ? 10 : n; }
+static int QuickPad() { int n = S(14); return n < 12 ? 12 : n; }
+static int QuickRowGap() { return QuickGap(); }
+static int QuickBlockHSide();
+
+// Follow Windows app theme. Icons: light #202022 / dark #E8E8EA. Ring hues stay.
+static bool ReadAppsDark() {
+    HKEY k = nullptr;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER,
+            L"Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize",
+            0, KEY_READ, &k) != ERROR_SUCCESS)
+        return false;
+    DWORD light = 1, sz = sizeof(light), type = 0;
+    LONG r = RegQueryValueExW(k, L"AppsUseLightTheme", nullptr, &type, (LPBYTE)&light, &sz);
+    RegCloseKey(k);
+    return r == ERROR_SUCCESS && type == REG_DWORD && light == 0;
+}
+
+static void RefreshTheme(HWND h) {
+    bool dark = ReadAppsDark();
+    if (dark == g.dark && h) return;
+    g.dark = dark;
+    if (h) InvalidateRect(h, nullptr, FALSE);
+}
+
+static Color IconInk() {
+    return g.dark ? Color(255, 0xE8, 0xE8, 0xEA) : Color(255, 0x20, 0x20, 0x22);
+}
+// Collapsed rings ~1.13x; side dock = vertical strip, top dock = horizontal bar.
+static const float kRingScale = 1.13f;
+static float RingR() { return (float)S(14) * kRingScale; }
+static int CollapsedRingCount() { return g.showBot ? 4 : 3; }
+
+static int StripW() {
+    if (g.dockEdge == 2) {
+        // pad 12, ring gap 10, rings L->R
+        float r = RingR();
+        int n = CollapsedRingCount();
+        int gap = S(10);
+        return S(12) * 2 + (int)(n * (2.f * r) + (n - 1) * gap + 0.5f);
+    }
+    return S((int)(BASE_STRIP_W * kRingScale + 0.5));
+}
+static int StripH() {
+    if (g.dockEdge == 2) {
+        float r = RingR();
+        // padTB 8 + ring + percent under ring
+        return S(8) * 2 + (int)(2.f * r + (float)S(11) + (float)S(10) + 0.5f);
+    }
+    float r = RingR();
+    float y0 = (float)S(30) * kRingScale;
+    float step = (float)S(64) * kRingScale;
+    int n = CollapsedRingCount();
+    float lastY = y0 + step * (float)(n - 1);
+    float topPad = y0 - r;
+    if (topPad < (float)S(8)) topPad = (float)S(8);
+    float contentBottom = lastY + r + (float)S(11) + (float)S(10);
+    return (int)(contentBottom + topPad + 0.5f);
+}
+static int QuickColW() {
+    return QuickPad() * 2 + QuickTilePx() * 4 + QuickGap() * 3;
+}
+static int PanelW() {
+    if (g.dockEdge == 2)
+        return S(BASE_PANEL_W) + S(16) + QuickColW();
+    return S(BASE_PANEL_W);
+}
 static int MeterH() { return S(57); }
-static int ExpandedChromeH() { return S(46) + MeterH() * (g.showBot ? 4 : 3) + S(8); }
+static int ExpandedChromeH() {
+    if (!g.snap.ok) return S(46) + S(36);
+    return S(46) + MeterH() * (g.showBot ? 4 : 3) + S(8);
+}
 static int TokenListH() {
     int n = (int)g.snap.models.size();
     if (n < 1 && !g.snap.topModel.empty()) n = 1;
     return S(26) + S(16) + n * S(16) + S(18);
 }
-static int ExpandedWantH() { return ExpandedChromeH() + TokenListH() + S(14); }
+static int ExpandedWantH() {
+    int h;
+    if (!g.snap.ok) h = ExpandedChromeH() + S(28);
+    else h = ExpandedChromeH() + TokenListH() + S(14);
+    if (g.dockEdge != 2) h += QuickBlockHSide();
+    return h;
+}
 static int ExpandedH() {
     return ExpandedWantH();
 }
@@ -665,9 +775,17 @@ static void LoadConfig() {
             if (sc > 160) sc = 160;
             g.scale = sc;
         }
-        if (k == "dock") g.dockRight = v != "left";
+        if (k == "dock") {
+            if (v == "left") g.dockEdge = 0;
+            else if (v == "top") g.dockEdge = 2;
+            else g.dockEdge = 1;
+        }
         if (k == "y") g.y = atoi(v.c_str());
         if (k == "showBot") g.showBot = v == "1";
+        if (k == "bgAlpha") {
+            int a = atoi(v.c_str());
+            if (a == 100 || a == 85 || a == 70 || a == 55) g.bgAlpha = a;
+        }
     }
 }
 
@@ -675,9 +793,10 @@ static void SaveConfig() {
     std::ofstream out(ConfigPath());
     if (!out) return;
     out << "scale=" << g.scale << "\n";
-    out << "dock=" << (g.dockRight ? "right" : "left") << "\n";
+    out << "dock=" << (g.dockEdge == 0 ? "left" : g.dockEdge == 2 ? "top" : "right") << "\n";
     out << "y=" << g.y << "\n";
     out << "showBot=" << (g.showBot ? "1" : "0") << "\n";
+    out << "bgAlpha=" << g.bgAlpha << "\n";
 }
 
 static const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -770,10 +889,19 @@ static void Place(HWND h) {
     RECT wa = Work();
     int w = WinW();
     int hh = WinH();
-    if (g.y < 0) g.y = wa.top + (wa.bottom - wa.top - hh) / 2;
-    g.y = ClampI(g.y, (int)wa.top + 4, (int)wa.bottom - hh - 4);
-    int x = g.dockRight ? wa.right - w : wa.left;
-    SetWindowPos(h, HWND_TOPMOST, x, g.y, w, hh,
+    int x = 0, y = 0;
+    if (g.dockEdge == 2) {
+        if (g.y < 0) g.y = wa.left + (wa.right - wa.left - w) / 2;
+        g.y = ClampI(g.y, (int)wa.left + 4, (int)wa.right - w - 4);
+        x = g.y;
+        y = wa.top;
+    } else {
+        if (g.y < 0) g.y = wa.top + (wa.bottom - wa.top - hh) / 2;
+        g.y = ClampI(g.y, (int)wa.top + 4, (int)wa.bottom - hh - 4);
+        x = g.dockEdge == 1 ? wa.right - w : wa.left;
+        y = g.y;
+    }
+    SetWindowPos(h, HWND_TOPMOST, x, y, w, hh,
                  SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_SHOWWINDOW);
     ApplyRegion(h);
     RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
@@ -783,9 +911,17 @@ static void DragMove(HWND h) {
     RECT wa = Work();
     int w = WinW();
     int hh = WinH();
-    g.y = ClampI(g.y, (int)wa.top + 4, (int)wa.bottom - hh - 4);
-    int x = g.dockRight ? wa.right - w : wa.left;
-    SetWindowPos(h, nullptr, x, g.y, 0, 0,
+    int x = 0, y = 0;
+    if (g.dockEdge == 2) {
+        g.y = ClampI(g.y, (int)wa.left + 4, (int)wa.right - w - 4);
+        x = g.y;
+        y = wa.top;
+    } else {
+        g.y = ClampI(g.y, (int)wa.top + 4, (int)wa.bottom - hh - 4);
+        x = g.dockEdge == 1 ? wa.right - w : wa.left;
+        y = g.y;
+    }
+    SetWindowPos(h, nullptr, x, y, 0, 0,
                  SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
 }
 
@@ -796,7 +932,7 @@ typedef BOOL(WINAPI* SetWindowCompositionAttributeFn)(HWND, WINCOMPDATA*);
 static void Acrylic(HWND h) {
     LONG ex = GetWindowLong(h, GWL_EXSTYLE);
     SetWindowLong(h, GWL_EXSTYLE, (ex | WS_EX_LAYERED | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW);
-    SetLayeredWindowAttributes(h, RGB(255, 0, 255), 0, LWA_COLORKEY);
+    // Per-pixel alpha via UpdateLayeredWindow; no color-key.
     // Accent blur is always a rectangle and shows as the left white frame outside the pill.
     DWM_BLURBEHIND bb{};
     bb.dwFlags = DWM_BB_ENABLE;
@@ -838,8 +974,8 @@ static void RoundBar(Graphics& gph, float x, float y, float w, float h, Color fi
 }
 
 static int Meter(Graphics& gph, Font& ui, Font& sm, int x, int y, int width, const wchar_t* title, double pct, const wchar_t* note, bool known = true) {
-    SolidBrush ink(Color(255, 32, 32, 34));
-    SolidBrush muted(Color(200, 90, 96, 105));
+    SolidBrush ink(g.dark ? Color(255, 0xE8, 0xE8, 0xEA) : Color(255, 32, 32, 34));
+    SolidBrush muted(g.dark ? Color(200, 0xA0, 0xA4, 0xAE) : Color(200, 90, 96, 105));
     SolidBrush noteBr(Color(170, 120, 125, 133));
     gph.DrawString(title, -1, &ui, PointF((float)x, (float)y), &ink);
     wchar_t right[32];
@@ -849,7 +985,8 @@ static int Meter(Graphics& gph, Font& ui, Font& sm, int x, int y, int width, con
     DrawRight(gph, right, sm, muted, (float)(width - S(22)), (float)y);
     y += S(32);
     int barW = width - S(44);
-    RoundBar(gph, (float)x, (float)y, (float)barW, (float)S(5), Color(255, 228, 230, 233));
+    RoundBar(gph, (float)x, (float)y, (float)barW, (float)S(5),
+             g.dark ? Color(255, 0x3A, 0x3E, 0x44) : Color(255, 228, 230, 233));
     float fill = (float)(std::max(0.0, std::min(100.0, pct)) / 100.0 * barW);
         Color bar = Color(255, 0x34, 0xC7, 0x59);
     if (pct >= 90.0) bar = Color(255, 0xE5, 0x48, 0x4D);
@@ -874,31 +1011,40 @@ static void DrawCursorIcon(Graphics& gph, float cx, float cy, float s, Color col
 }
 
 static void DrawTitleMark(Graphics& gph, float x, float y) {
-    const float s = 16.f / 32.f;
-    SolidBrush br(Color(255, 0x20, 0x20, 0x22));
-    PointF a1[4] = {
-        {x + 16.f * s, y + 4.6f * s},
-        {x + 23.4f * s, y + 8.8f * s},
-        {x + 16.2f * s, y + 12.8f * s},
-        {x + 8.6f * s, y + 8.4f * s},
-    };
-    PointF a2[4] = {
-        {x + 8.6f * s, y + 8.4f * s},
-        {x + 16.2f * s, y + 12.8f * s},
-        {x + 14.6f * s, y + 25.2f * s},
-        {x + 6.6f * s, y + 19.6f * s},
-    };
-    PointF a3[4] = {
-        {x + 23.4f * s, y + 8.8f * s},
-        {x + 16.2f * s, y + 12.8f * s},
-        {x + 14.6f * s, y + 25.2f * s},
-        {x + 26.8f * s, y + 18.2f * s},
-    };
-    GraphicsPath path;
-    path.AddPolygon(a1, 4);
-    path.AddPolygon(a2, 4);
-    path.AddPolygon(a3, 4);
-    gph.FillPath(&br, &path);
+    // usage-badge.svg hex cursor; mono fill follows light/dark
+    SolidBrush ink(IconInk());
+    const float vw = 49.f, vh = 56.f;
+    const float sc = 16.f / vh;
+    const float bx = x;
+    const float by = y;
+    auto X = [&](float px) { return bx + px * sc; };
+    auto Y = [&](float py) { return by + py * sc; };
+    GraphicsPath path(Gdiplus::FillModeAlternate);
+    path.StartFigure();
+    path.AddLine(X(48.0226f), Y(13.2547f), X(25.6601f), Y(0.3118f));
+    path.AddBezier(X(25.6601f), Y(0.3118f), X(24.942f), Y(-0.1039f), X(24.0559f), Y(-0.1039f), X(23.3378f), Y(0.3118f));
+    path.AddLine(X(23.3378f), Y(0.3118f), X(0.9763f), Y(13.2547f));
+    path.AddBezier(X(0.9763f), Y(13.2547f), X(0.3727f), Y(13.6041f), X(0.f), Y(14.2503f), X(0.f), Y(14.9502f));
+    path.AddLine(X(0.f), Y(14.9502f), X(0.f), Y(41.0498f));
+    path.AddBezier(X(0.f), Y(41.0498f), X(0.f), Y(41.7496f), X(0.3727f), Y(42.3958f), X(0.9763f), Y(42.7453f));
+    path.AddLine(X(0.9763f), Y(42.7453f), X(23.3389f), Y(55.6882f));
+    path.AddBezier(X(23.3389f), Y(55.6882f), X(24.057f), Y(56.1039f), X(24.943f), Y(56.1039f), X(25.6611f), Y(55.6882f));
+    path.AddLine(X(25.6611f), Y(55.6882f), X(48.0237f), Y(42.7453f));
+    path.AddBezier(X(48.0237f), Y(42.7453f), X(48.6273f), Y(42.3958f), X(49.f), Y(41.7496f), X(49.f), Y(41.0498f));
+    path.AddLine(X(49.f), Y(41.0498f), X(49.f), Y(14.9502f));
+    path.AddBezier(X(49.f), Y(14.9502f), X(49.f), Y(14.2503f), X(48.6273f), Y(13.6041f), X(48.0226f), Y(13.2547f));
+    path.CloseFigure();
+    path.StartFigure();
+    path.AddLine(X(46.6179f), Y(15.9964f), X(25.0302f), Y(53.4802f));
+    path.AddBezier(X(25.0302f), Y(53.4802f), X(24.8842f), Y(53.7328f), X(24.4989f), Y(53.6296f), X(24.4989f), Y(53.337f));
+    path.AddLine(X(24.4989f), Y(53.337f), X(24.4989f), Y(28.793f));
+    path.AddBezier(X(24.4989f), Y(28.793f), X(24.4989f), Y(28.3026f), X(24.2375f), Y(27.849f), X(23.8134f), Y(27.6027f));
+    path.AddLine(X(23.8134f), Y(27.6027f), X(2.6109f), Y(15.3312f));
+    path.AddBezier(X(2.6109f), Y(15.3312f), X(2.359f), Y(15.1849f), X(2.4619f), Y(14.7987f), X(2.7537f), Y(14.7987f));
+    path.AddLine(X(2.7537f), Y(14.7987f), X(45.9292f), Y(14.7987f));
+    path.AddBezier(X(45.9292f), Y(14.7987f), X(46.5423f), Y(14.7987f), X(46.9255f), Y(15.4649f), X(46.619f), Y(15.9974f));
+    path.CloseFigure();
+    gph.FillPath(&ink, &path);
 }
 
 static void DrawLoops(Graphics& gph, float cx, float cy, float s, Color col) {
@@ -935,54 +1081,122 @@ static void FillRoundRect(Graphics& gph, float x, float y, float w, float h, flo
     gph.FillPath(&br, &p);
 }
 
-static void DrawRingGlyph(Graphics& gph, float cx, float cy, float size, int kind) {
-    const float s = size / 32.f;
-    const float ox = cx - size * 0.5f;
-    const float oy = cy - size * 0.5f;
-    if (kind == 3) {
-        SolidBrush body(Color(255, 0x20, 0x20, 0x22));
-        FillRoundRect(gph, ox + 9.f * s, oy + 11.f * s, 14.f * s, 12.f * s, 3.f * s, body);
-        FillRoundRect(gph, ox + 14.2f * s, oy + 7.2f * s, 3.6f * s, 4.f * s, 1.2f * s, body);
-        SolidBrush eye(Color(255, 0xF8, 0xF8, 0xFA));
-        gph.FillEllipse(&eye, ox + 11.9f * s, oy + 14.9f * s, 2.6f * s, 2.6f * s);
-        gph.FillEllipse(&eye, ox + 17.5f * s, oy + 14.9f * s, 2.6f * s, 2.6f * s);
-        return;
-    }
-    if (kind == 1) {
-        SolidBrush br(Color(255, 0x7C, 0x5C, 0xBF));
-        FillRoundRect(gph, ox + 8.f * s, oy + 8.f * s, 16.f * s, 16.f * s, 3.5f * s, br);
-        return;
-    }
-    if (kind == 2) {
-        SolidBrush br(Color(255, 0x3A, 0xA0, 0xA0));
-        gph.FillEllipse(&br, ox + 6.9f * s, oy + 12.4f * s, 7.2f * s, 7.2f * s);
-        gph.FillEllipse(&br, ox + 17.9f * s, oy + 12.4f * s, 7.2f * s, 7.2f * s);
-        float lw = 3.2f * s; if (lw < 2.2f) lw = 2.2f;
-        Pen link(Color(255, 0x3A, 0xA0, 0xA0), lw);
-        link.SetStartCap(Gdiplus::LineCapRound);
-        link.SetEndCap(Gdiplus::LineCapRound);
-        gph.DrawLine(&link, ox + 14.1f * s, oy + 16.f * s, ox + 17.9f * s, oy + 16.f * s);
-        return;
-    }
-    PointF pts[7] = {
-        {ox + 10.5f * s, oy + 6.5f * s},
-        {ox + 10.5f * s, oy + 23.5f * s},
-        {ox + 14.6f * s, oy + 18.8f * s},
-        {ox + 18.8f * s, oy + 25.5f * s},
-        {ox + 21.6f * s, oy + 23.8f * s},
-        {ox + 17.6f * s, oy + 16.8f * s},
-        {ox + 23.2f * s, oy + 16.2f * s},
-    };
-    GraphicsPath tip;
-    tip.AddPolygon(pts, 7);
-    SolidBrush br(Color(255, 0x2F, 0x6F, 0xED));
-    gph.FillPath(&br, &tip);
+static void StrokeRoundRect(Graphics& gph, float x, float y, float w, float h, float rad, Pen& pen) {
+    if (rad * 2.f > h) rad = h * 0.5f;
+    if (rad * 2.f > w) rad = w * 0.5f;
+    GraphicsPath p(FillModeWinding);
+    p.AddArc(x, y, rad * 2.f, rad * 2.f, 180.f, 90.f);
+    p.AddArc(x + w - rad * 2.f, y, rad * 2.f, rad * 2.f, 270.f, 90.f);
+    p.AddArc(x + w - rad * 2.f, y + h - rad * 2.f, rad * 2.f, rad * 2.f, 0.f, 90.f);
+    p.AddArc(x, y + h - rad * 2.f, rad * 2.f, rad * 2.f, 90.f, 90.f);
+    p.CloseFigure();
+    gph.DrawPath(&pen, &p);
 }
 
+static float RingGlyphX(float cx, float size, float x) {
+    return cx - size * 0.5f + (3.7f + x * 0.17f) * (size / 16.f);
+}
+static float RingGlyphY(float cy, float size, float y) {
+    return cy - size * 0.5f + (3.25f + y * 0.17f) * (size / 16.f);
+}
+
+static void AddRingHex(GraphicsPath& path, float cx, float cy, float size) {
+    auto X = [&](float x) { return RingGlyphX(cx, size, x); };
+    auto Y = [&](float y) { return RingGlyphY(cy, size, y); };
+    PointF hex[6] = {
+        {X(24.5f), Y(0.3f)}, {X(48.02f), Y(13.25f)}, {X(48.02f), Y(42.75f)},
+        {X(24.5f), Y(55.69f)}, {X(0.98f), Y(42.75f)}, {X(0.98f), Y(13.25f)},
+    };
+    path.AddPolygon(hex, 6);
+}
+
+static void DrawRingGlyph(Graphics& gph, float cx, float cy, float size, int kind) {
+    // Four ring icons: hex hollow, same 16x16 frame (ui-review/icon-*.svg).
+    // Mono fill follows theme; ring stroke colors stay blue / purple / teal / amber.
+    SolidBrush ink(IconInk());
+    auto X = [&](float x) { return RingGlyphX(cx, size, x); };
+    auto Y = [&](float y) { return RingGlyphY(cy, size, y); };
+    GraphicsPath path(Gdiplus::FillModeAlternate);
+
+    if (kind == 0) {
+        // icon-auto.svg — cursor cutout in hex
+        path.StartFigure();
+        path.AddLine(X(48.0226f), Y(13.2547f), X(25.6601f), Y(0.3118f));
+        path.AddBezier(X(25.6601f), Y(0.3118f), X(24.942f), Y(-0.1039f), X(24.0559f), Y(-0.1039f), X(23.3378f), Y(0.3118f));
+        path.AddLine(X(23.3378f), Y(0.3118f), X(0.9763f), Y(13.2547f));
+        path.AddBezier(X(0.9763f), Y(13.2547f), X(0.3727f), Y(13.6041f), X(0.f), Y(14.2503f), X(0.f), Y(14.9502f));
+        path.AddLine(X(0.f), Y(14.9502f), X(0.f), Y(41.0498f));
+        path.AddBezier(X(0.f), Y(41.0498f), X(0.f), Y(41.7496f), X(0.3727f), Y(42.3958f), X(0.9763f), Y(42.7453f));
+        path.AddLine(X(0.9763f), Y(42.7453f), X(23.3389f), Y(55.6882f));
+        path.AddBezier(X(23.3389f), Y(55.6882f), X(24.057f), Y(56.1039f), X(24.943f), Y(56.1039f), X(25.6611f), Y(55.6882f));
+        path.AddLine(X(25.6611f), Y(55.6882f), X(48.0237f), Y(42.7453f));
+        path.AddBezier(X(48.0237f), Y(42.7453f), X(48.6273f), Y(42.3958f), X(49.f), Y(41.7496f), X(49.f), Y(41.0498f));
+        path.AddLine(X(49.f), Y(41.0498f), X(49.f), Y(14.9502f));
+        path.AddBezier(X(49.f), Y(14.9502f), X(49.f), Y(14.2503f), X(48.6273f), Y(13.6041f), X(48.0226f), Y(13.2547f));
+        path.CloseFigure();
+        path.StartFigure();
+        path.AddLine(X(46.6179f), Y(15.9964f), X(25.0302f), Y(53.4802f));
+        path.AddBezier(X(25.0302f), Y(53.4802f), X(24.8842f), Y(53.7328f), X(24.4989f), Y(53.6296f), X(24.4989f), Y(53.337f));
+        path.AddLine(X(24.4989f), Y(53.337f), X(24.4989f), Y(28.793f));
+        path.AddBezier(X(24.4989f), Y(28.793f), X(24.4989f), Y(28.3026f), X(24.2375f), Y(27.849f), X(23.8134f), Y(27.6027f));
+        path.AddLine(X(23.8134f), Y(27.6027f), X(2.6109f), Y(15.3312f));
+        path.AddBezier(X(2.6109f), Y(15.3312f), X(2.359f), Y(15.1849f), X(2.4619f), Y(14.7987f), X(2.7537f), Y(14.7987f));
+        path.AddLine(X(2.7537f), Y(14.7987f), X(45.9292f), Y(14.7987f));
+        path.AddBezier(X(45.9292f), Y(14.7987f), X(46.5423f), Y(14.7987f), X(46.9255f), Y(15.4649f), X(46.619f), Y(15.9974f));
+        path.CloseFigure();
+        gph.FillPath(&ink, &path);
+        return;
+    }
+
+    AddRingHex(path, cx, cy, size);
+
+    if (kind == 1) {
+        // icon-models.svg — three bar cutouts
+        PointF a[4] = {{X(11.f), Y(15.f)}, {X(38.f), Y(15.f)}, {X(35.f), Y(21.f)}, {X(14.f), Y(21.f)}};
+        PointF b[4] = {{X(11.f), Y(25.f)}, {X(38.f), Y(25.f)}, {X(35.f), Y(31.f)}, {X(14.f), Y(31.f)}};
+        PointF c[4] = {{X(11.f), Y(35.f)}, {X(38.f), Y(35.f)}, {X(35.f), Y(41.f)}, {X(14.f), Y(41.f)}};
+        path.AddPolygon(a, 4);
+        path.AddPolygon(b, 4);
+        path.AddPolygon(c, 4);
+    } else if (kind == 2) {
+        // icon-api.svg — two nodes + bridge cutouts
+        PointF n1[6] = {
+            {X(8.f), Y(20.f)}, {X(17.f), Y(14.5f)}, {X(26.f), Y(20.f)},
+            {X(26.f), Y(34.f)}, {X(17.f), Y(39.5f)}, {X(8.f), Y(34.f)},
+        };
+        PointF n2[6] = {
+            {X(23.f), Y(20.f)}, {X(32.f), Y(14.5f)}, {X(41.f), Y(20.f)},
+            {X(41.f), Y(34.f)}, {X(32.f), Y(39.5f)}, {X(23.f), Y(34.f)},
+        };
+        PointF bridge[4] = {
+            {X(22.5f), Y(24.5f)}, {X(32.5f), Y(24.5f)}, {X(32.5f), Y(29.5f)}, {X(22.5f), Y(29.5f)},
+        };
+        path.AddPolygon(n1, 6);
+        path.AddPolygon(n2, 6);
+        path.AddPolygon(bridge, 4);
+    } else if (kind == 3) {
+        // icon-bot.svg — antenna, face, eyes, smile cutouts
+        PointF ant[4] = {{X(22.f), Y(6.f)}, {X(27.f), Y(6.f)}, {X(27.f), Y(14.f)}, {X(22.f), Y(14.f)}};
+        PointF body[4] = {{X(14.f), Y(16.f)}, {X(35.f), Y(16.f)}, {X(35.f), Y(43.f)}, {X(14.f), Y(43.f)}};
+        path.AddPolygon(ant, 4);
+        path.AddPolygon(body, 4);
+        float er = 3.6f * 0.17f * (size / 16.f);
+        path.AddEllipse(X(18.5f) - er, Y(26.6f) - er, er * 2.f, er * 2.f);
+        path.AddEllipse(X(30.5f) - er, Y(26.6f) - er, er * 2.f, er * 2.f);
+        GraphicsPath smile;
+        smile.AddBezier(X(20.f), Y(35.5f), X(22.25f), Y(37.75f), X(26.75f), Y(37.75f), X(29.f), Y(35.5f));
+        smile.AddLine(X(29.f), Y(35.5f), X(29.f), Y(38.f));
+        smile.AddBezier(X(29.f), Y(38.f), X(26.75f), Y(40.25f), X(22.25f), Y(40.25f), X(20.f), Y(38.f));
+        smile.CloseFigure();
+        path.AddPath(&smile, FALSE);
+    }
+
+    gph.FillPath(&ink, &path);
+}
 
 static void DrawRingItem(Graphics& gph, Font& num, float cx, float y, float r, double pct, int kind, bool known = true) {
-    Color track(255, 220, 224, 228);
-    Color ink(255, 32, 32, 34);
+    Color track(g.dark ? Color(255, 0x3A, 0x3E, 0x44) : Color(255, 220, 224, 228));
+    Color ink = IconInk();
     bool live = g.snap.ok && known;
     float p = live ? (float)std::max(0.0, std::min(100.0, pct)) : 0.f;
     Color go = RingColor(kind, p);
@@ -998,7 +1212,12 @@ static void DrawRingItem(Graphics& gph, Font& num, float cx, float y, float r, d
     const FontFamily* fam = (yahei.GetLastStatus() == Gdiplus::Ok) ? &yahei : FontFamily::GenericSansSerif();
     Font mark(fam, 7.0f, Gdiplus::FontStyleBold, Gdiplus::UnitPoint);
     SolidBrush markBr(go);
-    DrawRingGlyph(gph, cx, y, (r - 3.f) * 1.55f, kind);
+    // Same size for all four: visual hex ~0.62-0.65 of ring inner diameter; keep padding.
+    float innerD = 2.f * r - 4.4f;
+    if (innerD < 8.f) innerD = 2.f * r * 0.85f;
+    // SVG hex fills ~0.595 of the 16px box; scale box so content hits ~0.64 of innerD.
+    float glyphSize = innerD * 0.635f / 0.595f; // ~0.62-0.65 of inner diameter
+    DrawRingGlyph(gph, cx, y, glyphSize, kind);
     wchar_t buf[16];
     if (!live) wcscpy(buf, L"--");
     else swprintf(buf, 16, (p > 0 && p < 0.5) ? L"<1%%" : L"%.0f%%", p);
@@ -1013,10 +1232,22 @@ static void AddBodyPath(GraphicsPath& body, float w, float hh, float rad, float 
     float rh = hh - inset * 2.f;
     float r = rad;
     if (r < 8.f) r = 8.f;
-    if (r * 2.f > rh * 0.4f) r = rh * 0.2f;
+    if (g.dockEdge == 2) {
+        if (r * 2.f > rw * 0.4f) r = rw * 0.2f;
+    } else {
+        if (r * 2.f > rh * 0.4f) r = rh * 0.2f;
+    }
     float right = x + rw;
     float bot = y + rh;
-    if (g.dockRight) {
+    if (g.dockEdge == 2) {
+        body.AddLine(x, y, right, y);
+        body.AddLine(right, y, right, bot - r);
+        body.AddArc(right - r * 2.f, bot - r * 2.f, r * 2.f, r * 2.f, 0.f, 90.f);
+        body.AddLine(right - r, bot, x + r, bot);
+        body.AddArc(x, bot - r * 2.f, r * 2.f, r * 2.f, 90.f, 90.f);
+        body.AddLine(x, bot - r, x, y);
+        body.CloseFigure();
+    } else if (g.dockEdge == 1) {
         body.AddArc(x, y, r * 2.f, r * 2.f, 180.f, 90.f);
         body.AddLine(x + r, y, right, y);
         body.AddLine(right, y, right, bot);
@@ -1032,6 +1263,749 @@ static void AddBodyPath(GraphicsPath& body, float w, float hh, float rad, float 
         body.AddLine(x, y, right - r, y);
         body.CloseFigure();
     }
+}
+
+
+
+// ---- quick launch / installed apps ----
+static void Place(HWND h);
+
+static const int kMaxShortcuts = 24;
+static const int IDM_MANAGE_APPS = 199;
+static const int IDM_LAUNCH_BASE = 200;
+
+struct ShortcutItem {
+    std::wstring path;
+    std::wstring name;
+    std::wstring target;
+    HICON icon = nullptr;
+    Bitmap* bmp = nullptr;
+};
+
+struct InstalledApp {
+    std::wstring name;
+    std::wstring launchPath;
+    std::wstring target;
+};
+
+static std::vector<ShortcutItem> g_shortcuts;
+static RECT g_quickRect{};
+static bool g_quickHit = false;
+static int g_launchAnim = -1;
+static DWORD g_launchAnimAt = 0;
+static const DWORD kLaunchAnimMs = 480;
+
+static std::wstring LowerCopy(std::wstring s) {
+    if (!s.empty()) CharLowerBuffW(&s[0], (DWORD)s.size());
+    return s;
+}
+
+static std::wstring FileNameOf(const std::wstring& p) {
+    size_t s = p.find_last_of(L"\\/");
+    return s == std::wstring::npos ? p : p.substr(s + 1);
+}
+
+static std::wstring FileTitleOf(const std::wstring& p) {
+    std::wstring n = FileNameOf(p);
+    size_t d = n.find_last_of(L'.');
+    if (d != std::wstring::npos && d > 0) n.resize(d);
+    return n;
+}
+
+static bool EndsWithI(const std::wstring& s, const wchar_t* ext) {
+    size_t n = wcslen(ext);
+    if (s.size() < n) return false;
+    return _wcsicmp(s.c_str() + (s.size() - n), ext) == 0;
+}
+
+static std::wstring ShortcutsPath() {
+    wchar_t ad[MAX_PATH];
+    GetEnvironmentVariableW(L"APPDATA", ad, MAX_PATH);
+    std::wstring dir = std::wstring(ad) + L"\\cursor-usage-widget";
+    CreateDirectoryW(dir.c_str(), nullptr);
+    return dir + L"\\shortcuts.txt";
+}
+
+static void FreeShortcutIcons() {
+    for (auto& s : g_shortcuts) {
+        if (s.bmp) { delete s.bmp; s.bmp = nullptr; }
+        if (s.icon) { DestroyIcon(s.icon); s.icon = nullptr; }
+    }
+}
+
+static HICON IconFromSysList(const std::wstring& path, int shil) {
+    SHFILEINFOW fi{};
+    if (!SHGetFileInfoW(path.c_str(), 0, &fi, sizeof(fi), SHGFI_SYSICONINDEX))
+        return nullptr;
+    IImageList* il = nullptr;
+    if (FAILED(SHGetImageList(shil, IID_IImageList, (void**)&il)) || !il)
+        return nullptr;
+    HICON ico = nullptr;
+    il->GetIcon(fi.iIcon, ILD_TRANSPARENT, &ico);
+    il->Release();
+    return ico;
+}
+
+static HICON LoadPathIcon(const std::wstring& path) {
+    if (path.empty()) return nullptr;
+    HICON ico = nullptr;
+    if (EndsWithI(path, L".exe")) {
+        UINT n = PrivateExtractIconsW(path.c_str(), 0, 256, 256, &ico, nullptr, 1, LR_DEFAULTCOLOR);
+        if (!(n && ico)) {
+            ico = nullptr;
+            n = PrivateExtractIconsW(path.c_str(), 0, 48, 48, &ico, nullptr, 1, LR_DEFAULTCOLOR);
+            if (!(n && ico)) ico = nullptr;
+        }
+    }
+    if (!ico) ico = IconFromSysList(path, SHIL_JUMBO);
+    if (!ico) ico = IconFromSysList(path, SHIL_EXTRALARGE);
+    if (!ico) {
+        SHFILEINFOW fi{};
+        if (SHGetFileInfoW(path.c_str(), 0, &fi, sizeof(fi), SHGFI_ICON | SHGFI_LARGEICON))
+            ico = fi.hIcon;
+    }
+    return ico;
+}
+
+static void AttachIcon(ShortcutItem& it) {
+    if (it.bmp) { delete it.bmp; it.bmp = nullptr; }
+    if (it.icon) { DestroyIcon(it.icon); it.icon = nullptr; }
+    if (!it.target.empty()) it.icon = LoadPathIcon(it.target);
+    if (!it.icon) it.icon = LoadPathIcon(it.path);
+}
+
+static Bitmap* IconBmp(ShortcutItem& s) {
+    if (!s.bmp && s.icon) s.bmp = Bitmap::FromHICON(s.icon);
+    return s.bmp;
+}
+
+static bool ResolveLnk(const std::wstring& lnk, std::wstring& target) {
+    target.clear();
+    IShellLinkW* sl = nullptr;
+    HRESULT hr = CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_IShellLinkW, (void**)&sl);
+    if (FAILED(hr) || !sl) return false;
+    IPersistFile* pf = nullptr;
+    bool ok = false;
+    if (SUCCEEDED(sl->QueryInterface(IID_IPersistFile, (void**)&pf)) && pf) {
+        if (SUCCEEDED(pf->Load(lnk.c_str(), STGM_READ))) {
+            sl->Resolve(nullptr, SLR_NO_UI | SLR_NOUPDATE | SLR_NOSEARCH);
+            wchar_t buf[MAX_PATH] = {};
+            WIN32_FIND_DATAW fd{};
+            if (SUCCEEDED(sl->GetPath(buf, MAX_PATH, &fd, SLGP_RAWPATH)) && buf[0]) {
+                target = buf;
+                ok = true;
+            }
+        }
+        pf->Release();
+    }
+    sl->Release();
+    return ok;
+}
+
+static void FillShortcutMeta(ShortcutItem& it) {
+    it.name = FileTitleOf(it.path);
+    if (EndsWithI(it.path, L".lnk"))
+        ResolveLnk(it.path, it.target);
+    else
+        it.target = it.path;
+}
+
+static bool SkipInstalled(const std::wstring& name, const std::wstring& target) {
+    std::wstring n = LowerCopy(name);
+    std::wstring t = LowerCopy(target);
+    const wchar_t* bad[] = {
+        L"uninstall", L"卸载", L"help", L"帮助", L"readme", L"release notes",
+        L"documentation", L"website", L"手册", L"eula", L"license"
+    };
+    for (auto b : bad)
+        if (n.find(b) != std::wstring::npos) return true;
+    if (t.find(L"uninstall") != std::wstring::npos) return true;
+    if (t.find(L"unins000") != std::wstring::npos) return true;
+    return false;
+}
+
+static void AddInstalled(std::vector<InstalledApp>& out, std::set<std::wstring>& seen,
+                         const std::wstring& name, const std::wstring& launch, const std::wstring& target) {
+    if (name.empty() || launch.empty()) return;
+    if (SkipInstalled(name, target)) return;
+    std::wstring key = LowerCopy(target.empty() ? launch : target);
+    if (key.empty() || seen.count(key)) return;
+    seen.insert(key);
+    InstalledApp a;
+    a.name = name;
+    a.launchPath = launch;
+    a.target = target;
+    out.push_back(a);
+}
+
+static void ScanDirLnks(const std::wstring& dir, std::vector<InstalledApp>& out, std::set<std::wstring>& seen) {
+    WIN32_FIND_DATAW fd{};
+    HANDLE h = FindFirstFileW((dir + L"\\*").c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (fd.cFileName[0] == L'.' && (fd.cFileName[1] == 0 || (fd.cFileName[1] == L'.' && fd.cFileName[2] == 0)))
+            continue;
+        std::wstring full = dir + L"\\" + fd.cFileName;
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
+            ScanDirLnks(full, out, seen);
+            continue;
+        }
+        if (!EndsWithI(full, L".lnk")) continue;
+        std::wstring target;
+        ResolveLnk(full, target);
+        AddInstalled(out, seen, FileTitleOf(full), full, target);
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+static std::wstring StripIconPath(std::wstring s) {
+    if (s.size() >= 2 && s.front() == L'"') {
+        size_t e = s.find(L'"', 1);
+        if (e != std::wstring::npos) s = s.substr(1, e - 1);
+    }
+    size_t c = s.find_last_of(L',');
+    if (c != std::wstring::npos && c > 2) {
+        bool idx = true;
+        for (size_t i = c + 1; i < s.size(); ++i) {
+            wchar_t ch = s[i];
+            if (ch == L'-' && i == c + 1) continue;
+            if (ch < L'0' || ch > L'9') { idx = false; break; }
+        }
+        if (idx) s.resize(c);
+    }
+    return s;
+}
+
+static void ScanUninstallKey(HKEY root, const wchar_t* sub, std::vector<InstalledApp>& out, std::set<std::wstring>& seen) {
+    HKEY k = nullptr;
+    if (RegOpenKeyExW(root, sub, 0, KEY_READ, &k) != ERROR_SUCCESS) return;
+    for (DWORD i = 0;; ++i) {
+        wchar_t keyName[256];
+        DWORD nlen = 256;
+        if (RegEnumKeyExW(k, i, keyName, &nlen, nullptr, nullptr, nullptr, nullptr) != ERROR_SUCCESS) break;
+        HKEY a = nullptr;
+        if (RegOpenKeyExW(k, keyName, 0, KEY_READ, &a) != ERROR_SUCCESS) continue;
+        wchar_t display[512] = {};
+        DWORD sz = sizeof(display);
+        DWORD type = 0;
+        if (RegQueryValueExW(a, L"DisplayName", nullptr, &type, (LPBYTE)display, &sz) != ERROR_SUCCESS || !display[0]) {
+            RegCloseKey(a);
+            continue;
+        }
+        DWORD sys = 0;
+        sz = sizeof(sys);
+        if (RegQueryValueExW(a, L"SystemComponent", nullptr, &type, (LPBYTE)&sys, &sz) == ERROR_SUCCESS && sys == 1) {
+            RegCloseKey(a);
+            continue;
+        }
+        wchar_t icon[MAX_PATH] = {};
+        sz = sizeof(icon);
+        if (RegQueryValueExW(a, L"DisplayIcon", nullptr, &type, (LPBYTE)icon, &sz) != ERROR_SUCCESS || !icon[0]) {
+            RegCloseKey(a);
+            continue;
+        }
+        std::wstring exe = StripIconPath(icon);
+        if (!EndsWithI(exe, L".exe")) {
+            RegCloseKey(a);
+            continue;
+        }
+        if (GetFileAttributesW(exe.c_str()) == INVALID_FILE_ATTRIBUTES) {
+            RegCloseKey(a);
+            continue;
+        }
+        AddInstalled(out, seen, display, exe, exe);
+        RegCloseKey(a);
+    }
+    RegCloseKey(k);
+}
+
+static std::vector<InstalledApp> EnumInstalledApps() {
+    std::vector<InstalledApp> out;
+    std::set<std::wstring> seen;
+    wchar_t folder[MAX_PATH];
+    if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_PROGRAMS, nullptr, SHGFP_TYPE_CURRENT, folder)))
+        ScanDirLnks(folder, out, seen);
+    if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_COMMON_PROGRAMS, nullptr, SHGFP_TYPE_CURRENT, folder)))
+        ScanDirLnks(folder, out, seen);
+    ScanUninstallKey(HKEY_CURRENT_USER, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", out, seen);
+    ScanUninstallKey(HKEY_LOCAL_MACHINE, L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", out, seen);
+    ScanUninstallKey(HKEY_LOCAL_MACHINE, L"Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall", out, seen);
+    std::sort(out.begin(), out.end(), [](const InstalledApp& a, const InstalledApp& b) {
+        return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0;
+    });
+    return out;
+}
+
+static void LoadShortcuts() {
+    FreeShortcutIcons();
+    g_shortcuts.clear();
+    std::ifstream in(ShortcutsPath());
+    if (!in) return;
+    std::string line;
+    while (std::getline(in, line)) {
+        if (!line.empty() && line.back() == '\r') line.pop_back();
+        if (line.empty()) continue;
+        ShortcutItem it;
+        it.path = Utf8ToWide(line);
+        if (it.path.empty()) continue;
+        if (GetFileAttributesW(it.path.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+        FillShortcutMeta(it);
+        AttachIcon(it);
+        g_shortcuts.push_back(it);
+        if ((int)g_shortcuts.size() >= kMaxShortcuts) break;
+    }
+}
+
+static void SaveShortcuts() {
+    std::ofstream out(ShortcutsPath());
+    if (!out) return;
+    for (auto& s : g_shortcuts) out << WideToUtf8(s.path) << "\n";
+}
+
+static bool SameExe(const std::wstring& a, const std::wstring& b) {
+    if (a.empty() || b.empty()) return false;
+    if (_wcsicmp(a.c_str(), b.c_str()) == 0) return true;
+    return _wcsicmp(FileNameOf(a).c_str(), FileNameOf(b).c_str()) == 0;
+}
+
+struct FindAppWnd {
+    std::wstring target;
+    HWND best = nullptr;
+};
+
+static BOOL CALLBACK EnumAppWndProc(HWND hwnd, LPARAM lp) {
+    auto* st = (FindAppWnd*)lp;
+    if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER)) return TRUE;
+    LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    if (ex & WS_EX_TOOLWINDOW) return TRUE;
+    RECT rc{};
+    GetWindowRect(hwnd, &rc);
+    if (rc.right - rc.left < 40 || rc.bottom - rc.top < 40) return TRUE;
+    DWORD pid = 0;
+    GetWindowThreadProcessId(hwnd, &pid);
+    if (!pid) return TRUE;
+    HANDLE ph = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+    if (!ph) return TRUE;
+    wchar_t buf[MAX_PATH] = {};
+    DWORD n = MAX_PATH;
+    BOOL ok = QueryFullProcessImageNameW(ph, 0, buf, &n);
+    CloseHandle(ph);
+    if (!ok || !buf[0]) return TRUE;
+    if (!SameExe(buf, st->target)) return TRUE;
+    st->best = hwnd;
+    return FALSE;
+}
+
+static void ForceForeground(HWND w) {
+    if (!w || !IsWindow(w)) return;
+    HWND fg = GetForegroundWindow();
+    DWORD cur = GetCurrentThreadId();
+    DWORD fgTid = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
+    DWORD tgTid = GetWindowThreadProcessId(w, nullptr);
+    if (IsIconic(w)) ShowWindow(w, SW_RESTORE);
+    ShowWindow(w, SW_SHOW);
+    if (fgTid && fgTid != cur) AttachThreadInput(cur, fgTid, TRUE);
+    if (tgTid && tgTid != cur) AttachThreadInput(cur, tgTid, TRUE);
+    BringWindowToTop(w);
+    SetForegroundWindow(w);
+    SetActiveWindow(w);
+    if (fgTid && fgTid != cur) AttachThreadInput(cur, fgTid, FALSE);
+    if (tgTid && tgTid != cur) AttachThreadInput(cur, tgTid, FALSE);
+}
+
+static HWND FindRunningWindow(const std::wstring& target) {
+    if (target.empty() || !EndsWithI(target, L".exe")) return nullptr;
+    FindAppWnd st;
+    st.target = target;
+    EnumWindows(EnumAppWndProc, (LPARAM)&st);
+    return st.best;
+}
+
+static int QuickContentH() {
+    int n = (int)g_shortcuts.size();
+    if (n <= 0) return S(40);
+    int cols = 4;
+    int rows = (n + cols - 1) / cols;
+    return QuickPad() * 2 + rows * QuickTilePx() + (rows - 1) * QuickRowGap();
+}
+
+static int QuickBlockHSide() { return S(12) + QuickContentH(); }
+
+struct ManageDlg {
+    HWND hwnd = nullptr;
+    HWND list = nullptr;
+    HWND search = nullptr;
+    std::vector<InstalledApp> apps;
+    std::set<std::wstring> selected;
+    std::vector<int> visible;
+    bool rebuilding = false;
+} g_manage;
+
+static std::wstring ManageFilterText() {
+    if (!g_manage.search) return L"";
+    int n = GetWindowTextLengthW(g_manage.search);
+    std::wstring s(n, 0);
+    if (n) GetWindowTextW(g_manage.search, &s[0], n + 1);
+    return LowerCopy(s);
+}
+
+static void ManageRebuildList() {
+    if (!g_manage.list) return;
+    g_manage.rebuilding = true;
+    ListView_DeleteAllItems(g_manage.list);
+    g_manage.visible.clear();
+    std::wstring f = ManageFilterText();
+    for (int i = 0; i < (int)g_manage.apps.size(); ++i) {
+        if (!f.empty() && LowerCopy(g_manage.apps[i].name).find(f) == std::wstring::npos)
+            continue;
+        LVITEMW it{};
+        it.mask = LVIF_TEXT;
+        it.iItem = (int)g_manage.visible.size();
+        it.pszText = (LPWSTR)g_manage.apps[i].name.c_str();
+        int row = ListView_InsertItem(g_manage.list, &it);
+        g_manage.visible.push_back(i);
+        bool on = g_manage.selected.count(LowerCopy(g_manage.apps[i].launchPath)) != 0;
+        ListView_SetCheckState(g_manage.list, row, on);
+    }
+    g_manage.rebuilding = false;
+}
+
+static void ApplyShortcutPaths(const std::vector<std::wstring>& paths) {
+    FreeShortcutIcons();
+    g_shortcuts.clear();
+    for (auto& pth : paths) {
+        if ((int)g_shortcuts.size() >= kMaxShortcuts) break;
+        ShortcutItem it;
+        it.path = pth;
+        FillShortcutMeta(it);
+        AttachIcon(it);
+        g_shortcuts.push_back(it);
+    }
+    SaveShortcuts();
+    if (g.hwnd) {
+        Place(g.hwnd);
+        InvalidateRect(g.hwnd, nullptr, FALSE);
+    }
+}
+
+static void ManageApplyAndClose() {
+    std::vector<std::wstring> next;
+    std::set<std::wstring> remain = g_manage.selected;
+    for (auto& s : g_shortcuts) {
+        auto key = LowerCopy(s.path);
+        if (remain.count(key)) {
+            next.push_back(s.path);
+            remain.erase(key);
+        }
+    }
+    for (auto& a : g_manage.apps) {
+        auto key = LowerCopy(a.launchPath);
+        if (remain.count(key)) {
+            next.push_back(a.launchPath);
+            remain.erase(key);
+        }
+    }
+    ApplyShortcutPaths(next);
+    if (g_manage.hwnd) DestroyWindow(g_manage.hwnd);
+}
+
+static void ManageAddBrowse() {
+    wchar_t file[32768] = {};
+    OPENFILENAMEW ofn{};
+    ofn.lStructSize = sizeof(ofn);
+    ofn.hwndOwner = g_manage.hwnd;
+    ofn.lpstrFile = file;
+    ofn.nMaxFile = 32768;
+    ofn.lpstrFilter = L"Programs\0*.exe;*.lnk\0All\0*.*\0";
+    ofn.nFilterIndex = 1;
+    ofn.Flags = OFN_FILEMUSTEXIST | OFN_PATHMUSTEXIST | OFN_EXPLORER | OFN_ALLOWMULTISELECT;
+    if (!GetOpenFileNameW(&ofn)) return;
+    std::vector<std::wstring> files;
+    wchar_t* p = file;
+    std::wstring dir = p;
+    p += dir.size() + 1;
+    if (!*p) files.push_back(dir);
+    else {
+        while (*p) {
+            files.push_back(dir + L"\\" + p);
+            p += wcslen(p) + 1;
+        }
+    }
+    for (auto& fp : files) {
+        if ((int)g_manage.selected.size() >= kMaxShortcuts) {
+            MessageBoxW(g_manage.hwnd, L"最多 24 个启动程序", L"选择启动程序", MB_OK | MB_ICONINFORMATION);
+            break;
+        }
+        InstalledApp a;
+        a.launchPath = fp;
+        a.name = FileTitleOf(fp);
+        if (EndsWithI(fp, L".lnk")) ResolveLnk(fp, a.target);
+        else a.target = fp;
+        bool found = false;
+        for (auto& x : g_manage.apps) {
+            if (_wcsicmp(x.launchPath.c_str(), fp.c_str()) == 0) { found = true; break; }
+        }
+        if (!found) g_manage.apps.push_back(a);
+        g_manage.selected.insert(LowerCopy(fp));
+    }
+    ManageRebuildList();
+}
+
+static LRESULT CALLBACK ManageProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    switch (m) {
+    case WM_CREATE: {
+        g_manage.hwnd = h;
+        CreateWindowW(L"STATIC", L"搜索已安装程序，可一次勾选多项：",
+            WS_CHILD | WS_VISIBLE, 12, 10, 380, 20, h, nullptr, nullptr, nullptr);
+        g_manage.search = CreateWindowExW(WS_EX_CLIENTEDGE, L"EDIT", L"",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL,
+            12, 32, 500, 24, h, (HMENU)200, nullptr, nullptr);
+        HWND lv = CreateWindowExW(WS_EX_CLIENTEDGE, WC_LISTVIEWW, L"",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOCOLUMNHEADER,
+            12, 64, 500, 360, h, (HMENU)201, nullptr, nullptr);
+        g_manage.list = lv;
+        ListView_SetExtendedListViewStyle(lv, LVS_EX_CHECKBOXES | LVS_EX_FULLROWSELECT | LVS_EX_DOUBLEBUFFER);
+        LVCOLUMNW col{};
+        col.mask = LVCF_WIDTH | LVCF_TEXT;
+        col.cx = 476;
+        col.pszText = (LPWSTR)L"程序";
+        ListView_InsertColumn(lv, 0, &col);
+        CreateWindowW(L"BUTTON", L"浏览...", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 12, 436, 90, 28, h, (HMENU)204, nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"确定", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON, 332, 436, 90, 28, h, (HMENU)202, nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"取消", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 430, 436, 90, 28, h, (HMENU)203, nullptr, nullptr);
+        HFONT font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
+        EnumChildWindows(h, [](HWND c, LPARAM f) -> BOOL {
+            SendMessageW(c, WM_SETFONT, (WPARAM)f, TRUE);
+            return TRUE;
+        }, (LPARAM)font);
+        g_manage.apps = EnumInstalledApps();
+        g_manage.selected.clear();
+        for (auto& s : g_shortcuts) {
+            g_manage.selected.insert(LowerCopy(s.path));
+            bool found = false;
+            for (auto& a : g_manage.apps)
+                if (_wcsicmp(a.launchPath.c_str(), s.path.c_str()) == 0) { found = true; break; }
+            if (!found) {
+                InstalledApp a;
+                a.launchPath = s.path;
+                a.name = s.name.empty() ? FileTitleOf(s.path) : s.name;
+                a.target = s.target;
+                g_manage.apps.insert(g_manage.apps.begin(), a);
+            }
+        }
+        ManageRebuildList();
+        SetFocus(g_manage.search);
+        return 0;
+    }
+    case WM_COMMAND: {
+        int id = LOWORD(w);
+        int code = HIWORD(w);
+        if (id == 200 && code == EN_CHANGE) ManageRebuildList();
+        if (id == 202) ManageApplyAndClose();
+        if (id == 203) DestroyWindow(h);
+        if (id == 204) ManageAddBrowse();
+        return 0;
+    }
+    case WM_NOTIFY: {
+        auto* hdr = (NMHDR*)l;
+        if (hdr->idFrom == 201 && hdr->code == LVN_ITEMCHANGED && !g_manage.rebuilding) {
+            auto* pnm = (NMLISTVIEW*)l;
+            if ((pnm->uChanged & LVIF_STATE) && pnm->iItem >= 0 && pnm->iItem < (int)g_manage.visible.size()) {
+                UINT nimg = (pnm->uNewState & LVIS_STATEIMAGEMASK);
+                UINT oimg = (pnm->uOldState & LVIS_STATEIMAGEMASK);
+                if (nimg != oimg && nimg) {
+                    bool on = ListView_GetCheckState(g_manage.list, pnm->iItem) ? true : false;
+                    auto key = LowerCopy(g_manage.apps[g_manage.visible[pnm->iItem]].launchPath);
+                    if (on) {
+                        if ((int)g_manage.selected.size() >= kMaxShortcuts && !g_manage.selected.count(key)) {
+                            g_manage.rebuilding = true;
+                            ListView_SetCheckState(g_manage.list, pnm->iItem, FALSE);
+                            g_manage.rebuilding = false;
+                            MessageBoxW(h, L"最多 24 个启动程序", L"选择启动程序", MB_OK | MB_ICONINFORMATION);
+                        } else g_manage.selected.insert(key);
+                    } else g_manage.selected.erase(key);
+                }
+            }
+        }
+        return 0;
+    }
+    case WM_CLOSE:
+        DestroyWindow(h);
+        return 0;
+    case WM_DESTROY:
+        g_manage.hwnd = nullptr;
+        g_manage.list = nullptr;
+        g_manage.search = nullptr;
+        g_manage.apps.clear();
+        g_manage.selected.clear();
+        g_manage.visible.clear();
+        return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+static void OpenManageShortcuts() {
+    if (g_manage.hwnd) { SetForegroundWindow(g_manage.hwnd); return; }
+    static bool reg = false;
+    if (!reg) {
+        WNDCLASSEXW wc{ sizeof(wc) };
+        wc.lpfnWndProc = ManageProc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wc.hbrBackground = (HBRUSH)(COLOR_WINDOW + 1);
+        wc.lpszClassName = L"CursorUsageQuickManage";
+        RegisterClassExW(&wc);
+        reg = true;
+    }
+    HWND hw = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        L"CursorUsageQuickManage", L"选择启动程序",
+        WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU,
+        CW_USEDEFAULT, CW_USEDEFAULT, 540, 510,
+        g.hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+    ShowWindow(hw, SW_SHOW);
+    UpdateWindow(hw);
+}
+
+static void DrawQuickLaunch(Graphics& gph, Font& ui, float x, float y, float qw, float qh) {
+    g_quickRect.left = (LONG)x;
+    g_quickRect.top = (LONG)y;
+    g_quickRect.right = (LONG)(x + qw);
+    g_quickRect.bottom = (LONG)(y + qh);
+    g_quickHit = true;
+    if (g_shortcuts.empty()) {
+        SolidBrush br(Color(255, 0x78, 0x7D, 0x85));
+        const wchar_t* t = L"\u6dfb\u52a0\u5e38\u7528\u8f6f\u4ef6";
+        RectF layout(x, y, qw, qh);
+        StringFormat fmt;
+        fmt.SetAlignment(StringAlignmentCenter);
+        fmt.SetLineAlignment(StringAlignmentCenter);
+        gph.DrawString(t, -1, &ui, layout, &fmt, &br);
+        return;
+    }
+    int icon = QuickIconPx();
+    int tile = QuickTilePx();
+    int gap = QuickGap();
+    int pad = QuickPad();
+    int rowGap = QuickRowGap();
+    int cols = (int)((qw - pad * 2 + gap) / (tile + gap));
+    if (cols < 1) cols = 1;
+    if (cols > 8) cols = 8;
+    DWORD now = GetTickCount();
+    auto oldInterp = gph.GetInterpolationMode();
+    gph.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+    float rad = (float)S(10);
+    if (rad < 8.f) rad = 8.f;
+    for (int i = 0; i < (int)g_shortcuts.size(); ++i) {
+        int col = i % cols;
+        int row = i / cols;
+        float ix = x + pad + col * (tile + gap);
+        float iy = y + pad + row * (tile + rowGap);
+        float scale = 1.f;
+        float t = -1.f;
+        if (i == g_launchAnim && g_launchAnimAt) {
+            t = (float)(now - g_launchAnimAt) / (float)kLaunchAnimMs;
+            if (t < 0.f) t = 0.f;
+            if (t > 1.f) t = 1.f;
+            if (t < 0.18f) {
+                float u = t / 0.18f;
+                scale = 1.f - 0.08f * u;
+            } else if (t < 0.45f) {
+                float u = (t - 0.18f) / 0.27f;
+                scale = 0.92f + 0.14f * u;
+            } else {
+                float u = (t - 0.45f) / 0.55f;
+                scale = 1.06f - 0.06f * u;
+            }
+        }
+        float tw = (float)tile * scale;
+        float th = tw;
+        float tx = ix + ((float)tile - tw) * 0.5f;
+        float ty = iy + ((float)tile - th) * 0.5f;
+        BYTE fillA = g.dark ? (BYTE)48 : (BYTE)210;
+        Color fill = g.dark ? Color(fillA, 0x48, 0x48, 0x50) : Color(fillA, 0xF4, 0xF5, 0xF7);
+        Color stroke = g.dark ? Color(255, 0x58, 0x58, 0x62) : Color(255, 0xD2, 0xD6, 0xDC);
+        if (t >= 0.f) {
+            BYTE glowA = (BYTE)((1.f - t) * 90);
+            Color glow = g.dark ? Color(glowA, 0x6A, 0xC8, 0xFF) : Color(glowA, 0x3A, 0x8A, 0xE8);
+            SolidBrush gb(glow);
+            FillRoundRect(gph, tx - 3.f, ty - 3.f, tw + 6.f, th + 6.f, rad + 3.f, gb);
+            stroke = g.dark ? Color(255, 0x7A, 0xC8, 0xF0) : Color(255, 0x4A, 0x8E, 0xD8);
+        }
+        SolidBrush tileBr(fill);
+        FillRoundRect(gph, tx, ty, tw, th, rad, tileBr);
+        Pen tilePen(stroke, 1.15f);
+        tilePen.SetAlignment(PenAlignmentInset);
+        StrokeRoundRect(gph, tx, ty, tw, th, rad, tilePen);
+        float sz = (float)icon * scale;
+        float ox = tx + ((tw - sz) * 0.5f);
+        float oy = ty + ((th - sz) * 0.5f);
+        Bitmap* bmp = IconBmp(g_shortcuts[i]);
+        if (bmp) {
+            gph.DrawImage(bmp, ox, oy, sz, sz);
+        } else if (g_shortcuts[i].icon) {
+            HDC hdc = gph.GetHDC();
+            DrawIconEx(hdc, (int)(ox + 0.5f), (int)(oy + 0.5f), g_shortcuts[i].icon,
+                       (int)(sz + 0.5f), (int)(sz + 0.5f), 0, nullptr, DI_NORMAL);
+            gph.ReleaseHDC(hdc);
+        } else {
+            SolidBrush br(Color(255, 0xD8, 0xDC, 0xE1));
+            gph.FillRectangle(&br, ox, oy, sz, sz);
+        }
+    }
+    gph.SetInterpolationMode(oldInterp);
+}
+
+static int HitQuickIndex(int mx, int my) {
+    if (!g_quickHit) return -2;
+    if (mx < g_quickRect.left || my < g_quickRect.top || mx >= g_quickRect.right || my >= g_quickRect.bottom)
+        return -2;
+    if (g_shortcuts.empty()) return -1;
+    float x = (float)g_quickRect.left;
+    float y = (float)g_quickRect.top;
+    float qw = (float)(g_quickRect.right - g_quickRect.left);
+    int tile = QuickTilePx();
+    int gap = QuickGap();
+    int pad = QuickPad();
+    int rowGap = QuickRowGap();
+    int cols = (int)((qw - pad * 2 + gap) / (tile + gap));
+    if (cols < 1) cols = 1;
+    if (cols > 8) cols = 8;
+    int hitX = gap / 2;
+    int hitY = rowGap / 2;
+    for (int i = 0; i < (int)g_shortcuts.size(); ++i) {
+        int col = i % cols;
+        int row = i / cols;
+        int ix = (int)(x + pad + col * (tile + gap));
+        int iy = (int)(y + pad + row * (tile + rowGap));
+        if (mx >= ix - hitX && my >= iy - hitY && mx < ix + tile + hitX && my < iy + tile + hitY)
+            return i;
+    }
+    return -2;
+}
+
+static void BeginLaunchAnim(int idx) {
+    g_launchAnim = idx;
+    g_launchAnimAt = GetTickCount();
+    g.holdUntil = g_launchAnimAt + kLaunchAnimMs + 200;
+    if (g.hwnd) {
+        SetTimer(g.hwnd, 3, 16, nullptr);
+        InvalidateRect(g.hwnd, nullptr, FALSE);
+    }
+}
+
+static void LaunchShortcut(int idx) {
+    if (idx < 0 || idx >= (int)g_shortcuts.size()) return;
+    BeginLaunchAnim(idx);
+    HWND running = FindRunningWindow(g_shortcuts[idx].target);
+    if (running) {
+        ForceForeground(running);
+        return;
+    }
+    ShellExecuteW(nullptr, L"open", g_shortcuts[idx].path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+}
+
+static void DrawQuickEmpty(Graphics& gph, Font& ui, float x, float y, float qw, float qh) {
+    DrawQuickLaunch(gph, ui, x, y, qw, qh);
 }
 
 static HBITMAP MakeDib(int w, int hh, void** bits) {
@@ -1063,16 +2037,18 @@ static void Paint(HWND h, HDC hdc) {
     gph.SetCompositingQuality(CompositingQualityHighQuality);
     gph.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
     gph.SetCompositingMode(Gdiplus::CompositingModeSourceCopy);
-    Color fill(255, 248, 248, 250);
-    gph.Clear(Color(255, 255, 0, 255));
+    gph.Clear(Color(0, 0, 0, 0));
     GraphicsPath body;
     float rad = (float)S(12);
     AddBodyPath(body, (float)w, (float)hh, rad, 2.0f);
-    LinearGradientBrush wash(PointF(0.f, 0.f), PointF(0.f, (float)hh),
-                             Color(255, 255, 255, 255), Color(255, 238, 239, 242));
+    BYTE ba = (BYTE)(255 * g.bgAlpha / 100);
+    if (ba < 1) ba = 1;
+    Color washTop = g.dark ? Color(ba, 0x2A, 0x2A, 0x2E) : Color(ba, 255, 255, 255);
+    Color washBot = g.dark ? Color(ba, 0x1E, 0x1E, 0x22) : Color(ba, 238, 239, 242);
+    LinearGradientBrush wash(PointF(0.f, 0.f), PointF(0.f, (float)hh), washTop, washBot);
     gph.FillPath(&wash, &body);
     gph.SetCompositingMode(Gdiplus::CompositingModeSourceOver);
-    Pen rim(Color(255, 0xD8, 0xDC, 0xE1), 1.0f);
+    Pen rim(g.dark ? Color(255, 0x3A, 0x3A, 0x40) : Color(255, 0xD8, 0xDC, 0xE1), 1.0f);
     rim.SetAlignment(PenAlignmentInset);
     rim.SetLineJoin(Gdiplus::LineJoinRound);
     gph.DrawPath(&rim, &body);
@@ -1085,23 +2061,49 @@ static void Paint(HWND h, HDC hdc) {
     Font ui(uiFam, 8.5f, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint);
     Font sm(uiFam, 7.5f, Gdiplus::FontStyleRegular, Gdiplus::UnitPoint);
     Font num(numFam, 8.0f, Gdiplus::FontStyleBold, Gdiplus::UnitPoint);
-    SolidBrush white(Color(255, 32, 32, 34));
-    SolidBrush muted(Color(200, 90, 96, 105));
+    SolidBrush white(g.dark ? Color(255, 0xE8, 0xE8, 0xEA) : Color(255, 32, 32, 34));
+    SolidBrush muted(g.dark ? Color(200, 0xA0, 0xA4, 0xAE) : Color(200, 90, 96, 105));
 
     if (!g.expanded) {
-        float r = (float)S(14);
-        float cx = w * 0.5f;
-        float y0 = (float)S(30);
-        float step = (float)S(64);
-        DrawRingItem(gph, num, cx, y0, r, g.snap.autoP, 0);
-        DrawRingItem(gph, num, cx, y0 + step, r, g.snap.api, 1);
-        DrawRingItem(gph, num, cx, y0 + step * 2, r, g.snap.total, 2);
-        if (g.showBot)
-            DrawRingItem(gph, num, cx, y0 + step * 3, r, g.snap.botP, 3, g.snap.botKnown);
+        float r = RingR();
+        if (g.dockEdge == 2) {
+            // Horizontal bar: rings L->R, pad 12/8, gap 10, % under each.
+            int n = CollapsedRingCount();
+            float gap = (float)S(10);
+            float padL = (float)S(12);
+            float cy = (float)S(8) + r;
+            float x0 = padL + r;
+            float step = 2.f * r + gap;
+            DrawRingItem(gph, num, x0, cy, r, g.snap.autoP, 0);
+            DrawRingItem(gph, num, x0 + step, cy, r, g.snap.api, 1);
+            DrawRingItem(gph, num, x0 + step * 2.f, cy, r, g.snap.total, 2);
+            if (g.showBot)
+                DrawRingItem(gph, num, x0 + step * 3.f, cy, r, g.snap.botP, 3, g.snap.botKnown);
+            (void)n;
+        } else {
+            float cx = w * 0.5f;
+            float y0 = (float)S(30) * kRingScale;
+            float step = (float)S(64) * kRingScale;
+            DrawRingItem(gph, num, cx, y0, r, g.snap.autoP, 0);
+            DrawRingItem(gph, num, cx, y0 + step, r, g.snap.api, 1);
+            DrawRingItem(gph, num, cx, y0 + step * 2, r, g.snap.total, 2);
+            if (g.showBot)
+                DrawRingItem(gph, num, cx, y0 + step * 3, r, g.snap.botP, 3, g.snap.botKnown);
+        }
     } else {
 
 
         int pad = S(20);
+        int usageW = w;
+        float quickX = 0.f, quickY = 0.f, quickW = 0.f, quickH = 0.f;
+        if (g.dockEdge == 2) {
+            usageW = S(BASE_PANEL_W);
+            quickW = (float)QuickColW();
+            quickX = (float)usageW + (float)S(16);
+            quickY = (float)S(46);
+            quickH = (float)(hh - S(46) - S(12));
+            if (quickH < (float)S(40)) quickH = (float)S(40);
+        }
         DrawTitleMark(gph, (float)pad, (float)S(14));
         gph.DrawString(L"Cursor 用量", -1, &title, PointF((float)pad + 20.f, (float)S(14)), &white);
         int y = S(46);
@@ -1110,19 +2112,24 @@ static void Paint(HWND h, HDC hdc) {
             gph.DrawString(L"\u672a\u8bfb\u5230\u7528\u91cf", -1, &ui, PointF((float)pad, (float)S(46)), &muted);
         } else {
             if (!g.snap.membership.empty())
-                DrawRight(gph, Utf8ToWide(g.snap.membership), ui, muted, (float)(w - pad), (float)S(16));
+                DrawRight(gph, Utf8ToWide(g.snap.membership), ui, muted, (float)(usageW - pad), (float)S(16));
             y = S(46);
-            y = Meter(gph, ui, sm, pad, y, w, L"Auto", g.snap.autoP, L"");
-            y = Meter(gph, ui, sm, pad, y, w, L"Models", g.snap.api, L"");
-            y = Meter(gph, ui, sm, pad, y, w, L"API", g.snap.total, L"");
+            y = Meter(gph, ui, sm, pad, y, usageW, L"Auto", g.snap.autoP, L"");
+            y = Meter(gph, ui, sm, pad, y, usageW, L"Models", g.snap.api, L"");
+            y = Meter(gph, ui, sm, pad, y, usageW, L"API", g.snap.total, L"");
             if (g.showBot)
-                y = Meter(gph, ui, sm, pad, y, w, L"Bot", g.snap.botP, L"", g.snap.botKnown);
+                y = Meter(gph, ui, sm, pad, y, usageW, L"Bot", g.snap.botP, L"", g.snap.botKnown);
         }
 
+        g_quickHit = false;
+        if (g.dockEdge == 2 && quickW > 1.f)
+            DrawQuickLaunch(gph, ui, quickX, quickY, quickW, quickH);
+
+        if (g.snap.ok) {
         int viewY = y + S(8);
         int ty = viewY;
         gph.DrawString(L"今日 Token", -1, &ui, PointF((float)pad, (float)ty), &white);
-        DrawRight(gph, FormatTok(g.snap.today()), num, white, (float)(w - pad), (float)ty);
+        DrawRight(gph, FormatTok(g.snap.today()), num, white, (float)(usageW - pad), (float)ty);
         ty += S(24);
         std::wstring detail = L"入 " + FormatTok(g.snap.tin) + L"  ·  出 " + FormatTok(g.snap.tout);
         if (g.snap.tcache) detail += L"  ·  缓存 " + FormatTok(g.snap.tcache);
@@ -1132,7 +2139,7 @@ static void Paint(HWND h, HDC hdc) {
             std::wstring name = Utf8ToWide(row.name);
             if (name.size() > 20) name = name.substr(0, 19) + L"…";
             gph.DrawString(name.c_str(), -1, &sm, PointF((float)pad, (float)ty), &muted);
-            DrawRight(gph, FormatTok(row.tokens), sm, muted, (float)(w - pad), (float)ty);
+            DrawRight(gph, FormatTok(row.tokens), sm, muted, (float)(usageW - pad), (float)ty);
             ty += S(16);
         }
         ty += S(4);
@@ -1143,11 +2150,52 @@ static void Paint(HWND h, HDC hdc) {
             wcsncpy(foot, err.c_str(), 63); foot[63] = 0;
         }
         gph.DrawString(foot, -1, &sm, PointF((float)pad, (float)ty), &muted);
+        } else {
+            std::wstring err = g.snap.error.empty() ? L"未读到用量" : Utf8ToWide(g.snap.error);
+            gph.DrawString(err.c_str(), -1, &sm, PointF((float)pad, (float)(y + S(28))), &muted);
+        }
+
+        if (g.dockEdge != 2) {
+            float qy = (float)(y + S(12));
+            if (g.snap.ok) {
+                // Place under token list: reuse ExpandedChromeH + TokenListH layout.
+                qy = (float)(ExpandedChromeH() + TokenListH() + S(12));
+            } else {
+                qy = (float)(y + S(28) + S(12));
+            }
+            float qh = (float)QuickContentH();
+            DrawQuickLaunch(gph, ui, (float)pad, qy, (float)(w - pad * 2), qh);
+        }
 
     }
     }
 
-    if (bmp) {
+    if (bmp && bits) {
+        // Premultiply for UpdateLayeredWindow (ULW_ALPHA).
+        auto* px = (BYTE*)bits;
+        int n = w * hh;
+        for (int i = 0; i < n; ++i) {
+            BYTE* p = px + i * 4;
+            BYTE a = p[3];
+            p[0] = (BYTE)((p[0] * a) / 255);
+            p[1] = (BYTE)((p[1] * a) / 255);
+            p[2] = (BYTE)((p[2] * a) / 255);
+        }
+        POINT ptSrc{ 0, 0 };
+        SIZE sz{ w, hh };
+        POINT ptDst{};
+        RECT wr{}; GetWindowRect(h, &wr);
+        ptDst.x = wr.left; ptDst.y = wr.top;
+        BLENDFUNCTION bf{};
+        bf.BlendOp = AC_SRC_OVER;
+        bf.SourceConstantAlpha = 255;
+        bf.AlphaFormat = AC_SRC_ALPHA;
+        HDC screen = GetDC(nullptr);
+        UpdateLayeredWindow(h, screen, &ptDst, &sz, mem, &ptSrc, 0, &bf, ULW_ALPHA);
+        ReleaseDC(nullptr, screen);
+        SelectObject(mem, old);
+        DeleteObject(bmp);
+    } else if (bmp) {
         BitBlt(hdc, 0, 0, w, hh, mem, 0, 0, SRCCOPY);
         SelectObject(mem, old);
         DeleteObject(bmp);
@@ -1174,12 +2222,27 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     switch (m) {
     case WM_CREATE:
         Acrylic(h);
+        RefreshTheme(h);
         Place(h);
         Refresh();
         SetTimer(h, 1, 45000, nullptr);
+        SetTimer(h, 2, 2000, nullptr); // theme poll
         return 0;
     case WM_TIMER:
+        if (w == 3) {
+            if (g_launchAnim < 0 || GetTickCount() - g_launchAnimAt >= kLaunchAnimMs) {
+                g_launchAnim = -1;
+                KillTimer(h, 3);
+            }
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        if (w == 2) { RefreshTheme(h); return 0; }
         Refresh();
+        return 0;
+    case WM_SETTINGCHANGE:
+        if (l && (wcscmp((LPCWSTR)l, L"ImmersiveColorSet") == 0 || wcscmp((LPCWSTR)l, L"WindowsThemeElement") == 0))
+            RefreshTheme(h);
         return 0;
     case WM_USAGE: {
         Snapshot* s = (Snapshot*)l;
@@ -1230,7 +2293,10 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             GetCursorPos(&pt);
             if (abs(pt.y - g.press.y) > 4 || abs(pt.x - g.press.x) > 4) {
                 g.dragging = true;
-                g.y = g.pressY + (pt.y - g.press.y);
+                if (g.dockEdge == 2)
+                    g.y = g.pressY + (pt.x - g.press.x);
+                else
+                    g.y = g.pressY + (pt.y - g.press.y);
                 DragMove(h);
             }
         }
@@ -1253,7 +2319,12 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             DragMove(h);
             ApplyRegion(h);
             SaveConfig();
-        } else if (!g.expanded) {
+        } else if (g.expanded) {
+            POINT cpt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
+            int qi = HitQuickIndex(cpt.x, cpt.y);
+            if (qi == -1) OpenManageShortcuts();
+            else if (qi >= 0) LaunchShortcut(qi);
+        } else {
             g.expanded = true;
             g.scrollY = 0;
             g.holdUntil = GetTickCount() + 800;
@@ -1287,21 +2358,45 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         AppendMenuW(menu, MF_STRING, 10, L"立即刷新");
         AppendMenuW(menu, MF_STRING, 11, L"打开用量页");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
+        HMENU apps = CreatePopupMenu();
+        for (int i = 0; i < (int)g_shortcuts.size(); ++i) {
+            std::wstring label = g_shortcuts[i].name.empty() ? FileTitleOf(g_shortcuts[i].path) : g_shortcuts[i].name;
+            AppendMenuW(apps, MF_STRING, IDM_LAUNCH_BASE + i, label.c_str());
+        }
+        if (!g_shortcuts.empty()) AppendMenuW(apps, MF_SEPARATOR, 0, nullptr);
+        AppendMenuW(apps, MF_STRING, IDM_MANAGE_APPS, L"管理启动程序...");
+        AppendMenuW(menu, MF_POPUP, (UINT_PTR)apps, L"打开程序");
+        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_POPUP, (UINT_PTR)scale, L"显示大小");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_STRING, 12, L"贴到左边");
-        AppendMenuW(menu, MF_STRING, 13, L"贴到右边");
+        AppendMenuW(menu, (UINT)(MF_STRING | (g.dockEdge == 0 ? MF_CHECKED : 0)), 12, L"\u8d34\u5230\u5de6\u8fb9");
+        AppendMenuW(menu, (UINT)(MF_STRING | (g.dockEdge == 1 ? MF_CHECKED : 0)), 13, L"\u8d34\u5230\u53f3\u8fb9");
+        AppendMenuW(menu, (UINT)(MF_STRING | (g.dockEdge == 2 ? MF_CHECKED : 0)), 17, L"\u8d34\u5230\u9876\u90e8");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, (UINT)(MF_STRING | (AutoStartOn() ? MF_CHECKED : 0)), 15, L"开机启动");
         AppendMenuW(menu, (UINT)(MF_STRING | (g.showBot ? MF_CHECKED : 0)), 16, L"显示 Bot 用量");
+        HMENU bgm = CreatePopupMenu();
+        auto chkA = [](int v) { return (UINT)(MF_STRING | (g.bgAlpha == v ? MF_CHECKED : 0)); };
+        AppendMenuW(bgm, chkA(100), 31, L"100%");
+        AppendMenuW(bgm, chkA(85), 32, L"85%");
+        AppendMenuW(bgm, chkA(70), 33, L"70%");
+        AppendMenuW(bgm, chkA(55), 34, L"55%");
+        AppendMenuW(menu, MF_POPUP, (UINT_PTR)bgm, L"\u80cc\u666f\u900f\u660e\u5ea6");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING, 14, L"退出");
         int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, h, nullptr);
         DestroyMenu(menu);
         if (cmd == 10) Refresh();
         if (cmd == 11) ShellExecuteW(nullptr, L"open", L"https://cursor.com/dashboard", nullptr, nullptr, SW_SHOWNORMAL);
-        if (cmd == 12) { g.dockRight = false; Place(h); SaveConfig(); }
-        if (cmd == 13) { g.dockRight = true; Place(h); SaveConfig(); }
+        if (cmd == 12 || cmd == 13 || cmd == 17) {
+            int next = (cmd == 12) ? 0 : (cmd == 13) ? 1 : 2;
+            if (next != g.dockEdge) {
+                g.dockEdge = next;
+                g.y = -1;
+            }
+            Place(h);
+            SaveConfig();
+        }
         if (cmd == 21 || cmd == 22 || cmd == 23 || cmd == 24) {
             int map[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 70, 80, 100, 125 };
             g.scale = map[cmd];
@@ -1310,12 +2405,24 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         if (cmd == 15) SetAutoStart(!AutoStartOn());
         if (cmd == 16) { g.showBot = !g.showBot; Place(h); SaveConfig(); }
+        if (cmd == 31 || cmd == 32 || cmd == 33 || cmd == 34) {
+            int amap[] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,85,70,55 };
+            g.bgAlpha = amap[cmd];
+            InvalidateRect(h, nullptr, FALSE);
+            SaveConfig();
+        }
         if (cmd == 14) DestroyWindow(h);
+        if (cmd == IDM_MANAGE_APPS) OpenManageShortcuts();
+        if (cmd >= IDM_LAUNCH_BASE && cmd < IDM_LAUNCH_BASE + kMaxShortcuts)
+            LaunchShortcut(cmd - IDM_LAUNCH_BASE);
         return 0;
     }
     case WM_DESTROY:
         SaveConfig();
+        FreeShortcutIcons();
         KillTimer(h, 1);
+        KillTimer(h, 2);
+        KillTimer(h, 3);
         PostQuitMessage(0);
         return 0;
     }
@@ -1325,7 +2432,12 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     HANDLE mu = CreateMutexW(nullptr, TRUE, L"CursorUsageWidgetCpp");
     if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
+    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
+    INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_LISTVIEW_CLASSES };
+    InitCommonControlsEx(&icc);
     LoadConfig();
+    LoadShortcuts();
+    g.dark = ReadAppsDark();
     SetProcessDPIAware();
     Gdiplus::GdiplusStartupInput in;
     Gdiplus::GdiplusStartup(&g.gdip, &in, nullptr);
@@ -1355,10 +2467,13 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
 
     MSG msg;
     while (GetMessage(&msg, nullptr, 0, 0)) {
+        if (g_manage.hwnd && IsDialogMessageW(g_manage.hwnd, &msg)) continue;
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
     Gdiplus::GdiplusShutdown(g.gdip);
+    FreeShortcutIcons();
+    CoUninitialize();
     CloseHandle(mu);
     return 0;
 }

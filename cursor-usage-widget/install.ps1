@@ -1,4 +1,8 @@
-﻿$ErrorActionPreference = "Stop"
+﻿param(
+  [switch]$InPlace
+)
+
+$ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $src = Join-Path $here "native-cpp\CursorUsage.exe"
 if (-not (Test-Path -LiteralPath $src)) {
@@ -11,31 +15,38 @@ $folderName = "CursorUsage"
 $cfgDir = Join-Path $env:APPDATA "cursor-usage-widget"
 $defaultParent = $env:LOCALAPPDATA
 $pathFile = Join-Path $cfgDir "install.path"
+$prevDest = ""
 if (Test-Path -LiteralPath $pathFile) {
-  $prev = (Get-Content -LiteralPath $pathFile -Encoding UTF8 | Select-Object -First 1).Trim()
-  if ($prev) {
-    $parent = Split-Path -Parent $prev
+  $prevDest = (Get-Content -LiteralPath $pathFile -Encoding UTF8 | Select-Object -First 1).Trim()
+  if ($prevDest) {
+    $parent = Split-Path -Parent $prevDest
     if ($parent -and (Test-Path -LiteralPath $parent)) { $defaultParent = $parent }
   }
 }
 
-Add-Type -AssemblyName System.Windows.Forms
-$dlg = New-Object System.Windows.Forms.FolderBrowserDialog
-$dlg.Description = "选择安装位置。将在该目录下创建 CursorUsage 文件夹。"
-$dlg.ShowNewFolderButton = $true
-try { $dlg.UseDescriptionForTitle = $true } catch {}
-if (Test-Path -LiteralPath $defaultParent) { $dlg.SelectedPath = $defaultParent }
-
-if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
-  Write-Host "已取消安装。"
-  exit 1
-}
-
-$picked = $dlg.SelectedPath.TrimEnd('\')
-if ([IO.Path]::GetFileName($picked) -eq $folderName) {
-  $dest = $picked
+$dest = $null
+if ($InPlace -and $prevDest) {
+  $dest = $prevDest.TrimEnd('\')
+  Write-Host "按已有安装位置更新：$dest"
 } else {
-  $dest = Join-Path $picked $folderName
+  Add-Type -AssemblyName System.Windows.Forms
+  $dlg = New-Object System.Windows.Forms.FolderBrowserDialog
+  $dlg.Description = "选择安装位置。将在该目录下创建 CursorUsage 文件夹；若已选中 CursorUsage 则直接装进去。"
+  $dlg.ShowNewFolderButton = $true
+  try { $dlg.UseDescriptionForTitle = $true } catch {}
+  if (Test-Path -LiteralPath $defaultParent) { $dlg.SelectedPath = $defaultParent }
+
+  if ($dlg.ShowDialog() -ne [System.Windows.Forms.DialogResult]::OK) {
+    Write-Host "已取消安装。"
+    exit 1
+  }
+
+  $picked = $dlg.SelectedPath.TrimEnd('\')
+  if ([IO.Path]::GetFileName($picked) -eq $folderName) {
+    $dest = $picked
+  } else {
+    $dest = Join-Path $picked $folderName
+  }
 }
 
 New-Item -ItemType Directory -Force -Path $dest | Out-Null
@@ -55,21 +66,42 @@ New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
 Set-Content -LiteralPath $pathFile -Value $dest -Encoding UTF8
 
 $quoted = '"' + $exe + '"'
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Force | Out-Null
-Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "CursorUsageWidget" -Value $quoted
-$approved = [byte[]](2,0,0,0,0,0,0,0,0,0,0,0)
-New-Item -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" -Force | Out-Null
-Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" -Name "CursorUsageWidget" -Value $approved -Type Binary
+$autoOk = $false
+$autoErr = ""
+try {
+  Set-ItemProperty -Path "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run" -Name "CursorUsageWidget" -Value $quoted -Type String -ErrorAction Stop
+  $autoOk = $true
+} catch {
+  $autoErr = $_.Exception.Message
+}
+if ($autoOk) {
+  try {
+    $approved = [byte[]](2,0,0,0,0,0,0,0,0,0,0,0)
+    $approvedPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
+    if (Test-Path -LiteralPath $approvedPath) {
+      Set-ItemProperty -Path $approvedPath -Name "CursorUsageWidget" -Value $approved -Type Binary -ErrorAction Stop
+    }
+  } catch {}
+}
 
 Start-Process -FilePath $exe
 
 Write-Host ""
 Write-Host "已安装到："
 Write-Host "  $exe"
+
+if (-not $autoOk) {
+  Write-Host "开机自启没有写上，不影响使用。可以在用量条上右键勾选「开机启动」。"
+  if ($autoErr) { Write-Host "  $autoErr" }
+  Write-Host ""
+}
 Write-Host ""
-Write-Host "开机后会自动启动。拖动后的位置保存在："
+Write-Host "开机后会自动启动。位置、贴边、显示大小保存在："
 Write-Host "  $cfgDir\ui.ini"
+Write-Host "右键「打开程序」勾选的启动项保存在："
+Write-Host "  $cfgDir\shortcuts.txt"
 Write-Host ""
+Write-Host "右键可：刷新、用量页、打开程序（检索本机已装软件并多项勾选；已开则调窗，未开则启动）、显示大小、贴边、开机启动、退出。"
+Write-Host "再次更新可运行 install.bat -InPlace，会装到本次同一目录。"
 Write-Host "卸载请运行 uninstall.bat"
-Write-Host "也可在用量条上右键勾选或取消开机启动。"
 Write-Host ""
