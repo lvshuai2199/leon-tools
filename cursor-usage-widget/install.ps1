@@ -4,10 +4,16 @@
 
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$src = Join-Path $here "native-cpp\CursorUsage.exe"
-if (-not (Test-Path -LiteralPath $src)) {
-  Write-Host "找不到 $src"
-  Write-Host "请先运行 native-cpp\build.bat 编译。"
+$src = $null
+foreach ($c in @(
+  (Join-Path $here "CursorUsage.exe"),
+  (Join-Path $here "native-cpp\CursorUsage.exe")
+)) {
+  if (Test-Path -LiteralPath $c) { $src = $c; break }
+}
+if (-not $src) {
+  Write-Host "找不到 CursorUsage.exe"
+  Write-Host "请先运行 native-cpp\build.bat 编译，或使用 dist 里的安装包。"
   exit 1
 }
 
@@ -60,6 +66,13 @@ try {
 } catch {
   Write-Host "复制失败，请先关掉正在运行的用量条后再试。"
   exit 1
+}
+
+foreach ($name in @("uninstall.bat", "uninstall.ps1")) {
+  $u = Join-Path $here $name
+  if (Test-Path -LiteralPath $u) {
+    Copy-Item -LiteralPath $u -Destination (Join-Path $dest $name) -Force
+  }
 }
 
 New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null

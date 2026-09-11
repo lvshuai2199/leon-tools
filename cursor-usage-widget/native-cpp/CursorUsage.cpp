@@ -879,6 +879,15 @@ static RECT Work() {
     RECT r; SystemParametersInfo(SPI_GETWORKAREA, 0, &r, 0); return r;
 }
 
+static void KeepTopMost(HWND h) {
+    if (!h) return;
+    LONG_PTR ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
+    if (!(ex & WS_EX_TOPMOST))
+        SetWindowLongPtrW(h, GWL_EXSTYLE, ex | WS_EX_TOPMOST);
+    SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
+}
+
 static void ApplyRegion(HWND h) {
     int w = WinW();
     int hh = WinH();
@@ -903,6 +912,7 @@ static void Place(HWND h) {
     }
     SetWindowPos(h, HWND_TOPMOST, x, y, w, hh,
                  SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_SHOWWINDOW);
+    KeepTopMost(h);
     ApplyRegion(h);
     RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
 }
@@ -931,7 +941,7 @@ typedef BOOL(WINAPI* SetWindowCompositionAttributeFn)(HWND, WINCOMPDATA*);
 
 static void Acrylic(HWND h) {
     LONG ex = GetWindowLong(h, GWL_EXSTYLE);
-    SetWindowLong(h, GWL_EXSTYLE, (ex | WS_EX_LAYERED | WS_EX_TOOLWINDOW) & ~WS_EX_APPWINDOW);
+    SetWindowLong(h, GWL_EXSTYLE, (ex | WS_EX_LAYERED | WS_EX_TOOLWINDOW | WS_EX_TOPMOST) & ~WS_EX_APPWINDOW);
     // Per-pixel alpha via UpdateLayeredWindow; no color-key.
     // Accent blur is always a rectangle and shows as the left white frame outside the pill.
     DWM_BLURBEHIND bb{};
@@ -1011,7 +1021,7 @@ static void DrawCursorIcon(Graphics& gph, float cx, float cy, float s, Color col
 }
 
 static void DrawTitleMark(Graphics& gph, float x, float y) {
-    // usage-badge.svg hex cursor; mono fill follows light/dark
+    // hex cursor; mono fill follows light/dark
     SolidBrush ink(IconInk());
     const float vw = 49.f, vh = 56.f;
     const float sc = 16.f / vh;
@@ -1999,9 +2009,11 @@ static void LaunchShortcut(int idx) {
     HWND running = FindRunningWindow(g_shortcuts[idx].target);
     if (running) {
         ForceForeground(running);
+        if (g.hwnd) KeepTopMost(g.hwnd);
         return;
     }
     ShellExecuteW(nullptr, L"open", g_shortcuts[idx].path.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+    if (g.hwnd) KeepTopMost(g.hwnd);
 }
 
 static void DrawQuickEmpty(Graphics& gph, Font& ui, float x, float y, float qw, float qh) {
@@ -2227,6 +2239,20 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         Refresh();
         SetTimer(h, 1, 45000, nullptr);
         SetTimer(h, 2, 2000, nullptr); // theme poll
+        SetTimer(h, 4, 500, nullptr); // stay above other windows
+        return 0;
+    case WM_WINDOWPOSCHANGING: {
+        auto* wp = (WINDOWPOS*)l;
+        if (wp && !(wp->flags & SWP_NOZORDER))
+            wp->hwndInsertAfter = HWND_TOPMOST;
+        return 0;
+    }
+    case WM_ACTIVATEAPP:
+        KeepTopMost(h);
+        return 0;
+    case WM_DISPLAYCHANGE:
+        KeepTopMost(h);
+        Place(h);
         return 0;
     case WM_TIMER:
         if (w == 3) {
@@ -2237,7 +2263,8 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             InvalidateRect(h, nullptr, FALSE);
             return 0;
         }
-        if (w == 2) { RefreshTheme(h); return 0; }
+        if (w == 4) { KeepTopMost(h); return 0; }
+        if (w == 2) { RefreshTheme(h); KeepTopMost(h); return 0; }
         Refresh();
         return 0;
     case WM_SETTINGCHANGE:
@@ -2423,6 +2450,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         KillTimer(h, 1);
         KillTimer(h, 2);
         KillTimer(h, 3);
+        KillTimer(h, 4);
         PostQuitMessage(0);
         return 0;
     }
