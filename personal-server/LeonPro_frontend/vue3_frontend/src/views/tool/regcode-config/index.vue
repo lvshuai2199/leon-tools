@@ -88,7 +88,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="加密字符后缀" prop="encryptSuffix">
-          <el-input v-model="formData.encryptSuffix" placeholder="拼在注册码后做哈希，如 auboweld" />
+          <el-input v-model="formData.encryptSuffix" placeholder="SHA-256 时作为 HMAC 密钥，如 youbo_leon" />
         </el-form-item>
         <el-form-item label="排序" prop="sortOrder">
           <el-input-number v-model="formData.sortOrder" :min="0" :max="9999" />
@@ -136,8 +136,8 @@ const formData = reactive<RegCodeConfigForm>({
   company: "",
   name: "",
   componentName: "",
-  encryptType: "MD5",
-  encryptSuffix: "",
+  encryptType: "SHA-256",
+  encryptSuffix: "youbo_leon",
   sortOrder: 0,
 });
 
@@ -146,7 +146,7 @@ const rules = {
   name: [{ required: true, message: "请输入名称", trigger: "blur" }],
   componentName: [{ required: true, message: "请输入组件名称", trigger: "blur" }],
   encryptType: [{ required: true, message: "请选择加密方式", trigger: "change" }],
-  encryptSuffix: [{ required: true, message: "请输入加密字符后缀", trigger: "blur" }],
+  encryptSuffix: [{ required: true, message: "请输入 HMAC 密钥/加密字符后缀", trigger: "blur" }],
 };
 
 function emptyForm(): RegCodeConfigForm {
@@ -154,8 +154,8 @@ function emptyForm(): RegCodeConfigForm {
     company: "",
     name: "",
     componentName: "",
-    encryptType: "MD5",
-    encryptSuffix: "",
+    encryptType: "SHA-256",
+    encryptSuffix: "youbo_leon",
     sortOrder: 0,
   };
 }

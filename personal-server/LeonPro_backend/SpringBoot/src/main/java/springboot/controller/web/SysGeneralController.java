@@ -335,7 +335,11 @@ public class SysGeneralController {
             suffix = RegCodeType.getDescriptionByCode(one.getRegCodeType());
         }
 
-        String validCode = HashUtil.hash(one.getRegCode() + suffix, algorithm);
+        // charge-tool 的 SHA-256 规则是 HMAC-SHA256(message=注册码, key=配置后缀)，
+        // 不是将后缀直接拼到注册码后再做普通 SHA-256。
+        String validCode = "SHA-256".equalsIgnoreCase(algorithm) || "SHA256".equalsIgnoreCase(algorithm)
+                ? HashUtil.hmacSha256(one.getRegCode(), suffix)
+                : HashUtil.hash(one.getRegCode() + suffix, algorithm);
 
         // 获取前 6 位和前 12 位
         String firstSix = validCode.length() >= 6 ? validCode.substring(0, 6) : validCode;

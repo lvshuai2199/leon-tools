@@ -1,6 +1,8 @@
 package springboot.utils;
 
 import java.nio.charset.StandardCharsets;
+import javax.crypto.Mac;
+import javax.crypto.spec.SecretKeySpec;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.util.Locale;
@@ -29,6 +31,25 @@ public class HashUtil {
             return hex.toString();
         } catch (NoSuchAlgorithmException e) {
             throw new RuntimeException("不支持的加密方式: " + algorithm, e);
+        }
+    }
+
+    /**
+     * 与 charge-tool 的 utils::hmacSha256 保持一致：
+     * HMAC-SHA256(message=input, key=secretKey)，输出小写十六进制字符串。
+     */
+    public static String hmacSha256(String input, String secretKey) {
+        try {
+            Mac mac = Mac.getInstance("HmacSHA256");
+            mac.init(new SecretKeySpec(secretKey.getBytes(StandardCharsets.UTF_8), "HmacSHA256"));
+            byte[] digest = mac.doFinal(input.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hex = new StringBuilder(digest.length * 2);
+            for (byte b : digest) {
+                hex.append(String.format(Locale.ROOT, "%02x", b & 0xff));
+            }
+            return hex.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("HMAC-SHA256 计算失败", e);
         }
     }
 
