@@ -30,6 +30,7 @@ public class MenuDataSeeder implements CommandLineRunner {
     public static final String MENU_REGCODE_CONFIG = "menu_regcode_config";
     public static final String MENU_REGCODE_USER = "menu_regcode_user";
     public static final String MENU_REGISTRATION = "menu_registration";
+    public static final String MENU_CRAB = "menu_crab";
 
     private static final List<String> REGCODE_MENU_IDS = List.of(
             MENU_REGCODE_CENTER,
@@ -80,6 +81,8 @@ public class MenuDataSeeder implements CommandLineRunner {
                     "todo", 3, 0, 1, 0, 0, null, now));
             menus.add(build("menu_tasks", "menu_work", "任务管理", "tasks", "work/tasks/index", null,
                     "Tasks", "todo", 1, 1, 1, 0, 1, null, now));
+            menus.add(build(MENU_CRAB, "menu_work", "螃蟹出货", "crab", "work/crab/index", null,
+                    "CrabShipment", "table", 2, 1, 1, 0, 0, null, now));
 
             menus.add(build("menu_system", "0", "系统管理", "/system", "Layout", "/system/user", null,
                     "system", 4, 0, 1, 0, 0, null, now));
@@ -100,6 +103,7 @@ public class MenuDataSeeder implements CommandLineRunner {
         ensureSeedMenu();
         groupRegCodeMenus();
         grantRegCodeMenusToManagers();
+        grantCrabMenuToBusinessRoles();
     }
 
     private void ensureSeedMenu() {
@@ -114,6 +118,8 @@ public class MenuDataSeeder implements CommandLineRunner {
                     "system/oplog/index", null, "Oplog", "document", 4, 1, 1, 0, 1, null, now));
             log.info("已补插种子菜单 menu_oplog（操作日志）。");
         }
+        insertIfAbsent(MENU_CRAB, "menu_work", "螃蟹出货", "crab", "work/crab/index",
+                null, "CrabShipment", "table", 2, 1, 1, 0, 0, now);
     }
 
     /** 只补缺失的注册码菜单，已有行完全以 sys_menus 为准 */
@@ -140,6 +146,33 @@ public class MenuDataSeeder implements CommandLineRunner {
         sysMenusService.save(build(id, parentId, menuName, menuUrl, component, redirect,
                 routeName, icon, sortOrder, menuType, visible, alwaysShow, keepAlive, null, now));
         log.info("已补插种子菜单 {}（{}）。", id, menuName);
+    }
+
+    /** 已有任务管理菜单的业务角色，补插螃蟹出货；注册码客户除外。 */
+    private void grantCrabMenuToBusinessRoles() {
+        LambdaQueryWrapper<SysRoleMenu> wrapper = new LambdaQueryWrapper<>();
+        wrapper.eq(SysRoleMenu::getMenuId, "menu_tasks");
+        Set<String> roleIds = new HashSet<>();
+        for (SysRoleMenu row : sysRoleMenuService.list(wrapper)) {
+            if (row.getRoldId() != null) {
+                roleIds.add(row.getRoldId());
+            }
+        }
+        for (String roleId : roleIds) {
+            if (RegCodeAccessService.ROLE_REGCODE_CLIENT_ID.equals(roleId)) {
+                continue;
+            }
+            List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(roleId);
+            Set<String> owned = menuIds == null ? new HashSet<>() : new HashSet<>(menuIds);
+            if (owned.contains(MENU_CRAB)) {
+                continue;
+            }
+            SysRoleMenu extra = new SysRoleMenu();
+            extra.setRoldId(roleId);
+            extra.setMenuId(MENU_CRAB);
+            sysRoleMenuService.save(extra);
+            log.info("已为角色 {} 补齐菜单 {}。", roleId, MENU_CRAB);
+        }
     }
 
     /** 已有任一注册码菜单的角色，补齐整组（含目录和注册码用户） */

@@ -232,6 +232,7 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
         map.put("/comRegistration", "注册码记录");
         map.put("/regCodeConfig", "注册码配置");
         map.put("/mindmap", "思维导图");
+        map.put("/crabShipment", "螃蟹出货");
         map.put("/sysTasks", "任务管理");
         map.put("/systemData", "系统数据");
         map.put("/extern", "外部接口");

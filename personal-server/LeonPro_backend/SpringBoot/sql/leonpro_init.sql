@@ -206,6 +206,34 @@ CREATE TABLE `extern_accounts` (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='外部账户表';
 
 -- ============================================================
+-- 10. crab_shipment - 螃蟹每日出货
+-- ============================================================
+DROP TABLE IF EXISTS `crab_shipment`;
+CREATE TABLE `crab_shipment` (
+  `id`            VARCHAR(64)  NOT NULL COMMENT '主键',
+  `seq_no`        INT          DEFAULT NULL COMMENT '当天序号',
+  `customer_name` VARCHAR(100) DEFAULT NULL COMMENT '姓名',
+  `phone`         VARCHAR(50)  DEFAULT NULL COMMENT '电话',
+  `address`       VARCHAR(500) DEFAULT NULL COMMENT '地址',
+  `spec`          VARCHAR(100) DEFAULT NULL COMMENT '规格',
+  `quantity`      INT          DEFAULT NULL COMMENT '数量（只）',
+  `paid`          INT          DEFAULT 0 COMMENT '是否已付款 0否 1是',
+  `shipped`       INT          DEFAULT 0 COMMENT '是否已发货 0否 1是',
+  `tracking_no`   VARCHAR(100) DEFAULT NULL COMMENT '发货单号',
+  `ship_date`     VARCHAR(10)  DEFAULT NULL COMMENT '出货日期 yyyy-MM-dd',
+  `remark`        VARCHAR(500) DEFAULT NULL COMMENT '备注',
+  `public_id`     VARCHAR(64)  NOT NULL COMMENT '对外分享标识',
+  `operator_id`   VARCHAR(64)  DEFAULT NULL COMMENT '操作人ID',
+  `operator_name` VARCHAR(100) DEFAULT NULL COMMENT '操作人',
+  `create_time`   DATETIME     DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time`   DATETIME     DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `uk_crab_shipment_public_id` (`public_id`),
+  KEY `idx_crab_shipment_date` (`ship_date`),
+  KEY `idx_crab_shipment_phone` (`phone`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='螃蟹每日出货';
+
+-- ============================================================
 -- 初始数据: 默认管理员用户与角色
 -- ============================================================
 INSERT INTO `sys_roles` (`id`, `role_name`, `description`, `is_disabled`)
