@@ -47,6 +47,7 @@ const state = {
   tunnel: { status: "down", pid: null, child: null },
   deploys: Object.fromEntries(SERVICES.map((id) => [id, { status: "idle" }])),
   deployChild: null,
+  dbCopy: { status: "idle", tables: [] },
   logs: [],
   sseClients: new Set(),
 };
@@ -211,6 +212,7 @@ function snapshot() {
       api: `127.0.0.1:${tunnelCfg.apiLocal}`,
     },
     ssh: publicSsh(),
+    dbCopy: state.dbCopy,
     deploys: SERVICES.map((id) => ({ id, ...state.deploys[id] })),
     services: SERVICES.map((id) => {
       const info = pathInfo(config.paths[id]);
@@ -377,6 +379,147 @@ function testSsh() {
       reject(new Error(`SSH 测试失败，code=${code}`));
     });
   });
+}
+
+const PROD_DB = "leonpro_db_prod";
+const DEV_DB = "leonpro_db_dev";
+const MYSQL_CONTAINER = "mysql8";
+
+function shSingleQuote(value) {
+  return `'${String(value).replace(/'/g, `'\\''`)}'`;
+}
+
+function isMysqlNoise(line) {
+  return /Using a password on the command line interface can be insecure/i.test(line);
+}
+
+function runSshCommand(remoteCmd, { timeoutMs = 60000, label = "hub" } = {}) {
+  const ssh = loadSshConfig();
+  requireSshLogin(ssh);
+  const args = [
+    "-p",
+    String(ssh.port),
+    "-o",
+    "StrictHostKeyChecking=accept-new",
+    "-o",
+    "NumberOfPasswordPrompts=1",
+    "-o",
+    "ConnectTimeout=12",
+  ];
+  const env = { ...process.env };
+  applySshAuth(args, env, ssh);
+  args.push(`${ssh.user}@${ssh.host}`, remoteCmd);
+
+  return new Promise((resolve, reject) => {
+    const child = spawn(resolveSshBin(), args, {
+      env,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let out = "";
+    let err = "";
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error("SSH 命令超时"));
+    }, timeoutMs);
+    child.stdout.on("data", (chunk) => {
+      const text = chunk.toString();
+      out += text;
+      appendLog(label, text);
+    });
+    child.stderr.on("data", (chunk) => {
+      const text = chunk.toString();
+      err += text;
+      const level = isMysqlNoise(text) ? "info" : "warn";
+      if (!isMysqlNoise(text)) appendLog(label, text, level);
+    });
+    child.on("error", (error) => {
+      clearTimeout(timer);
+      reject(error);
+    });
+    child.on("exit", (code) => {
+      clearTimeout(timer);
+      if (code === 0) {
+        resolve(out);
+        return;
+      }
+      const detail = err.trim() || out.trim() || `code=${code}`;
+      reject(new Error(detail));
+    });
+  });
+}
+
+function dockerExecPrefix(ssh) {
+  const sudo = ssh.user === "root" ? "" : "sudo ";
+  return `${sudo}docker exec ${MYSQL_CONTAINER}`;
+}
+
+function requireMysqlPassword(ssh) {
+  if (!ssh.mysqlPassword) {
+    throw new Error("缺少 MySQL 密码。请在 bootstrap.env 填写 MYSQL_ROOT_PASSWORD");
+  }
+  return ssh.mysqlPassword;
+}
+
+function assertTableName(name) {
+  if (!/^[A-Za-z0-9_]+$/.test(name)) {
+    throw new Error(`非法表名：${name}`);
+  }
+}
+
+async function listDbTables() {
+  const ssh = loadSshConfig();
+  const pass = requireMysqlPassword(ssh);
+  const sql =
+    "SELECT p.TABLE_NAME, IFNULL(p.TABLE_ROWS,0), IFNULL(d.TABLE_ROWS,0) " +
+    "FROM information_schema.TABLES p " +
+    `LEFT JOIN information_schema.TABLES d ON d.TABLE_SCHEMA="${DEV_DB}" ` +
+    "AND d.TABLE_NAME=p.TABLE_NAME AND d.TABLE_TYPE='BASE TABLE' " +
+    `WHERE p.TABLE_SCHEMA="${PROD_DB}" AND p.TABLE_TYPE='BASE TABLE' ` +
+    "ORDER BY p.TABLE_NAME";
+  const inner = `mysql -uroot -p${shSingleQuote(pass)} -N --batch -e ${shSingleQuote(sql)}`;
+  appendLog("hub", `读取 ${PROD_DB} / ${DEV_DB} 表清单…`);
+  const out = await runSshCommand(`${dockerExecPrefix(ssh)} sh -c ${shSingleQuote(inner)}`, {
+    timeoutMs: 45000,
+    label: "hub",
+  });
+  const tables = [];
+  for (const raw of out.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    const parts = line.split(/\t+/);
+    if (parts.length < 2 || !/^[A-Za-z0-9_]+$/.test(parts[0])) continue;
+    tables.push({
+      name: parts[0],
+      prodRows: Number(parts[1]) || 0,
+      devRows: Number(parts[2]) || 0,
+    });
+  }
+  state.dbCopy = { status: "idle", tables };
+  appendLog("hub", `共 ${tables.length} 张生产表`);
+  return tables;
+}
+
+async function copyProdTablesToDev(names) {
+  const ssh = loadSshConfig();
+  const pass = requireMysqlPassword(ssh);
+  const unique = [...new Set(names)];
+  if (!unique.length) throw new Error("请选择要拷贝的表");
+  unique.forEach(assertTableName);
+  state.dbCopy = { ...state.dbCopy, status: "copying" };
+  broadcast({ type: "state", state: snapshot() });
+  appendLog("hub", `开始把生产表拷到开发库：${unique.join(", ")}`);
+  const inner = [
+    `mysqldump -uroot -p${shSingleQuote(pass)} --single-transaction --skip-comments --set-gtid-purged=OFF ${PROD_DB} ${unique.join(" ")}`,
+    `| mysql -uroot -p${shSingleQuote(pass)} ${DEV_DB}`,
+  ].join(" ");
+  await runSshCommand(`${dockerExecPrefix(ssh)} sh -c ${shSingleQuote(inner)}`, {
+    timeoutMs: 180000,
+    label: "hub",
+  });
+  appendLog("hub", `已覆盖写入 ${DEV_DB}（${unique.length} 张表）`);
+  await listDbTables();
+  state.dbCopy.status = "ok";
 }
 
 function isDeployBusy() {
@@ -875,6 +1018,43 @@ const server = http.createServer(async (req, res) => {
       await testSsh();
       broadcast({ type: "state", state: snapshot() });
       return sendJson(res, 200, { ok: true, ssh: publicSsh() });
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/db/tables") {
+      state.dbCopy = { ...state.dbCopy, status: "listing" };
+      broadcast({ type: "state", state: snapshot() });
+      try {
+        await listDbTables();
+      } catch (err) {
+        state.dbCopy = { ...state.dbCopy, status: "error" };
+        appendLog("hub", err.message, "error");
+        broadcast({ type: "state", state: snapshot() });
+        throw err;
+      }
+      broadcast({ type: "state", state: snapshot() });
+      return sendJson(res, 200, { tables: state.dbCopy.tables });
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/db/copy") {
+      const body = await readBody(req);
+      if (state.dbCopy.status === "copying" || state.dbCopy.status === "listing") {
+        return sendJson(res, 409, { error: "正在读写数据库，请稍后再试" });
+      }
+      let names = Array.isArray(body.tables) ? body.tables : [];
+      if (body.all) {
+        if (!state.dbCopy.tables.length) await listDbTables();
+        names = state.dbCopy.tables.map((item) => item.name);
+      }
+      try {
+        await copyProdTablesToDev(names);
+      } catch (err) {
+        state.dbCopy = { ...state.dbCopy, status: "error" };
+        appendLog("hub", err.message, "error");
+        broadcast({ type: "state", state: snapshot() });
+        throw err;
+      }
+      broadcast({ type: "state", state: snapshot() });
+      return sendJson(res, 200, snapshot());
     }
 
     if (req.method === "POST" && url.pathname === "/api/deploy") {

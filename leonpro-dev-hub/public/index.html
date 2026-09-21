@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LeonPro 本地启动台</title>
-    <link rel="stylesheet" href="/styles.css?v=4" />
+    <link rel="stylesheet" href="/styles.css?v=5" />
   </head>
   <body>
     <main class="app">
@@ -77,6 +77,19 @@
                 <div id="deployList" class="deploy-list"></div>
               </article>
             </section>
+            <section class="grid config-grid">
+              <article class="card">
+                <h2>生产库 → 开发库</h2>
+                <p class="hint">经 SSH 在服务器 <code>mysql8</code> 上，把 <code>leonpro_db_prod</code> 的表覆盖写入 <code>leonpro_db_dev</code>。行数为估算值。开发库对应表会被替换。</p>
+                <p id="dbCopyHint" class="target"></p>
+                <div class="actions">
+                  <button id="dbRefresh" class="btn">刷新表清单</button>
+                  <button id="dbSelectAll" class="btn">全选</button>
+                  <button id="dbCopy" class="btn primary">拷贝到开发库</button>
+                </div>
+                <div id="dbTableList" class="table-list"></div>
+              </article>
+            </section>
           </section>
 
           <section class="stage-page" data-page="config">
@@ -141,6 +154,6 @@
         <pre id="logs"></pre>
       </section>
     </main>
-    <script src="/app.js?v=4"></script>
+    <script src="/app.js?v=5"></script>
   </body>
 </html>

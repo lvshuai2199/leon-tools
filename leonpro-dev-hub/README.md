@@ -12,7 +12,7 @@ Windows 本机控制台，用来选数据库、选前端接口目标，然后分
 4. 选 Dev/Prod 库（只影响本机 Spring Boot）。
 5. 选前端连本地 8089 还是远端服务器。
 6. 启动单个服务，或一键全开 / 全关。
-7. SSH 卡片可测试连接、开关隧道。部署按钮会跑各项目 `deploy/deploy.ps1`。
+7. SSH 卡片可测试连接、开关隧道。部署按钮会跑各项目 `deploy/deploy.ps1`。生产库 → 开发库可按表覆盖拷贝 `leonpro_db_prod` 到 `leonpro_db_dev`。
 
 本机 Spring Boot 不会直连公网 3306。启动后端时会用 `deploy.env` / `bootstrap.env` 里的 SSH 账号，把服务器 `127.0.0.1:3306` / `6379` 转到本机 `13306` / `16379`。
 

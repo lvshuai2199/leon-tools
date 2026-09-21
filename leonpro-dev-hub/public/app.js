@@ -12,7 +12,7 @@ const authNames = {
 
 const viewSubs = {
   local: "本机启停 Spring / Vue / 手机 H5",
-  remote: "SSH 隧道，以及按各项目 deploy.env 部署到服务器",
+  remote: "SSH 隧道、部署，以及把生产表拷到开发库",
   config: "项目目录和服务器 IP，保存后立刻生效",
 };
 
@@ -31,6 +31,7 @@ const stageTrack = document.getElementById("stageTrack");
 const viewSub = document.getElementById("viewSub");
 
 let current = null;
+const selectedTables = new Set();
 const allowedViews = ["local", "remote", "config"];
 let currentView = allowedViews.includes(localStorage.getItem("hubView"))
   ? localStorage.getItem("hubView")
@@ -122,6 +123,33 @@ function render(state) {
     })
     .join("");
 
+  const dbCopy = state.dbCopy || { status: "idle", tables: [] };
+  const dbHint = document.getElementById("dbCopyHint");
+  const dbList = document.getElementById("dbTableList");
+  if (dbHint) {
+    dbHint.textContent =
+      dbCopy.status === "copying"
+        ? "正在拷贝…"
+        : dbCopy.status === "listing"
+          ? "正在读取表清单…"
+          : dbCopy.tables?.length
+            ? `${dbCopy.tables.length} 张生产表 · ${dbCopy.status === "ok" ? "上次拷贝完成" : dbCopy.status}`
+            : "先刷新表清单";
+  }
+  if (dbList) {
+    dbList.innerHTML = (dbCopy.tables || [])
+      .map((item) => {
+        const checked = selectedTables.has(item.name) ? "checked" : "";
+        return `<label class="table-row">
+          <input type="checkbox" data-table="${item.name}" ${checked} />
+          <strong>${item.name}</strong>
+          <span class="muted">prod ${item.prodRows}</span>
+          <span class="muted">dev ${item.devRows}</span>
+        </label>`;
+      })
+      .join("");
+  }
+
   servicesEl.innerHTML = state.services
     .map((svc) => {
       const href = state.urls[svc.id];
@@ -187,6 +215,47 @@ document.getElementById("saveConfig").addEventListener("click", () => {
       bootstrapEnv: document.getElementById("cfgPathBootstrap").value,
     },
   }).catch((err) => alert(err.message));
+});
+
+document.getElementById("dbTableList").addEventListener("change", (event) => {
+  const name = event.target.dataset.table;
+  if (!name) return;
+  if (event.target.checked) selectedTables.add(name);
+  else selectedTables.delete(name);
+});
+
+document.getElementById("dbRefresh").addEventListener("click", () => {
+  fetch("/api/db/tables")
+    .then((res) => {
+      if (!res.ok) return res.json().then((data) => Promise.reject(new Error(data.error || res.statusText)));
+      return res.json();
+    })
+    .then((data) => {
+      if (!selectedTables.size) {
+        (data.tables || []).forEach((item) => selectedTables.add(item.name));
+      }
+    })
+    .catch((err) => alert(err.message));
+});
+
+document.getElementById("dbSelectAll").addEventListener("click", () => {
+  const tables = current?.dbCopy?.tables || [];
+  const allSelected = tables.length && tables.every((item) => selectedTables.has(item.name));
+  selectedTables.clear();
+  if (!allSelected) tables.forEach((item) => selectedTables.add(item.name));
+  if (current) render(current);
+});
+
+document.getElementById("dbCopy").addEventListener("click", () => {
+  const names = [...selectedTables];
+  if (!names.length) {
+    alert("请先勾选要拷贝的表");
+    return;
+  }
+  if (!confirm(`将用生产库覆盖开发库的 ${names.length} 张表，开发库这些表的现有数据会被替换。确定继续？`)) {
+    return;
+  }
+  post("/api/db/copy", { tables: names }).catch((err) => alert(err.message));
 });
 
 document.getElementById("deployList").addEventListener("click", (event) => {

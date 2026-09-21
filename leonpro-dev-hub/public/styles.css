@@ -139,8 +139,29 @@ body {
   color: var(--ok);
 }
 
-.path-meta.miss {
-  color: var(--bad);
+.table-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+  max-height: 280px;
+  overflow: auto;
+}
+
+.table-row {
+  display: grid;
+  grid-template-columns: 22px 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #151924;
+  font-size: 13px;
+}
+
+.table-row .muted {
+  color: var(--muted);
 }
 
 h1,
