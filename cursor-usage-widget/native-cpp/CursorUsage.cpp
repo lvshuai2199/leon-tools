@@ -1317,6 +1317,9 @@ static void Repaint(HWND h) {
 static const int kMaxShortcuts = 9;
 static const int IDM_MANAGE_APPS = 199;
 static const int IDM_LAUNCH_BASE = 200;
+static void OpenManageShortcuts();
+static void OpenSettings();
+
 
 struct ShortcutItem {
     std::wstring path;
@@ -1936,7 +1939,8 @@ static LRESULT CALLBACK ManageProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 }
 
 static void OpenManageShortcuts() {
-    if (g_manage.hwnd) { SetForegroundWindow(g_manage.hwnd); return; }
+    if (g_manage.hwnd && IsWindow(g_manage.hwnd)) { ShowWindow(g_manage.hwnd, SW_SHOW); SetForegroundWindow(g_manage.hwnd); return; }
+    g_manage.hwnd = nullptr;
     static bool reg = false;
     if (!reg) {
         WNDCLASSEXW wc{ sizeof(wc) };
@@ -1956,6 +1960,275 @@ static void OpenManageShortcuts() {
     ShowWindow(hw, SW_SHOW);
     UpdateWindow(hw);
 }
+
+
+// ---- Settings window (美工: 320 / #F8F8FA / r12 / #D8DCE1) ----
+static const int IDM_SETTINGS = 18;
+static const int kSettingsW = 320;
+
+struct SettingsDlg {
+    HWND hwnd = nullptr;
+    RECT dockBtn[3]{};
+    RECT alphaBtn[4]{};
+    RECT botRow{};
+    RECT addBtn{};
+    RECT closeBtn{};
+    RECT emptyHit{};
+    bool botHot = false;
+} g_settings;
+
+static int SettingsContentH() {
+    // pad16 + title22 + gaps + 4 sections + close
+    int listH = (int)g_shortcuts.size() * 22;
+    if (listH < 28) listH = 28;
+    if (listH > 120) listH = 120;
+    return 16 + 24 + 16
+        + 20 + 8 + 28 + 16   // dock
+        + 20 + 8 + 28 + 16   // alpha
+        + 20 + 8 + 28 + 16   // bot
+        + 20 + 8 + listH + 8 + 28 + 16  // shortcuts + add
+        + 32 + 16;           // close + pad
+}
+
+static void SettingsLayout(int /*cw*/, int /*ch*/) {
+    const int pad = 16;
+    const int inner = kSettingsW - pad * 2;
+    int y = pad + 24 + 16;
+    // dock buttons
+    int bw = (inner - 8 * 2) / 3;
+    for (int i = 0; i < 3; ++i) {
+        g_settings.dockBtn[i] = { pad + i * (bw + 8), y + 20 + 8, pad + i * (bw + 8) + bw, y + 20 + 8 + 28 };
+    }
+    y += 20 + 8 + 28 + 16;
+    int aw = (inner - 6 * 3) / 4;
+    for (int i = 0; i < 4; ++i) {
+        g_settings.alphaBtn[i] = { pad + i * (aw + 6), y + 20 + 8, pad + i * (aw + 6) + aw, y + 20 + 8 + 28 };
+    }
+    y += 20 + 8 + 28 + 16;
+    g_settings.botRow = { pad, y + 20 + 8, pad + inner, y + 20 + 8 + 28 };
+    y += 20 + 8 + 28 + 16;
+    int listH = (int)g_shortcuts.size() * 22;
+    if (listH < 28) listH = 28;
+    if (listH > 120) listH = 120;
+    g_settings.emptyHit = { pad, y + 20 + 8, pad + inner, y + 20 + 8 + listH };
+    g_settings.addBtn = { pad, y + 20 + 8 + listH + 8, pad + 90, y + 20 + 8 + listH + 8 + 28 };
+    y += 20 + 8 + listH + 8 + 28 + 16;
+    g_settings.closeBtn = { pad, y, pad + inner, y + 32 };
+}
+
+static void RoundRectPath(GraphicsPath& path, float x, float y, float w, float h, float r) {
+    path.AddArc(x, y, r * 2, r * 2, 180, 90);
+    path.AddArc(x + w - r * 2, y, r * 2, r * 2, 270, 90);
+    path.AddArc(x + w - r * 2, y + h - r * 2, r * 2, r * 2, 0, 90);
+    path.AddArc(x, y + h - r * 2, r * 2, r * 2, 90, 90);
+    path.CloseFigure();
+}
+
+static void DrawChip(Graphics& gph, const RECT& rc, const wchar_t* label, bool on, Font& f) {
+    float x = (float)rc.left, y = (float)rc.top, w = (float)(rc.right - rc.left), h = (float)(rc.bottom - rc.top);
+    GraphicsPath path;
+    RoundRectPath(path, x, y, w, h, 6.f);
+    SolidBrush fill(on ? Color(255, 0xEE, 0xF2, 0xF7) : Color(255, 0xFF, 0xFF, 0xFF));
+    gph.FillPath(&fill, &path);
+    Pen border(on ? Color(255, 0xA8, 0xB2, 0xC0) : Color(255, 0xD8, 0xDC, 0xE1), 1.f);
+    gph.DrawPath(&border, &path);
+    SolidBrush ink(Color(255, 0x20, 0x20, 0x22));
+    StringFormat fmt;
+    fmt.SetAlignment(StringAlignmentCenter);
+    fmt.SetLineAlignment(StringAlignmentCenter);
+    gph.DrawString(label, -1, &f, RectF(x, y, w, h), &fmt, &ink);
+}
+
+static void PaintSettings(HWND h) {
+    RECT crc; GetClientRect(h, &crc);
+    int cw = crc.right, ch = crc.bottom;
+    SettingsLayout(cw, ch);
+    PAINTSTRUCT ps;
+    HDC hdc = BeginPaint(h, &ps);
+    HDC mem = CreateCompatibleDC(hdc);
+    BITMAPINFO bmi{};
+    bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmi.bmiHeader.biWidth = cw;
+    bmi.bmiHeader.biHeight = -ch;
+    bmi.bmiHeader.biPlanes = 1;
+    bmi.bmiHeader.biBitCount = 32;
+    bmi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HBITMAP bmp = CreateDIBSection(nullptr, &bmi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    HGDIOBJ old = SelectObject(mem, bmp);
+    {
+        Graphics gph(mem);
+        gph.SetSmoothingMode(SmoothingModeAntiAlias);
+        gph.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
+        // panel
+        SolidBrush bg(Color(255, 0xF8, 0xF8, 0xFA));
+        gph.FillRectangle(&bg, 0, 0, cw, ch);
+        GraphicsPath frame;
+        RoundRectPath(frame, 0.5f, 0.5f, (float)cw - 1.f, (float)ch - 1.f, 12.f);
+        Pen stroke(Color(255, 0xD8, 0xDC, 0xE1), 1.f);
+        gph.DrawPath(&stroke, &frame);
+
+        FontFamily yahei(L"Microsoft YaHei UI");
+        const FontFamily* fam = (yahei.GetLastStatus() == Gdiplus::Ok) ? &yahei : FontFamily::GenericSansSerif();
+        Font title(fam, 16.f, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
+        Font sec(fam, 12.f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Font ui(fam, 12.f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        SolidBrush titleBr(Color(255, 0x20, 0x20, 0x22));
+        SolidBrush secBr(Color(255, 0x5A, 0x60, 0x69));
+        SolidBrush muted(Color(255, 0x78, 0x7D, 0x85));
+
+        const int pad = 16;
+        gph.DrawString(L"\u8bbe\u7f6e", -1, &title, PointF((float)pad, (float)pad), &titleBr);
+
+        int y = pad + 24 + 16;
+        gph.DrawString(L"\u8d34\u8fb9", -1, &sec, PointF((float)pad, (float)y), &secBr);
+        const wchar_t* docks[] = { L"\u5de6", L"\u53f3", L"\u9876" };
+        for (int i = 0; i < 3; ++i)
+            DrawChip(gph, g_settings.dockBtn[i], docks[i], g.dockEdge == i, ui);
+
+        y = g_settings.alphaBtn[0].top - 20 - 8;
+        gph.DrawString(L"\u80cc\u666f\u900f\u660e\u5ea6", -1, &sec, PointF((float)pad, (float)y), &secBr);
+        const int alphas[] = { 100, 85, 70, 55 };
+        wchar_t alab[8];
+        for (int i = 0; i < 4; ++i) {
+            swprintf(alab, 8, L"%d%%", alphas[i]);
+            DrawChip(gph, g_settings.alphaBtn[i], alab, g.bgAlpha == alphas[i], ui);
+        }
+
+        y = g_settings.botRow.top - 20 - 8;
+        gph.DrawString(L"Bot", -1, &sec, PointF((float)pad, (float)y), &secBr);
+        // toggle
+        {
+            RECT rc = g_settings.botRow;
+            float tx = (float)rc.left, ty = (float)rc.top + 4, tw = 44, th = 22;
+            GraphicsPath tpath;
+            RoundRectPath(tpath, tx, ty, tw, th, th / 2);
+            SolidBrush tfill(g.showBot ? Color(255, 0x3B, 0x82, 0xF6) : Color(255, 0xD0, 0xD4, 0xDA));
+            gph.FillPath(&tfill, &tpath);
+            float knob = th - 4;
+            float kx = g.showBot ? (tx + tw - knob - 2) : (tx + 2);
+            SolidBrush knobBr(Color(255, 255, 255, 255));
+            gph.FillEllipse(&knobBr, kx, ty + 2, knob, knob);
+            gph.DrawString(L"\u663e\u793a Bot \u7528\u91cf", -1, &ui, PointF(tx + tw + 10, ty), &titleBr);
+        }
+
+        y = g_settings.emptyHit.top - 20 - 8;
+        gph.DrawString(L"\u5feb\u6377\u65b9\u5f0f", -1, &sec, PointF((float)pad, (float)y), &secBr);
+        if (g_shortcuts.empty()) {
+            StringFormat fmt;
+            fmt.SetAlignment(StringAlignmentCenter);
+            fmt.SetLineAlignment(StringAlignmentCenter);
+            RECT er = g_settings.emptyHit;
+            gph.DrawString(L"\u6dfb\u52a0\u5e38\u7528\u8f6f\u4ef6", -1, &ui,
+                RectF((float)er.left, (float)er.top, (float)(er.right - er.left), (float)(er.bottom - er.top)), &fmt, &muted);
+        } else {
+            int ly = g_settings.emptyHit.top;
+            for (size_t i = 0; i < g_shortcuts.size() && i < 9; ++i) {
+                std::wstring name = g_shortcuts[i].name;
+                if (name.empty()) {
+                    const wchar_t* n = g_shortcuts[i].path.c_str();
+                    for (const wchar_t* q = n; *q; ++q)
+                        if (*q == L'\\' || *q == L'/') n = q + 1;
+                    name = n;
+                }
+                gph.DrawString(name.c_str(), -1, &ui, PointF((float)pad, (float)ly), &titleBr);
+                ly += 22;
+            }
+        }
+        DrawChip(gph, g_settings.addBtn, L"\u6dfb\u52a0", false, ui);
+        DrawChip(gph, g_settings.closeBtn, L"\u5173\u95ed", true, ui);
+    }
+    BitBlt(hdc, 0, 0, cw, ch, mem, 0, 0, SRCCOPY);
+    SelectObject(mem, old);
+    DeleteObject(bmp);
+    DeleteDC(mem);
+    EndPaint(h, &ps);
+}
+
+static bool PtIn(const RECT& r, int x, int y) {
+    return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
+}
+
+static void SettingsApplyMain() {
+    if (!g.hwnd) return;
+    Place(g.hwnd);
+    Repaint(g.hwnd);
+}
+
+static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
+    switch (m) {
+    case WM_CREATE:
+        g_settings.hwnd = h;
+        return 0;
+    case WM_ERASEBKGND:
+        return 1;
+    case WM_PAINT:
+        PaintSettings(h);
+        return 0;
+    case WM_LBUTTONUP: {
+        int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        for (int i = 0; i < 3; ++i) if (PtIn(g_settings.dockBtn[i], x, y)) {
+            if (g.dockEdge != i) { g.dockEdge = i; g.y = -1; }
+            SaveConfig(); SettingsApplyMain(); InvalidateRect(h, nullptr, FALSE); return 0;
+        }
+        const int alphas[] = { 100, 85, 70, 55 };
+        for (int i = 0; i < 4; ++i) if (PtIn(g_settings.alphaBtn[i], x, y)) {
+            g.bgAlpha = alphas[i]; SaveConfig(); SettingsApplyMain(); InvalidateRect(h, nullptr, FALSE); return 0;
+        }
+        if (PtIn(g_settings.botRow, x, y)) {
+            g.showBot = !g.showBot; SaveConfig(); SettingsApplyMain(); InvalidateRect(h, nullptr, FALSE); return 0;
+        }
+        if (PtIn(g_settings.addBtn, x, y) || (g_shortcuts.empty() && PtIn(g_settings.emptyHit, x, y))) {
+            OpenManageShortcuts();
+            return 0;
+        }
+        if (PtIn(g_settings.closeBtn, x, y)) { DestroyWindow(h); return 0; }
+        return 0;
+    }
+    case WM_CLOSE:
+        DestroyWindow(h);
+        return 0;
+    case WM_DESTROY:
+        g_settings.hwnd = nullptr;
+        return 0;
+    }
+    return DefWindowProcW(h, m, w, l);
+}
+
+static void OpenSettings() {
+    if (g_settings.hwnd && IsWindow(g_settings.hwnd)) {
+        ShowWindow(g_settings.hwnd, SW_SHOW);
+        SetForegroundWindow(g_settings.hwnd);
+        InvalidateRect(g_settings.hwnd, nullptr, FALSE);
+        return;
+    }
+    g_settings.hwnd = nullptr;
+    static ATOM atom = 0;
+    if (!atom) {
+        WNDCLASSEXW wc{ sizeof(wc) };
+        wc.lpfnWndProc = SettingsProc;
+        wc.hInstance = GetModuleHandleW(nullptr);
+        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+        wc.hbrBackground = nullptr;
+        wc.lpszClassName = L"CursorUsageSettings";
+        wc.style = CS_HREDRAW | CS_VREDRAW;
+        atom = RegisterClassExW(&wc);
+    }
+    int hgt = SettingsContentH();
+    RECT wa; SystemParametersInfo(SPI_GETWORKAREA, 0, &wa, 0);
+    int x = wa.left + (wa.right - wa.left - kSettingsW) / 2;
+    int y = wa.top + (wa.bottom - wa.top - hgt) / 3;
+    HWND hw = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+        L"CursorUsageSettings", L"\u8bbe\u7f6e",
+        WS_POPUP | WS_CLIPCHILDREN,
+        x, y, kSettingsW, hgt,
+        g.hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+    if (!hw) return;
+    // Soft shadow / region rounded via paint; show
+    ShowWindow(hw, SW_SHOW);
+    UpdateWindow(hw);
+}
+
 
 static void DrawQuickLaunch(Graphics& gph, Font& ui, float x, float y, float qw, float qh) {
     g_quickRect.left = (LONG)x;
@@ -2559,72 +2832,18 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         POINT pt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
         ClientToScreen(h, &pt);
         HMENU menu = CreatePopupMenu();
-        HMENU scale = CreatePopupMenu();
-        auto chk = [](int v) { return (UINT)(MF_STRING | (g.scale == v ? MF_CHECKED : 0)); };
-        AppendMenuW(scale, chk(70), 21, L"70%");
-        AppendMenuW(scale, chk(80), 22, L"80%");
-        AppendMenuW(scale, chk(100), 23, L"100%");
-        AppendMenuW(scale, chk(125), 24, L"125%");
-        AppendMenuW(menu, MF_STRING, 10, L"立即刷新");
-        AppendMenuW(menu, MF_STRING, 11, L"打开用量页");
+        AppendMenuW(menu, MF_STRING, 10, L"\u7acb\u5373\u5237\u65b0");
+        AppendMenuW(menu, MF_STRING, 11, L"\u6253\u5f00\u7528\u91cf\u9875");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        HMENU apps = CreatePopupMenu();
-        for (int i = 0; i < (int)g_shortcuts.size(); ++i) {
-            std::wstring label = g_shortcuts[i].name.empty() ? FileTitleOf(g_shortcuts[i].path) : g_shortcuts[i].name;
-            AppendMenuW(apps, MF_STRING, IDM_LAUNCH_BASE + i, label.c_str());
-        }
-        if (!g_shortcuts.empty()) AppendMenuW(apps, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(apps, MF_STRING, IDM_MANAGE_APPS, L"管理启动程序...");
-        AppendMenuW(menu, MF_POPUP, (UINT_PTR)apps, L"打开程序");
+        AppendMenuW(menu, MF_STRING, IDM_SETTINGS, L"\u8bbe\u7f6e");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_POPUP, (UINT_PTR)scale, L"显示大小");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, (UINT)(MF_STRING | (g.dockEdge == 0 ? MF_CHECKED : 0)), 12, L"\u8d34\u5230\u5de6\u8fb9");
-        AppendMenuW(menu, (UINT)(MF_STRING | (g.dockEdge == 1 ? MF_CHECKED : 0)), 13, L"\u8d34\u5230\u53f3\u8fb9");
-        AppendMenuW(menu, (UINT)(MF_STRING | (g.dockEdge == 2 ? MF_CHECKED : 0)), 17, L"\u8d34\u5230\u9876\u90e8");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, (UINT)(MF_STRING | (AutoStartOn() ? MF_CHECKED : 0)), 15, L"开机启动");
-        AppendMenuW(menu, (UINT)(MF_STRING | (g.showBot ? MF_CHECKED : 0)), 16, L"显示 Bot 用量");
-        HMENU bgm = CreatePopupMenu();
-        auto chkA = [](int v) { return (UINT)(MF_STRING | (g.bgAlpha == v ? MF_CHECKED : 0)); };
-        AppendMenuW(bgm, chkA(100), 31, L"100%");
-        AppendMenuW(bgm, chkA(85), 32, L"85%");
-        AppendMenuW(bgm, chkA(70), 33, L"70%");
-        AppendMenuW(bgm, chkA(55), 34, L"55%");
-        AppendMenuW(menu, MF_POPUP, (UINT_PTR)bgm, L"\u80cc\u666f\u900f\u660e\u5ea6");
-        AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(menu, MF_STRING, 14, L"退出");
+        AppendMenuW(menu, MF_STRING, 14, L"\u9000\u51fa");
         int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, h, nullptr);
         DestroyMenu(menu);
         if (cmd == 10) Refresh();
         if (cmd == 11) ShellExecuteW(nullptr, L"open", L"https://cursor.com/dashboard", nullptr, nullptr, SW_SHOWNORMAL);
-        if (cmd == 12 || cmd == 13 || cmd == 17) {
-            int next = (cmd == 12) ? 0 : (cmd == 13) ? 1 : 2;
-            if (next != g.dockEdge) {
-                g.dockEdge = next;
-                g.y = -1;
-            }
-            Place(h);
-            SaveConfig();
-        }
-        if (cmd == 21 || cmd == 22 || cmd == 23 || cmd == 24) {
-            int map[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 70, 80, 100, 125 };
-            g.scale = map[cmd];
-            Place(h);
-            SaveConfig();
-        }
-        if (cmd == 15) SetAutoStart(!AutoStartOn());
-        if (cmd == 16) { g.showBot = !g.showBot; Place(h); SaveConfig(); }
-        if (cmd == 31 || cmd == 32 || cmd == 33 || cmd == 34) {
-            int amap[] = { 0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,100,85,70,55 };
-            g.bgAlpha = amap[cmd];
-            Repaint(h);
-            SaveConfig();
-        }
+        if (cmd == IDM_SETTINGS) OpenSettings();
         if (cmd == 14) DestroyWindow(h);
-        if (cmd == IDM_MANAGE_APPS) OpenManageShortcuts();
-        if (cmd >= IDM_LAUNCH_BASE && cmd < IDM_LAUNCH_BASE + kMaxShortcuts)
-            LaunchShortcut(cmd - IDM_LAUNCH_BASE);
         return 0;
     }
     case WM_DESTROY:
