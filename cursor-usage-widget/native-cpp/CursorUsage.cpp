@@ -646,7 +646,6 @@ struct App {
     DWORD holdUntil = 0;
     int scale = 80;
     bool showBot = false;
-    int bgAlpha = 100; // card fill only: 100/85/70/55
     int scrollY = 0;
     bool scrolling = false;
     bool dark = false;
@@ -787,10 +786,6 @@ static void LoadConfig() {
         }
         if (k == "y") g.y = atoi(v.c_str());
         if (k == "showBot") g.showBot = v == "1";
-        if (k == "bgAlpha") {
-            int a = atoi(v.c_str());
-            if (a == 100 || a == 85 || a == 70 || a == 55) g.bgAlpha = a;
-        }
     }
 }
 
@@ -801,7 +796,6 @@ static void SaveConfig() {
     out << "dock=" << (g.dockEdge == 0 ? "left" : g.dockEdge == 2 ? "top" : "right") << "\n";
     out << "y=" << g.y << "\n";
     out << "showBot=" << (g.showBot ? "1" : "0") << "\n";
-    out << "bgAlpha=" << g.bgAlpha << "\n";
 }
 
 static const wchar_t* kRunKey = L"Software\\Microsoft\\Windows\\CurrentVersion\\Run";
@@ -1971,7 +1965,6 @@ static const int kSettingsW = 320;
 struct SettingsDlg {
     HWND hwnd = nullptr;
     RECT dockBtn[3]{};
-    RECT alphaBtn[4]{};
     RECT botRow{};
     RECT addBtn{};
     RECT closeBtn{};
@@ -1980,13 +1973,12 @@ struct SettingsDlg {
 } g_settings;
 
 static int SettingsContentH() {
-    // pad16 + title22 + gaps + 4 sections + close
+    // pad16 + title22 + gaps + 3 sections + close
     int listH = (int)g_shortcuts.size() * 22;
     if (listH < 28) listH = 28;
     if (listH > 120) listH = 120;
     return 16 + 24 + 16
         + 20 + 8 + 28 + 16   // dock
-        + 20 + 8 + 28 + 16   // alpha
         + 20 + 8 + 28 + 16   // bot
         + 20 + 8 + listH + 8 + 28 + 16  // shortcuts + add
         + 32 + 16;           // close + pad
@@ -2000,11 +1992,6 @@ static void SettingsLayout(int /*cw*/, int /*ch*/) {
     int bw = (inner - 8 * 2) / 3;
     for (int i = 0; i < 3; ++i) {
         g_settings.dockBtn[i] = { pad + i * (bw + 8), y + 20 + 8, pad + i * (bw + 8) + bw, y + 20 + 8 + 28 };
-    }
-    y += 20 + 8 + 28 + 16;
-    int aw = (inner - 6 * 3) / 4;
-    for (int i = 0; i < 4; ++i) {
-        g_settings.alphaBtn[i] = { pad + i * (aw + 6), y + 20 + 8, pad + i * (aw + 6) + aw, y + 20 + 8 + 28 };
     }
     y += 20 + 8 + 28 + 16;
     g_settings.botRow = { pad, y + 20 + 8, pad + inner, y + 20 + 8 + 28 };
@@ -2087,15 +2074,6 @@ static void PaintSettings(HWND h) {
         const wchar_t* docks[] = { L"\u5de6", L"\u53f3", L"\u9876" };
         for (int i = 0; i < 3; ++i)
             DrawChip(gph, g_settings.dockBtn[i], docks[i], g.dockEdge == i, ui);
-
-        y = g_settings.alphaBtn[0].top - 20 - 8;
-        gph.DrawString(L"\u80cc\u666f\u900f\u660e\u5ea6", -1, &sec, PointF((float)pad, (float)y), &secBr);
-        const int alphas[] = { 100, 85, 70, 55 };
-        wchar_t alab[8];
-        for (int i = 0; i < 4; ++i) {
-            swprintf(alab, 8, L"%d%%", alphas[i]);
-            DrawChip(gph, g_settings.alphaBtn[i], alab, g.bgAlpha == alphas[i], ui);
-        }
 
         y = g_settings.botRow.top - 20 - 8;
         gph.DrawString(L"Bot", -1, &sec, PointF((float)pad, (float)y), &secBr);
@@ -2204,10 +2182,6 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         for (int i = 0; i < 3; ++i) if (PtIn(g_settings.dockBtn[i], x, y)) {
             if (g.dockEdge != i) { g.dockEdge = i; g.y = -1; }
             SaveConfig(); SettingsApplyMain(); InvalidateRect(h, nullptr, FALSE); return 0;
-        }
-        const int alphas[] = { 100, 85, 70, 55 };
-        for (int i = 0; i < 4; ++i) if (PtIn(g_settings.alphaBtn[i], x, y)) {
-            g.bgAlpha = alphas[i]; SaveConfig(); SettingsApplyMain(); InvalidateRect(h, nullptr, FALSE); return 0;
         }
         if (PtIn(g_settings.botRow, x, y)) {
             g.showBot = !g.showBot; SaveConfig(); SettingsApplyMain(); InvalidateRect(h, nullptr, FALSE); return 0;
@@ -2556,16 +2530,14 @@ static void Paint(HWND h, HDC hdc) {
     gph.SetPixelOffsetMode(PixelOffsetModeHighQuality);
     gph.SetCompositingQuality(CompositingQualityHighQuality);
     gph.SetTextRenderingHint(TextRenderingHintClearTypeGridFit);
-    BYTE ba = (BYTE)(255 * g.bgAlpha / 100);
-    if (ba < 1) ba = 1;
     Color washTop = g.dark ? Color(255, 0x2A, 0x2A, 0x2E) : Color(255, 255, 255, 255);
     Color washBot = g.dark ? Color(255, 0x1E, 0x1E, 0x22) : Color(255, 238, 239, 242);
     gph.Clear(washTop);
     GraphicsPath body;
     float rad = (float)S(12);
     AddBodyPath(body, (float)w, (float)hh, rad, 2.0f);
-    Color fillTop = g.dark ? Color(ba, 0x2A, 0x2A, 0x2E) : Color(ba, 255, 255, 255);
-    Color fillBot = g.dark ? Color(ba, 0x1E, 0x1E, 0x22) : Color(ba, 238, 239, 242);
+    Color fillTop = g.dark ? Color(255, 0x2A, 0x2A, 0x2E) : Color(255, 255, 255, 255);
+    Color fillBot = g.dark ? Color(255, 0x1E, 0x1E, 0x22) : Color(255, 238, 239, 242);
     LinearGradientBrush wash(PointF(0.f, 0.f), PointF(0.f, (float)hh), fillTop, fillBot);
     gph.FillPath(&wash, &body);
     Pen rim(g.dark ? Color(255, 0x3A, 0x3A, 0x40) : Color(255, 0xD8, 0xDC, 0xE1), 1.0f);
