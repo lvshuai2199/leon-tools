@@ -112,7 +112,7 @@ defineOptions({
 });
 
 import { markRaw } from "vue";
-import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar, Key, Setting, Download, Share, Notebook } from "@element-plus/icons-vue";
+import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar, Key, Setting, Download, Share, Notebook, ShoppingCart } from "@element-plus/icons-vue";
 import { useUserStore } from "@/store/modules/user";
 import SystemDataAPI, { type SystemDataStatusVO } from "@/api/system/data-pack";
 
@@ -194,6 +194,13 @@ const workCards = ref<ToolCard[]>([
     path: "/work/tasks",
     icon: markRaw(Tickets),
     color: "#4080FF",
+  },
+  {
+    title: "螃蟹出货",
+    desc: "每日螃蟹出货登记：付款、发货、单号与分享状态",
+    path: "/work/crab",
+    icon: markRaw(ShoppingCart),
+    color: "#EA580C",
   },
   {
     title: "注册码记录",

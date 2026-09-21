@@ -31,7 +31,7 @@
 </template>
 
 <script>
-import { canEnterApp, consumeLogoutFlag, getUserInfo, setUserInfo } from "@/utils/auth.js";
+import { canEnterApp, consumeLogoutFlag, getUserInfo, homePath, setUserInfo } from "@/utils/auth.js";
 import { showToast } from "@/utils/ui.js";
 
 export default {
@@ -44,7 +44,7 @@ export default {
   mounted() {
     if (consumeLogoutFlag()) return;
     if (getUserInfo()?.id) {
-      this.$router.replace("/pages/workspace/workspace");
+      this.$router.replace(homePath(getUserInfo()));
     }
   },
   methods: {
@@ -78,7 +78,7 @@ export default {
         }
         setUserInfo(data);
         showToast("登录成功");
-        this.$router.replace("/pages/workspace/workspace");
+        this.$router.replace(homePath(data));
       } catch (error) {
         console.error("登录失败", error);
       } finally {

@@ -64,11 +64,30 @@ export function isLoggedIn() {
   return !!getUserInfo();
 }
 
-export function canEnterApp(user) {
+export function isRootUser(user) {
   if (!user) return false;
   const roleId = String(user.roleId || "");
   const roleName = String(user.roleName || "").toUpperCase();
-  if (roleId === "role_root" || roleName === "ROOT") return true;
-  if (roleId === "role_regcode_client") return true;
+  return roleId === "role_root" || roleName === "ROOT";
+}
+
+export function isRegCodeClient(user) {
+  if (!user || isRootUser(user)) return false;
+  if (String(user.roleId || "") === "role_regcode_client") return true;
   return !!(user.parentId && String(user.parentId).trim());
+}
+
+export function canEnterApp(user) {
+  if (!user) return false;
+  if (isRootUser(user)) return true;
+  if (String(user.roleId || "") === "role_regcode_client") return true;
+  return !!(user.parentId && String(user.parentId).trim());
+}
+
+export function canUseCrab(user) {
+  return canEnterApp(user) && !isRegCodeClient(user);
+}
+
+export function homePath(user) {
+  return canUseCrab(user) ? "/pages/home/home" : "/pages/workspace/workspace";
 }

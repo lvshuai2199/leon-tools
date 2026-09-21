@@ -9,7 +9,8 @@ import { isRegCodeClientUser, WEB_REGCODE_LOGIN_BLOCKED } from "@/utils/role";
 const PUBLIC_PATHS = new Set(["/login", "/trace", "/tool/trace"]);
 
 function isPublicPath(path: string) {
-  return PUBLIC_PATHS.has(path);
+  if (PUBLIC_PATHS.has(path)) return true;
+  return path.startsWith("/crab/share");
 }
 
 export function setupPermission() {

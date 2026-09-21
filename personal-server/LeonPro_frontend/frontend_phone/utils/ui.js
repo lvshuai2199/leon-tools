@@ -23,8 +23,29 @@ export function showToast(title) {
 }
 
 export async function copyText(text) {
-  await navigator.clipboard.writeText(String(text));
-  showToast("已复制");
+  const value = String(text);
+  try {
+    await navigator.clipboard.writeText(value);
+    showToast("已复制");
+    return;
+  } catch {
+    /* 微信等 WebView 可能没有 clipboard API */
+  }
+  const ta = document.createElement("textarea");
+  ta.value = value;
+  ta.setAttribute("readonly", "readonly");
+  ta.style.position = "fixed";
+  ta.style.left = "-9999px";
+  document.body.appendChild(ta);
+  ta.select();
+  try {
+    document.execCommand("copy");
+    showToast("已复制");
+  } catch {
+    showToast("复制失败");
+  } finally {
+    ta.remove();
+  }
 }
 
 export function confirmAction(title, content) {

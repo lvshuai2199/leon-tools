@@ -1,7 +1,8 @@
 <template>
   <div class="page">
     <div class="hero">
-      <div>
+      <button v-if="showHome" class="logout" type="button" @click="goHome">工作台</button>
+      <div :class="{ grow: !showHome }">
         <div class="hello">你好，{{ displayName }}</div>
         <div class="desc">为客户生成对应注册码</div>
       </div>
@@ -64,7 +65,7 @@
 </template>
 
 <script>
-import { canEnterApp, getUserInfo, clearUserInfo } from "@/utils/auth.js";
+import { canEnterApp, canUseCrab, getUserInfo, clearUserInfo } from "@/utils/auth.js";
 import api from "@/apiUtils/index.js";
 import { confirmAction, copyText, showToast } from "@/utils/ui.js";
 
@@ -101,6 +102,7 @@ export default {
     return {
       user: null,
       quota: null,
+      showHome: false,
       validityLabels: VALIDITY_LABELS,
       configs: [],
       loadingConfigs: false,
@@ -153,6 +155,7 @@ export default {
         return;
       }
       this.user = user;
+      this.showHome = canUseCrab(user);
       this.loadConfigs();
       this.loadQuota();
     },
@@ -243,6 +246,9 @@ export default {
         showToast("复制失败");
       }
     },
+    goHome() {
+      this.$router.replace("/pages/home/home");
+    },
     handleLogout() {
       if (!confirmAction("退出登录", "确定退出当前账号？")) return;
       this.leaveToLogin();
@@ -279,6 +285,10 @@ export default {
   margin-top: 4px;
   font-size: 12px;
   color: #6b7280;
+}
+
+.grow {
+  flex: 1;
 }
 
 .logout {

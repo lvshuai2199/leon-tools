@@ -30,6 +30,12 @@ export const constantRoutes: RouteRecordRaw[] = [
     meta: { title: "轨迹分析", hidden: true },
   },
   {
+    path: "/crab/share/:publicId",
+    name: "CrabShare",
+    component: () => import("@/views/work/crab/share.vue"),
+    meta: { title: "出货状态", hidden: true },
+  },
+  {
     path: "/tool/trace",
     redirect: "/trace",
     meta: { hidden: true },
@@ -105,6 +111,12 @@ export const constantRoutes: RouteRecordRaw[] = [
         name: "HiddenRegCodeUser",
         component: () => import("@/views/tool/regcode-user/index.vue"),
         meta: { title: "注册码用户", icon: "user", hidden: true, keepAlive: true },
+      },
+      {
+        path: "work/crab",
+        name: "HiddenCrabShipment",
+        component: () => import("@/views/work/crab/index.vue"),
+        meta: { title: "螃蟹出货", icon: "table", hidden: true, keepAlive: true },
       },
     ],
   },
