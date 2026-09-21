@@ -21,6 +21,7 @@ const UserAPI = {
         current: queryParams.current ?? 1,
         size: queryParams.size ?? 10,
         username: queryParams.username || undefined,
+        parentId: queryParams.parentId || undefined,
       },
     });
   },
@@ -83,6 +84,8 @@ export interface UserInfo {
   roleName?: string;
   /** 父用户 ID；有值表示注册码子用户 */
   parentId?: string;
+  /** 角色已分配菜单；ROOT 为 null 表示全部 */
+  menuIds?: string[] | null;
 
   /** 兼容模板原有字段（提供默认值避免报错） */
   userId?: number;
@@ -95,6 +98,8 @@ export interface UserInfo {
 export interface UserPageQuery extends PageQuery {
   /** 用户名 */
   username?: string;
+  /** 传入时列出该用户的直接下级 */
+  parentId?: string;
 }
 
 /** 用户分页对象（IPage 映射） */
@@ -109,6 +114,8 @@ export interface UserPageVO {
   roleId?: string;
   /** 角色名称（前端根据角色列表映射） */
   roleName?: string;
+  parentId?: string;
+  childCount?: number;
 }
 
 /** 用户表单 */
@@ -121,4 +128,5 @@ export interface UserForm {
   email?: string;
   nickname?: string;
   roleId?: string;
+  parentId?: string;
 }

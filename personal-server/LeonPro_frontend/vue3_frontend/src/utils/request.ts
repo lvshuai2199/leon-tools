@@ -24,8 +24,9 @@ service.interceptors.request.use(
       delete config.headers.Authorization;
     }
     const user = useUserStoreHook().userInfo;
-    if (user?.id) {
-      config.headers["X-User-Id"] = String(user.id);
+    const userId = user?.id ?? user?.userId;
+    if (userId != null && String(userId).trim() !== "") {
+      config.headers["X-User-Id"] = String(userId);
     }
     if (user?.username) {
       config.headers["X-Username"] = encodeURIComponent(user.username);

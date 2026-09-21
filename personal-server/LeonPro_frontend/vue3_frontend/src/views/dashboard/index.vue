@@ -20,10 +20,10 @@
     </el-card>
 
     <!-- 工具中心 -->
-    <div class="section-title">工具中心</div>
-    <el-row :gutter="16">
-      <el-col v-for="tool in toolCards" :key="tool.path" :xs="24" :sm="12" :md="8">
-        <el-card shadow="hover" class="tool-card" @click="router.push(tool.path)">
+    <div v-if="visibleToolCards.length" class="section-title">工具中心</div>
+    <el-row v-if="visibleToolCards.length" :gutter="16">
+      <el-col v-for="tool in visibleToolCards" :key="tool.path" :xs="24" :sm="12" :md="8">
+        <el-card shadow="hover" class="tool-card" @click="openCard(tool)">
           <div class="tool-card-body">
             <el-icon :size="36" :color="tool.color">
               <component :is="tool.icon" />
@@ -38,10 +38,10 @@
     </el-row>
 
     <!-- 业务管理 -->
-    <div class="section-title">业务管理</div>
-    <el-row :gutter="16">
-      <el-col v-for="tool in workCards" :key="tool.path" :xs="24" :sm="12" :md="8">
-        <el-card shadow="hover" class="tool-card" @click="router.push(tool.path)">
+    <div v-if="visibleWorkCards.length" class="section-title">业务管理</div>
+    <el-row v-if="visibleWorkCards.length" :gutter="16">
+      <el-col v-for="tool in visibleWorkCards" :key="tool.path" :xs="24" :sm="12" :md="8">
+        <el-card shadow="hover" class="tool-card" @click="openCard(tool)">
           <div class="tool-card-body">
             <el-icon :size="36" :color="tool.color">
               <component :is="tool.icon" />
@@ -56,10 +56,10 @@
     </el-row>
 
     <!-- 系统管理 -->
-    <div class="section-title">系统管理</div>
-    <el-row :gutter="16">
-      <el-col v-for="tool in systemCards" :key="tool.path" :xs="24" :sm="12" :md="8">
-        <el-card shadow="hover" class="tool-card" @click="router.push(tool.path)">
+    <div v-if="visibleSystemCards.length" class="section-title">系统管理</div>
+    <el-row v-if="visibleSystemCards.length" :gutter="16">
+      <el-col v-for="tool in visibleSystemCards" :key="tool.path" :xs="24" :sm="12" :md="8">
+        <el-card shadow="hover" class="tool-card" @click="openCard(tool)">
           <div class="tool-card-body">
             <el-icon :size="36" :color="tool.color">
               <component :is="tool.icon" />
@@ -74,8 +74,8 @@
     </el-row>
 
     <!-- 系统数据（随代码部署） -->
-    <div class="section-title">系统数据</div>
-    <el-card shadow="never" class="data-pack-card">
+    <div v-if="showDataPack" class="section-title">系统数据</div>
+    <el-card v-if="showDataPack" shadow="never" class="data-pack-card">
       <div class="data-pack-head">
         <div>
           <div class="data-pack-title">导出部署数据包</div>
@@ -114,10 +114,17 @@ defineOptions({
 import { markRaw } from "vue";
 import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar, Key, Setting, Download, Share, Notebook, ShoppingCart } from "@element-plus/icons-vue";
 import { useUserStore } from "@/store/modules/user";
+import { usePermissionStore } from "@/store/modules/permission";
 import SystemDataAPI, { type SystemDataStatusVO } from "@/api/system/data-pack";
+import { isRootRole } from "@/utils/role";
 
 const router = useRouter();
 const userStore = useUserStore();
+const permissionStore = usePermissionStore();
+
+function openCard(tool: ToolCard) {
+  router.push(tool.path);
+}
 
 const currentDate = new Date();
 
@@ -138,15 +145,26 @@ interface ToolCard {
   title: string;
   desc: string;
   path: string;
+  menuId?: string;
   icon: any;
   color: string;
 }
 
-const toolCards = ref<ToolCard[]>([
+function visibleOf(cards: ToolCard[]) {
+  if (isRootRole({ id: userStore.userInfo.roleId, roleName: userStore.userInfo.roleName })
+    || userStore.userInfo.roles?.includes("ROOT")) {
+    return cards;
+  }
+  const granted = permissionStore.grantedPaths || [];
+  return cards.filter((card) => granted.includes(card.path));
+}
+
+const allToolCards: ToolCard[] = [
   {
     title: "轨迹分析",
     desc: "独立页面解析 WeldingTools / FullFunctionWelding 工程，可视化任务树与机械臂轨迹",
     path: "/trace",
+    menuId: "menu_trace",
     icon: markRaw(TrendCharts),
     color: "#4080FF",
   },
@@ -154,6 +172,7 @@ const toolCards = ref<ToolCard[]>([
     title: "文件工具",
     desc: "批量改名、SHA-256 文件去重、正则筛选",
     path: "/tool/files",
+    menuId: "menu_files",
     icon: markRaw(Folder),
     color: "#67C23A",
   },
@@ -161,20 +180,23 @@ const toolCards = ref<ToolCard[]>([
     title: "文档工具",
     desc: "PDF 合并、Markdown 编辑预览、图片引用检查",
     path: "/tool/documents",
+    menuId: "menu_documents",
     icon: markRaw(Document),
     color: "#FF9A2E",
   },
   {
     title: "注册码生成",
     desc: "按公司与名称生成临时注册码，结果写入注册码记录",
-    path: "/tool/regcode",
+    path: "/regcode/generate",
+    menuId: "menu_regcode",
     icon: markRaw(Key),
     color: "#F76560",
   },
   {
     title: "注册码配置",
     desc: "公司、名称、组件、加密方式与后缀，后期在此增删",
-    path: "/tool/regcode-config",
+    path: "/regcode/config",
+    menuId: "menu_regcode_config",
     icon: markRaw(Setting),
     color: "#9B59B6",
   },
@@ -182,16 +204,18 @@ const toolCards = ref<ToolCard[]>([
     title: "思维导图",
     desc: "Markdown 生成导图，可存储并随系统数据包一起部署",
     path: "/tool/mindmap",
+    menuId: "menu_mindmap",
     icon: markRaw(Share),
     color: "#14C9C9",
   },
-]);
+];
 
-const workCards = ref<ToolCard[]>([
+const allWorkCards: ToolCard[] = [
   {
     title: "任务管理",
     desc: "焊接任务派发与进度跟踪（对接后端 SysTasks）",
     path: "/work/tasks",
+    menuId: "menu_tasks",
     icon: markRaw(Tickets),
     color: "#4080FF",
   },
@@ -199,23 +223,26 @@ const workCards = ref<ToolCard[]>([
     title: "螃蟹出货",
     desc: "每日螃蟹出货登记：付款、发货、单号与分享状态",
     path: "/work/crab",
+    menuId: "menu_crab",
     icon: markRaw(ShoppingCart),
     color: "#EA580C",
   },
   {
     title: "注册码记录",
     desc: "注册码生成记录：公司、名称、操作人员与时间",
-    path: "/work/registration",
+    path: "/regcode/records",
+    menuId: "menu_registration",
     icon: markRaw(Postcard),
     color: "#F76560",
   },
-]);
+];
 
-const systemCards = ref<ToolCard[]>([
+const allSystemCards: ToolCard[] = [
   {
     title: "用户管理",
     desc: "系统用户的增删改查（对接后端 SysUsers）",
     path: "/system/user",
+    menuId: "menu_user",
     icon: markRaw(User),
     color: "#67C23A",
   },
@@ -223,6 +250,7 @@ const systemCards = ref<ToolCard[]>([
     title: "角色管理",
     desc: "角色维护与路由权限（ROOT 默认全权限，不可配置）",
     path: "/system/role",
+    menuId: "menu_role",
     icon: markRaw(Avatar),
     color: "#FF9A2E",
   },
@@ -230,10 +258,19 @@ const systemCards = ref<ToolCard[]>([
     title: "操作日志",
     desc: "全站用户操作、关键参数、失败与异常，便于回溯排查",
     path: "/system/oplog",
+    menuId: "menu_oplog",
     icon: markRaw(Notebook),
     color: "#73767A",
   },
-]);
+];
+
+const visibleToolCards = computed(() => visibleOf(allToolCards));
+const visibleWorkCards = computed(() => visibleOf(allWorkCards));
+const visibleSystemCards = computed(() => visibleOf(allSystemCards));
+const showDataPack = computed(() =>
+  isRootRole({ id: userStore.userInfo.roleId, roleName: userStore.userInfo.roleName })
+  || userStore.userInfo.roles?.includes("ROOT")
+);
 
 const exporting = ref(false);
 const packStatus = ref<SystemDataStatusVO>();

@@ -100,6 +100,7 @@ export interface LoginUserVO {
   roleName?: string;
   /** 父用户 ID；有值表示注册码子用户 */
   parentId?: string;
+  menuIds?: string[] | null;
 }
 
 /** 验证码信息 */

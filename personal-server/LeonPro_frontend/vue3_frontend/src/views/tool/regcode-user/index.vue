@@ -10,7 +10,7 @@
             @keyup.enter="handleQuery"
           />
         </el-form-item>
-        <el-form-item label="所属父用户">
+        <el-form-item v-if="isRoot" label="所属父用户">
           <el-select
             v-model="queryParams.parentId"
             placeholder="全部父用户"
@@ -50,7 +50,7 @@
       <el-table v-loading="loading" :data="tableData" border>
         <el-table-column type="index" label="#" width="50" align="center" />
         <el-table-column prop="username" label="用户名" width="140" />
-        <el-table-column label="所属父用户" width="160">
+        <el-table-column v-if="isRoot" label="所属父用户" width="160">
           <template #default="{ row }">
             {{ row.parentNickname || row.parentUsername || "-" }}
           </template>
@@ -105,7 +105,7 @@
       @closed="resetForm"
     >
       <el-form ref="formRef" :model="formData" :rules="rules" label-width="110px">
-        <el-form-item label="所属父用户" prop="parentId">
+        <el-form-item v-if="isRoot" label="所属父用户" prop="parentId">
           <el-select
             v-model="formData.parentId"
             placeholder="选择主用户"
@@ -176,6 +176,8 @@ import RegCodeUserAPI, {
 } from "@/api/tool/regcode-user";
 import RegCodeConfigAPI, { type RegCodeConfigVO } from "@/api/tool/regcode-config";
 import UserAPI, { type UserPageVO } from "@/api/system/user";
+import { useUserStore } from "@/store/modules/user";
+import { isRootRole } from "@/utils/role";
 
 defineOptions({
   name: "RegCodeUser",
@@ -188,6 +190,11 @@ const tableData = ref<RegCodeUserVO[]>([]);
 const total = ref(0);
 const configOptions = ref<RegCodeConfigVO[]>([]);
 const parentOptions = ref<UserPageVO[]>([]);
+const userStore = useUserStore();
+const isRoot = computed(() =>
+  isRootRole({ id: userStore.userInfo.roleId, roleName: userStore.userInfo.roleName })
+);
+const myUserId = computed(() => String(userStore.userInfo.id || userStore.userInfo.userId || ""));
 
 const queryParams = reactive({
   current: 1,
@@ -225,14 +232,25 @@ const rules = {
       trigger: "blur",
     },
   ],
-  parentId: [{ required: true, message: "请选择所属父用户", trigger: "change" }],
+  parentId: [
+    {
+      validator: (_rule: unknown, value: string, callback: (err?: Error) => void) => {
+        if (isRoot.value && !value) {
+          callback(new Error("请选择所属父用户"));
+          return;
+        }
+        callback();
+      },
+      trigger: "change",
+    },
+  ],
   configIds: [{ required: true, type: "array", min: 1, message: "请选择可用配置", trigger: "change" }],
   generateLimit: [{ required: true, message: "请设置可生成次数", trigger: "change" }],
 };
 
 function emptyForm(): RegCodeUserForm {
   return {
-    parentId: "",
+    parentId: isRoot.value ? "" : myUserId.value,
     username: "",
     password: "",
     nickname: "",
@@ -261,7 +279,9 @@ function loadParents() {
 }
 
 function refreshOptions() {
-  loadParents();
+  if (isRoot.value) {
+    loadParents();
+  }
   loadConfigs();
 }
 
@@ -308,7 +328,7 @@ function openDialog(row?: RegCodeUserVO) {
     Object.assign(formData, {
       id: row.id,
       userId: row.userId,
-      parentId: row.parentId,
+      parentId: isRoot.value ? row.parentId || "" : myUserId.value,
       username: row.username,
       nickname: row.nickname,
       email: row.email,
@@ -321,6 +341,7 @@ function openDialog(row?: RegCodeUserVO) {
     });
   } else {
     dialog.title = "新增注册码用户";
+    Object.assign(formData, emptyForm());
   }
   dialog.visible = true;
 }
@@ -334,7 +355,11 @@ function handleSubmit() {
   formRef.value?.validate((valid: boolean) => {
     if (!valid) return;
     submitLoading.value = true;
-    const req = formData.id ? RegCodeUserAPI.update({ ...formData }) : RegCodeUserAPI.save({ ...formData });
+    const payload = {
+      ...formData,
+      parentId: isRoot.value ? formData.parentId : myUserId.value,
+    };
+    const req = formData.id ? RegCodeUserAPI.update(payload) : RegCodeUserAPI.save(payload);
     req
       .then((msg) => {
         ElMessage.success(typeof msg === "string" && msg ? msg : "保存成功");

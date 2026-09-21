@@ -2,15 +2,13 @@
 export const ROOT_ROLE_ID = "role_root";
 export const ROOT_ROLE_NAME = "ROOT";
 export const REGCODE_CLIENT_ROLE_ID = "role_regcode_client";
-export const WEB_REGCODE_LOGIN_BLOCKED = "注册码用户请使用手机端登录，无法访问 Web 管理端";
+export const WEB_SUBUSER_LOGIN_BLOCKED = "子用户请使用手机端登录，仅可生成注册码";
+export const PHONE_LOGIN_PATH = "/h5/#/pages/login/login";
 
-/** 注册码子用户：仅允许登录手机端生成页，不能进入 Web 管理端 */
+/** 模块子账号：挂了父用户，不走 Web 登录 */
 export function isRegCodeClientUser(user?: { roleId?: string; parentId?: string } | null) {
   if (!user) {
     return false;
-  }
-  if (user.roleId === REGCODE_CLIENT_ROLE_ID) {
-    return true;
   }
   return !!(user.parentId && String(user.parentId).trim());
 }

@@ -48,8 +48,17 @@
           </template>
         </el-table-column>
         <el-table-column prop="createTime" label="创建时间" width="160" align="center" />
-        <el-table-column label="操作" width="140" align="center" fixed="right">
+        <el-table-column label="操作" width="220" align="center" fixed="right">
           <template #default="{ row }">
+            <el-button
+              v-if="(row.childCount || 0) > 0"
+              type="primary"
+              link
+              size="small"
+              @click="openChildren(row)"
+            >
+              查看下级用户
+            </el-button>
             <el-button type="primary" link size="small" @click="openDialog(row)">编辑</el-button>
             <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
           </template>
@@ -91,7 +100,7 @@
         <el-form-item label="邮箱" prop="email">
           <el-input v-model="formData.email" placeholder="邮箱" />
         </el-form-item>
-        <el-form-item label="角色" prop="roleId">
+        <el-form-item v-if="!formData.parentId" label="角色" prop="roleId">
           <el-select v-model="formData.roleId" placeholder="请选择角色" clearable style="width: 100%">
             <el-option
               v-for="role in roleOptions"
@@ -107,12 +116,62 @@
         <el-button type="primary" :loading="submitLoading" @click="handleSubmit">确定</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog
+      v-model="childrenDialog.visible"
+      :title="childrenDialog.title"
+      width="860px"
+      destroy-on-close
+    >
+      <el-form :inline="true" :model="childrenQuery">
+        <el-form-item label="用户名">
+          <el-input
+            v-model="childrenQuery.username"
+            placeholder="下级用户名"
+            clearable
+            @keyup.enter="loadChildren"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="loadChildren">查询</el-button>
+          <el-button type="primary" @click="openChildDialog()">新增下级</el-button>
+        </el-form-item>
+      </el-form>
+      <el-table v-loading="childrenLoading" :data="childrenList" border>
+        <el-table-column prop="username" label="用户名" width="140" />
+        <el-table-column prop="nickname" label="昵称" width="140">
+          <template #default="{ row }">{{ row.nickname || "-" }}</template>
+        </el-table-column>
+        <el-table-column prop="email" label="邮箱" min-width="180" show-overflow-tooltip />
+        <el-table-column label="角色" width="140" align="center">
+          <template #default="{ row }">
+            <el-tag v-if="getRoleName(row.roleId)" type="info">{{ getRoleName(row.roleId) }}</el-tag>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="createTime" label="创建时间" width="160" align="center" />
+        <el-table-column label="操作" width="140" align="center" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link size="small" @click="openChildDialog(row)">编辑</el-button>
+            <el-button type="danger" link size="small" @click="handleDelete(row, true)">删除</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <Pagination
+        v-if="childrenTotal > 0"
+        v-model:page="childrenQuery.current"
+        v-model:limit="childrenQuery.size"
+        :total="childrenTotal"
+        @pagination="loadChildren"
+      />
+    </el-dialog>
   </div>
 </template>
 
 <script setup lang="ts">
 import UserAPI, { type UserPageVO, type UserForm } from "@/api/system/user";
 import RoleAPI, { type RolePageVO } from "@/api/system/role";
+import { REGCODE_CLIENT_ROLE_ID } from "@/utils/role";
 
 defineOptions({
   name: "User",
@@ -143,6 +202,22 @@ const formData = reactive<UserForm>({
   email: "",
   nickname: "",
   roleId: undefined,
+  parentId: undefined,
+});
+
+const childrenDialog = reactive({
+  visible: false,
+  title: "",
+  parent: null as UserPageVO | null,
+});
+const childrenLoading = ref(false);
+const childrenList = ref<UserPageVO[]>([]);
+const childrenTotal = ref(0);
+const childrenQuery = reactive({
+  current: 1,
+  size: 10,
+  username: "",
+  parentId: "",
 });
 
 const rules = {
@@ -167,7 +242,22 @@ const rules = {
     },
   ],
   email: [{ type: "email", message: "邮箱格式不正确", trigger: "blur" }],
-  roleId: [{ required: true, message: "请选择角色", trigger: "change" }],
+  roleId: [
+    {
+      validator: (_rule: unknown, value: string, callback: (err?: Error) => void) => {
+        if (formData.parentId) {
+          callback();
+          return;
+        }
+        if (!value) {
+          callback(new Error("请选择角色"));
+          return;
+        }
+        callback();
+      },
+      trigger: "change",
+    },
+  ],
 };
 
 /** 加载角色列表（供下拉选择） */
@@ -180,6 +270,7 @@ function loadRoles() {
 /** 根据角色ID返回角色名称 */
 function getRoleName(roleId?: string) {
   if (!roleId) return "";
+  if (roleId === REGCODE_CLIENT_ROLE_ID) return "注册码客户";
   const role = roleOptions.value.find((item) => item.id === roleId);
   return role?.roleName || "";
 }
@@ -212,22 +303,59 @@ function resetQuery() {
   handleQuery();
 }
 
-function openDialog(row?: UserPageVO) {
+function openDialog(row?: UserPageVO, parentId?: string) {
   loadRoles();
   if (row) {
-    dialog.title = "编辑用户";
+    dialog.title = parentId || row.parentId ? "编辑下级用户" : "编辑用户";
     Object.assign(formData, {
       id: row.id,
       username: row.username,
       nickname: row.nickname,
       email: row.email,
       roleId: row.roleId || undefined,
+      parentId: parentId || row.parentId,
       password: "",
     });
   } else {
-    dialog.title = "新增用户";
+    dialog.title = parentId ? "新增下级用户" : "新增用户";
+    formData.parentId = parentId;
+    if (parentId) {
+      formData.roleId = REGCODE_CLIENT_ROLE_ID;
+    }
   }
   dialog.visible = true;
+}
+
+function openChildDialog(row?: UserPageVO) {
+  const parentId = childrenDialog.parent?.id;
+  if (!parentId) return;
+  openDialog(row, parentId);
+}
+
+function openChildren(row: UserPageVO) {
+  childrenDialog.parent = row;
+  childrenDialog.title = `下级用户（${row.nickname || row.username}）`;
+  childrenQuery.current = 1;
+  childrenQuery.username = "";
+  childrenQuery.parentId = row.id || "";
+  childrenDialog.visible = true;
+  loadChildren();
+}
+
+function loadChildren() {
+  if (!childrenQuery.parentId) return;
+  childrenLoading.value = true;
+  UserAPI.getPage(childrenQuery)
+    .then((data) => {
+      childrenList.value = data.records || [];
+      childrenTotal.value = data.total || 0;
+    })
+    .catch((error) => {
+      console.error(error);
+    })
+    .finally(() => {
+      childrenLoading.value = false;
+    });
 }
 
 function resetForm() {
@@ -238,6 +366,7 @@ function resetForm() {
   formData.email = "";
   formData.nickname = "";
   formData.roleId = undefined;
+  formData.parentId = undefined;
 }
 
 function handleSubmit() {
@@ -249,6 +378,9 @@ function handleSubmit() {
         ElMessage.success(typeof msg === "string" && msg ? msg : "保存成功");
         dialog.visible = false;
         loadUsers();
+        if (childrenDialog.visible) {
+          loadChildren();
+        }
       })
       .catch((error) => {
         console.error(error);
@@ -259,7 +391,7 @@ function handleSubmit() {
   });
 }
 
-function handleDelete(row: UserPageVO) {
+function handleDelete(row: UserPageVO, fromChildren = false) {
   if (!row.id) return;
   ElMessageBox.confirm(`确认删除用户「${row.username}」吗？`, "警告", {
     confirmButtonText: "确定",
@@ -270,6 +402,9 @@ function handleDelete(row: UserPageVO) {
       UserAPI.deleteByIds([row.id!]).then((msg) => {
         ElMessage.success(typeof msg === "string" && msg ? msg : "删除成功");
         loadUsers();
+        if (fromChildren || childrenDialog.visible) {
+          loadChildren();
+        }
       });
     })
     .catch(() => {});

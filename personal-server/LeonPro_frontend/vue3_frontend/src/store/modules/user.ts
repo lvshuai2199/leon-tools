@@ -5,7 +5,7 @@ import AuthAPI, { type LoginFormData } from "@/api/auth";
 import UserAPI, { type UserInfo } from "@/api/system/user";
 
 import { setAccessToken, clearToken } from "@/utils/auth";
-import { isRegCodeClientUser, resolveLoginRoles, WEB_REGCODE_LOGIN_BLOCKED } from "@/utils/role";
+import { isRegCodeClientUser, resolveLoginRoles, WEB_SUBUSER_LOGIN_BLOCKED } from "@/utils/role";
 
 export const useUserStore = defineStore("user", () => {
   const userInfo = useStorage<UserInfo>("userInfo", {} as UserInfo);
@@ -25,7 +25,7 @@ export const useUserStore = defineStore("user", () => {
             return;
           }
           if (isRegCodeClientUser(data)) {
-            reject(WEB_REGCODE_LOGIN_BLOCKED);
+            reject(WEB_SUBUSER_LOGIN_BLOCKED);
             return;
           }
           // LeonPro_backend 未启用 JWT，写入会话标记维持登录态

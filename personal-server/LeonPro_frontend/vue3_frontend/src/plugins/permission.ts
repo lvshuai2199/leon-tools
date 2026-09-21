@@ -4,7 +4,7 @@ import NProgress from "@/utils/nprogress";
 import { getAccessToken } from "@/utils/auth";
 import router from "@/router";
 import { usePermissionStore, useUserStore } from "@/store";
-import { isRegCodeClientUser, WEB_REGCODE_LOGIN_BLOCKED } from "@/utils/role";
+import { isRegCodeClientUser, PHONE_LOGIN_PATH, WEB_SUBUSER_LOGIN_BLOCKED } from "@/utils/role";
 
 const PUBLIC_PATHS = new Set(["/login", "/trace", "/tool/trace"]);
 
@@ -23,9 +23,10 @@ export function setupPermission() {
       await userStore.clearUserData();
       isLogin = false;
       if (to.path !== "/login" && !isPublicPath(to.path)) {
-        ElMessage.warning(WEB_REGCODE_LOGIN_BLOCKED);
+        ElMessage.warning(WEB_SUBUSER_LOGIN_BLOCKED);
         NProgress.done();
-        return { path: "/login" };
+        window.location.replace(PHONE_LOGIN_PATH);
+        return false;
       }
     }
     if (to.path === "/login") {

@@ -70,6 +70,7 @@
         >
           登 录
         </el-button>
+        <a class="phone-login-link" href="/h5/#/pages/login/login">注册码客户请从手机端登录</a>
       </el-form>
     </div>
   </div>
@@ -85,6 +86,7 @@ import type { FormInstance } from "element-plus";
 import { ThemeEnum } from "@/enums/ThemeEnum";
 
 import { useSettingsStore, useUserStore } from "@/store";
+import { PHONE_LOGIN_PATH } from "@/utils/role";
 
 const userStore = useUserStore();
 const settingsStore = useSettingsStore();
@@ -139,8 +141,14 @@ async function handleLoginSubmit() {
           router.push({ path: path, query: queryParams });
         })
         .catch((error) => {
+          const msg = typeof error === "string" ? error : String((error as any)?.message || error || "");
+          if (msg.includes("手机端")) {
+            ElMessage.warning(msg);
+            window.location.replace(PHONE_LOGIN_PATH);
+            return;
+          }
           console.error("登录失败", error);
-          ElMessage.error(typeof error === "string" ? error : "登录失败，请重试");
+          ElMessage.error(msg || "登录失败，请重试");
         })
         .finally(() => {
           loading.value = false;
@@ -227,6 +235,15 @@ function checkCapslock(event: KeyboardEvent) {
       justify-content: center;
       padding: 0 0 20px;
       text-align: center;
+    }
+
+    .phone-login-link {
+      display: block;
+      margin-top: 14px;
+      font-size: 13px;
+      color: var(--el-color-primary);
+      text-align: center;
+      text-decoration: none;
     }
 
     .input-wrapper {

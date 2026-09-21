@@ -11,10 +11,9 @@ const Layout = () => import("@/layout/index.vue");
 export const usePermissionStore = defineStore("permission", () => {
   // 储所有路由，包括静态路由和动态路由
   const routes = ref<RouteRecordRaw[]>([]);
-  // 混合模式左侧菜单路由
   const mixedLayoutLeftRoutes = ref<RouteRecordRaw[]>([]);
-  // 路由是否加载完成
   const isRoutesLoaded = ref(false);
+  const grantedPaths = ref<string[]>([]);
 
   /**
    * 获取后台动态路由数据，解析并注册到全局路由
@@ -29,6 +28,7 @@ export const usePermissionStore = defineStore("permission", () => {
         .then((data) => {
           const dynamicRoutes = parseDynamicRoutes(data);
           routes.value = [...constantRoutes, ...dynamicRoutes];
+          grantedPaths.value = collectPaths(dynamicRoutes);
           isRoutesLoaded.value = true;
           resolve(dynamicRoutes);
         })
@@ -36,6 +36,7 @@ export const usePermissionStore = defineStore("permission", () => {
           console.error(error);
           // 角色未配菜单或接口失败时仍保持登录，避免被踢回登录页
           routes.value = [...constantRoutes];
+          grantedPaths.value = [];
           isRoutesLoaded.value = true;
           resolve([]);
         });
@@ -68,12 +69,14 @@ export const usePermissionStore = defineStore("permission", () => {
     // 清空本地存储的路由和菜单数据
     routes.value = [];
     mixedLayoutLeftRoutes.value = [];
+    grantedPaths.value = [];
     isRoutesLoaded.value = false;
   };
 
   return {
     routes,
     mixedLayoutLeftRoutes,
+    grantedPaths,
     isRoutesLoaded,
     generateRoutes,
     setMixedLayoutLeftRoutes,
@@ -114,6 +117,24 @@ const parseDynamicRoutes = (rawRoutes: RouteVO[], isRoot = true): RouteRecordRaw
 
   return parsedRoutes;
 };
+
+function collectPaths(routes: RouteRecordRaw[], parent = ""): string[] {
+  const paths: string[] = [];
+  routes.forEach((route) => {
+    const raw = String(route.path || "").trim();
+    const joined = raw.startsWith("/")
+      ? raw
+      : `${parent.replace(/\/$/, "")}/${raw}`.replace(/\/+/g, "/");
+    const path = joined.startsWith("/") ? joined : `/${joined}`;
+    if (path && path !== "/") {
+      paths.push(path);
+    }
+    if (route.children?.length) {
+      paths.push(...collectPaths(route.children, path));
+    }
+  });
+  return paths;
+}
 
 function ensureAbsolutePath(path: unknown): string {
   const raw = String(path ?? "").trim();
