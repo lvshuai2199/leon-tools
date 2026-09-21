@@ -13,7 +13,14 @@
       <label class="field"><span>地址</span><textarea v-model="form.address" class="area" /></label>
       <label class="field"><span>规格</span><input v-model="form.spec" placeholder="如 3.5母" /></label>
       <label class="field"><span>数量</span><input v-model.number="form.quantity" inputmode="numeric" placeholder="只" /></label>
-      <label class="field"><span>发货单号</span><input v-model="form.trackingNo" placeholder="快递单号" /></label>
+      <label class="field">
+        <span>发货单号</span>
+        <div class="scan-row">
+          <input v-model="form.trackingNo" placeholder="快递单号，可扫码或选图" />
+          <button class="scan" type="button" @click="scanTracking">扫码</button>
+          <button class="scan ghost" type="button" @click="pickTrackingImage">图片</button>
+        </div>
+      </label>
       <div class="toggles">
         <button class="chip" :class="{ on: form.paid }" type="button" @click="form.paid = form.paid ? 0 : 1">
           {{ form.paid ? "已付款" : "未付款" }}
@@ -35,6 +42,7 @@ import api from "@/apiUtils/index.js";
 import { canUseCrab, getUserInfo, homePath } from "@/utils/auth.js";
 import { shareUrl, todayStr } from "@/utils/crab-parse.js";
 import { confirmAction, copyText, showToast } from "@/utils/ui.js";
+import { pickTrackingNoFromImage, scanTrackingNo } from "@/utils/barcode-scan.js";
 
 function emptyForm() {
   return {
@@ -104,6 +112,36 @@ export default {
         this.goBack();
       } catch (error) {
         console.error(error);
+      }
+    },
+    applyTracking(code) {
+      if (!code) {
+        showToast("没有识别到单号");
+        return;
+      }
+      this.form.trackingNo = code;
+      if (!this.form.shipped) this.form.shipped = 1;
+      showToast("已填入单号");
+    },
+    async scanTracking() {
+      try {
+        const code = await scanTrackingNo();
+        if (!code) return;
+        this.applyTracking(code);
+      } catch (error) {
+        if (error && error.name === "AbortError") return;
+        console.error(error);
+        showToast("扫码失败，可改用图片识别");
+      }
+    },
+    async pickTrackingImage() {
+      try {
+        showToast("识别中...");
+        const code = await pickTrackingNoFromImage();
+        this.applyTracking(code);
+      } catch (error) {
+        console.error(error);
+        showToast("图片识别失败");
       }
     },
     async share() {
@@ -194,6 +232,30 @@ export default {
 .area {
   min-height: 72px;
   height: auto;
+}
+
+.scan-row {
+  display: flex;
+  gap: 8px;
+}
+
+.scan-row input {
+  flex: 1;
+}
+
+.scan {
+  width: 56px;
+  flex: none;
+  height: 40px;
+  border: none;
+  border-radius: 8px;
+  color: #fff;
+  background: #2563eb;
+  font-size: 13px;
+}
+
+.scan.ghost {
+  background: #1f2937;
 }
 
 .toggles {

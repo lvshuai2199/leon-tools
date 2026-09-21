@@ -2,12 +2,28 @@
   <div class="app-container">
     <el-card shadow="never" class="mb-4">
       <el-form :inline="true" :model="queryParams">
-        <el-form-item label="出货日期">
+        <el-form-item label="日期">
+          <el-radio-group v-model="dateMode" class="mr-2" @change="onDateModeChange">
+            <el-radio-button value="day">单日</el-radio-button>
+            <el-radio-button value="range">区间</el-radio-button>
+          </el-radio-group>
+        </el-form-item>
+        <el-form-item v-if="dateMode === 'day'" label="出货日期">
           <el-date-picker
             v-model="queryParams.shipDate"
             type="date"
             value-format="YYYY-MM-DD"
             placeholder="全部日期"
+            clearable
+          />
+        </el-form-item>
+        <el-form-item v-else label="出货区间">
+          <el-date-picker
+            v-model="shipDateRange"
+            type="daterange"
+            value-format="YYYY-MM-DD"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
             clearable
           />
         </el-form-item>
@@ -99,7 +115,12 @@
           <el-input-number v-model="formData.quantity" :min="0" />
         </el-form-item>
         <el-form-item label="发货单号">
-          <el-input v-model="formData.trackingNo" />
+          <el-input v-model="formData.trackingNo" placeholder="可手动输入、扫码或选图">
+            <template #append>
+              <el-button @click="scanTracking">扫码</el-button>
+              <el-button @click="pickTrackingImage">图片</el-button>
+            </template>
+          </el-input>
         </el-form-item>
         <el-form-item label="状态">
           <el-checkbox :model-value="!!formData.paid" @change="(v) => (formData.paid = v ? 1 : 0)">已付款</el-checkbox>
@@ -135,6 +156,7 @@ import CrabShipmentAPI, {
   type CrabShipmentForm,
   type CrabShipmentVO,
 } from "@/api/work/crab";
+import { pickTrackingNoFromImage, scanTrackingNo } from "@/utils/barcode-scan";
 
 defineOptions({
   name: "CrabShipment",
@@ -153,6 +175,9 @@ const submitLoading = ref(false);
 const tableData = ref<CrabShipmentVO[]>([]);
 const total = ref(0);
 const formRef = ref();
+
+const dateMode = ref<"day" | "range">("day");
+const shipDateRange = ref<[string, string] | "">([today(), today()]);
 
 const queryParams = reactive({
   current: 1,
@@ -186,9 +211,26 @@ const paste = reactive({
   saving: false,
 });
 
+function listQuery() {
+  if (dateMode.value === "range") {
+    const range = Array.isArray(shipDateRange.value) ? shipDateRange.value : [];
+    return {
+      ...queryParams,
+      shipDate: undefined,
+      shipDateStart: range[0],
+      shipDateEnd: range[1],
+    };
+  }
+  return {
+    ...queryParams,
+    shipDateStart: undefined,
+    shipDateEnd: undefined,
+  };
+}
+
 function loadData() {
   loading.value = true;
-  CrabShipmentAPI.getPage(queryParams)
+  CrabShipmentAPI.getPage(listQuery())
     .then((data) => {
       tableData.value = data.records || [];
       total.value = data.total || 0;
@@ -205,10 +247,28 @@ function handleQuery() {
 }
 
 function resetQuery() {
+  dateMode.value = "day";
   queryParams.customerName = "";
   queryParams.phone = "";
   queryParams.shipDate = today();
+  shipDateRange.value = [today(), today()];
   handleQuery();
+}
+
+function onDateModeChange() {
+  if (dateMode.value === "range") {
+    const day = queryParams.shipDate || today();
+    shipDateRange.value = [day, day];
+  } else if (Array.isArray(shipDateRange.value) && shipDateRange.value[0]) {
+    queryParams.shipDate = shipDateRange.value[0];
+  }
+}
+
+function defaultShipDate() {
+  if (dateMode.value === "range" && Array.isArray(shipDateRange.value)) {
+    return shipDateRange.value[1] || shipDateRange.value[0] || today();
+  }
+  return queryParams.shipDate || today();
 }
 
 function openDialog(row?: CrabShipmentVO) {
@@ -243,7 +303,40 @@ function resetForm() {
   formData.trackingNo = "";
   formData.paid = 0;
   formData.shipped = 0;
-  formData.shipDate = queryParams.shipDate || today();
+  formData.shipDate = defaultShipDate();
+}
+
+function applyTracking(code?: string) {
+  if (!code) {
+    ElMessage.warning("没有识别到单号");
+    return;
+  }
+  formData.trackingNo = code;
+  if (!formData.shipped) formData.shipped = 1;
+  ElMessage.success("已填入单号");
+}
+
+function scanTracking() {
+  scanTrackingNo()
+    .then((code) => {
+      if (!code) return;
+      applyTracking(code);
+    })
+    .catch((error) => {
+      if (error && error.name === "AbortError") return;
+      console.error(error);
+      ElMessage.error("扫码失败，可改用图片识别");
+    });
+}
+
+function pickTrackingImage() {
+  ElMessage.info("正在识别图片...");
+  pickTrackingNoFromImage()
+    .then((code) => applyTracking(code))
+    .catch((error) => {
+      console.error(error);
+      ElMessage.error("图片识别失败");
+    });
 }
 
 function handleSubmit() {
@@ -313,7 +406,7 @@ function runParse() {
 
 function saveParsed() {
   paste.saving = true;
-  CrabShipmentAPI.batchSave({ shipDate: queryParams.shipDate || today(), records: paste.rows })
+  CrabShipmentAPI.batchSave({ shipDate: defaultShipDate(), records: paste.rows })
     .then(() => {
       ElMessage.success("已入库");
       paste.visible = false;

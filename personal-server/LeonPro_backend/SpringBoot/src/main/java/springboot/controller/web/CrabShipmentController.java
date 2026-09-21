@@ -8,6 +8,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 import springboot.DTO.CrabShipmentBatchRequest;
 import springboot.DTO.CrabShipmentParseRequest;
@@ -56,16 +57,18 @@ public class CrabShipmentController {
     }
 
     @GetMapping("crabShipment/getAll")
-    public ApiResponse selectAll(Page<CrabShipment> page, CrabShipment query, HttpServletRequest request) {
+    public ApiResponse selectAll(Page<CrabShipment> page,
+                                 CrabShipment query,
+                                 @RequestParam(value = "shipDateStart", required = false) String shipDateStart,
+                                 @RequestParam(value = "shipDateEnd", required = false) String shipDateEnd,
+                                 HttpServletRequest request) {
         ApiResponse deny = denyUnlessCrab(request);
         if (deny != null) {
             return deny;
         }
         LambdaQueryWrapper<CrabShipment> wrapper = new LambdaQueryWrapper<>();
+        applyShipDateFilter(wrapper, query == null ? null : query.getShipDate(), shipDateStart, shipDateEnd);
         if (query != null) {
-            if (notBlank(query.getShipDate())) {
-                wrapper.eq(CrabShipment::getShipDate, query.getShipDate().trim());
-            }
             if (notBlank(query.getCustomerName())) {
                 wrapper.like(CrabShipment::getCustomerName, query.getCustomerName().trim());
             }
@@ -334,6 +337,43 @@ public class CrabShipmentController {
             operator.id = userId;
         }
         return operator;
+    }
+
+    private static void applyShipDateFilter(LambdaQueryWrapper<CrabShipment> wrapper,
+                                           String shipDate,
+                                           String shipDateStart,
+                                           String shipDateEnd) {
+        String from = optionalDate(shipDateStart);
+        String to = optionalDate(shipDateEnd);
+        if (from != null || to != null) {
+            if (from != null && to != null && from.compareTo(to) > 0) {
+                String swap = from;
+                from = to;
+                to = swap;
+            }
+            if (from != null) {
+                wrapper.ge(CrabShipment::getShipDate, from);
+            }
+            if (to != null) {
+                wrapper.le(CrabShipment::getShipDate, to);
+            }
+            return;
+        }
+        String day = optionalDate(shipDate);
+        if (day != null) {
+            wrapper.eq(CrabShipment::getShipDate, day);
+        }
+    }
+
+    private static String optionalDate(String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String t = raw.trim();
+        if (t.length() >= 10) {
+            t = t.substring(0, 10);
+        }
+        return t.matches("\\d{4}-\\d{2}-\\d{2}") ? t : null;
     }
 
     private static String normalizeDate(String raw) {

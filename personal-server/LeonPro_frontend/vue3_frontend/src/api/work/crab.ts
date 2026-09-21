@@ -10,7 +10,9 @@ const CrabShipmentAPI = {
       params: {
         current: queryParams.current ?? 1,
         size: queryParams.size ?? 10,
-        shipDate: queryParams.shipDate || undefined,
+        shipDate: queryParams.shipDateStart || queryParams.shipDateEnd ? undefined : queryParams.shipDate || undefined,
+        shipDateStart: queryParams.shipDateStart || undefined,
+        shipDateEnd: queryParams.shipDateEnd || undefined,
         customerName: queryParams.customerName || undefined,
         phone: queryParams.phone || undefined,
         paid: queryParams.paid,
@@ -86,6 +88,8 @@ export function crabShareUrl(item: Pick<CrabShipmentVO, "publicId" | "sharePath"
 
 export interface CrabShipmentPageQuery extends PageQuery {
   shipDate?: string;
+  shipDateStart?: string;
+  shipDateEnd?: string;
   customerName?: string;
   phone?: string;
   paid?: number;
