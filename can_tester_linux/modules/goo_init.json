@@ -1,0 +1,55 @@
+{
+  "name": "固高 GOO",
+  "description": "Gaogo/GOO 上电初始化样例（说明书/插件 FullFunctionWelding CanBusService.sendInitialFrames：TX 0x1FD07063 EXT，F0–F5 共 6 帧）。仅为默认可编辑表格样例，非硬编码逻辑。",
+  "default_interval_ms": 50,
+  "rows": [
+    {
+      "enabled": true,
+      "id": "0x1FD07063",
+      "extended": true,
+      "data": "F0 00 00 00 00 00 00 00",
+      "interval_ms": 50,
+      "note": "映射设定 F0"
+    },
+    {
+      "enabled": true,
+      "id": "0x1FD07063",
+      "extended": true,
+      "data": "F1 02 00 00 00 00 00 00",
+      "interval_ms": 50,
+      "note": "F1"
+    },
+    {
+      "enabled": true,
+      "id": "0x1FD07063",
+      "extended": true,
+      "data": "F2 03 00 00 00 00 00 00",
+      "interval_ms": 50,
+      "note": "F2"
+    },
+    {
+      "enabled": true,
+      "id": "0x1FD07063",
+      "extended": true,
+      "data": "F3 04 00 00 00 00 00 00",
+      "interval_ms": 50,
+      "note": "F3"
+    },
+    {
+      "enabled": true,
+      "id": "0x1FD07063",
+      "extended": true,
+      "data": "F4 05 00 00 00 00 00 00",
+      "interval_ms": 50,
+      "note": "F4"
+    },
+    {
+      "enabled": true,
+      "id": "0x1FD07063",
+      "extended": true,
+      "data": "F5 06 00 00 00 00 00 00",
+      "interval_ms": 50,
+      "note": "F5"
+    }
+  ]
+}

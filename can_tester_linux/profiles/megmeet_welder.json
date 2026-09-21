@@ -1,0 +1,119 @@
+{
+  "name": "Megmeet 焊机应答",
+  "description": "模拟焊机应答：匹配插件 TX 0x1FD07063，动态回帧 0x1FD08063；信号勾选与 megmeet_can_responder.py 一致（就绪/故障/寻位成功/起弧成功/电弧异常/其他异常/粘丝/A/V/错）。",
+  "engine": "megmeet",
+  "default_delay_ms": 0,
+  "state": {
+    "ready": true,
+    "error": false,
+    "touch_ok": false,
+    "arc_ok": false,
+    "current": 180,
+    "voltage": 22.5,
+    "errcode": 0,
+    "auto_reply": true,
+    "auto_arc": true
+  },
+  "signals": [
+    {
+      "name": "就绪",
+      "note": "焊机就绪（对应 py「就绪」）",
+      "kind": "bit",
+      "byte": 0,
+      "bit": 0,
+      "default": true,
+      "key": "ready"
+    },
+    {
+      "name": "故障",
+      "note": "焊机故障（对应 py「故障」）",
+      "kind": "bit",
+      "byte": 0,
+      "bit": 1,
+      "default": false,
+      "key": "error"
+    },
+    {
+      "name": "寻位成功",
+      "note": "寻位/碰触成功（对应 py「寻位成功」）",
+      "kind": "bit",
+      "byte": 0,
+      "bit": 2,
+      "default": false,
+      "key": "touch_ok"
+    },
+    {
+      "name": "起弧成功",
+      "note": "起弧成功（对应 py「起弧成功」；起焊沿可自动勾）",
+      "kind": "bit",
+      "byte": 1,
+      "bit": 0,
+      "default": false,
+      "key": "arc_ok"
+    },
+    {
+      "name": "电弧异常",
+      "note": "电弧异常（对应 py「电弧异常」）",
+      "kind": "bit",
+      "byte": 1,
+      "bit": 1,
+      "default": false,
+      "key": "arc_ex"
+    },
+    {
+      "name": "其他异常",
+      "note": "其他异常（对应 py「其他异常」）",
+      "kind": "bit",
+      "byte": 1,
+      "bit": 2,
+      "default": false,
+      "key": "other_ex"
+    },
+    {
+      "name": "粘丝",
+      "note": "粘丝（对应 py「粘丝」）",
+      "kind": "bit",
+      "byte": 1,
+      "bit": 3,
+      "default": false,
+      "key": "stick"
+    },
+    {
+      "name": "电流 A",
+      "note": "焊接电流 A（对应 py「A」）",
+      "kind": "u16",
+      "byte": 2,
+      "scale": 1.0,
+      "default": 180,
+      "key": "current"
+    },
+    {
+      "name": "电压 V",
+      "note": "焊接电压 V（对应 py「V」，内部×10）",
+      "kind": "u16",
+      "byte": 4,
+      "scale": 0.1,
+      "default": 22.5,
+      "key": "voltage"
+    },
+    {
+      "name": "错",
+      "note": "错误码（对应 py「错」）",
+      "kind": "u8",
+      "byte": 6,
+      "scale": 1.0,
+      "default": 0,
+      "key": "errcode"
+    }
+  ],
+  "rows": [
+    {
+      "enabled": true,
+      "match_id": "0x1FD07063",
+      "extended": true,
+      "reply": "01 00 00 B4 00 E1 00 00",
+      "delay_ms": 0,
+      "note": "插件轮询 → 动态焊机回帧（HEX 为默认快照，运行时由 engine=megmeet 覆盖）"
+    }
+  ]
+}
