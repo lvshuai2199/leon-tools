@@ -47,22 +47,27 @@ public class RegCodeUserController {
 
     @GetMapping("getAll")
     public ApiResponse selectAll(Page<RegCodeUser> page, String username, String parentId, HttpServletRequest request) {
-        String err = regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        String err = regCodeAccessService.requireManager(request);
         if (err != null) {
             return ApiResponse.failure(err);
         }
+        SysUsers operator = regCodeAccessService.currentUser(request);
+        if (operator == null || operator.getId() == null || operator.getId().isBlank()) {
+            return ApiResponse.failure("请先登录");
+        }
+        boolean root = regCodeAccessService.isRootUser(operator);
+        String scopedParentId = root ? parentId : operator.getId();
 
         LambdaQueryWrapper<RegCodeUser> wrapper = new LambdaQueryWrapper<>();
-        List<String> userIds = null;
-        if ((username != null && !username.isBlank()) || (parentId != null && !parentId.isBlank())) {
+        if ((username != null && !username.isBlank()) || (scopedParentId != null && !scopedParentId.isBlank())) {
             LambdaQueryWrapper<SysUsers> userWrapper = new LambdaQueryWrapper<>();
             if (username != null && !username.isBlank()) {
                 userWrapper.like(SysUsers::getUsername, username.trim());
             }
-            if (parentId != null && !parentId.isBlank()) {
-                userWrapper.eq(SysUsers::getParentId, parentId.trim());
+            if (scopedParentId != null && !scopedParentId.isBlank()) {
+                userWrapper.eq(SysUsers::getParentId, scopedParentId.trim());
             }
-            userIds = sysUsersService.list(userWrapper).stream()
+            List<String> userIds = sysUsersService.list(userWrapper).stream()
                     .map(SysUsers::getId)
                     .filter(Objects::nonNull)
                     .toList();
@@ -107,10 +112,11 @@ public class RegCodeUserController {
 
     @PostMapping("save")
     public ApiResponse save(@RequestBody RegCodeUserForm form, HttpServletRequest request) {
-        String err = regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        String err = regCodeAccessService.requireManager(request);
         if (err != null) {
             return ApiResponse.failure(err);
         }
+        bindParent(form, request);
         err = validateForm(form, true);
         if (err != null) {
             return ApiResponse.failure(err);
@@ -146,13 +152,14 @@ public class RegCodeUserController {
 
     @PostMapping("update")
     public ApiResponse update(@RequestBody RegCodeUserForm form, HttpServletRequest request) {
-        String err = regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        String err = regCodeAccessService.requireManager(request);
         if (err != null) {
             return ApiResponse.failure(err);
         }
         if (form.getId() == null || form.getId().isBlank()) {
             return ApiResponse.failure("缺少主键");
         }
+        bindParent(form, request);
         err = validateForm(form, false);
         if (err != null) {
             return ApiResponse.failure(err);
@@ -163,6 +170,11 @@ public class RegCodeUserController {
             return ApiResponse.failure("注册码用户不存在");
         }
         form.setUserId(entity.getUserId());
+        SysUsers existing = this.sysUsersService.getById(entity.getUserId());
+        String ownErr = denyIfNotOwnChild(request, existing);
+        if (ownErr != null) {
+            return ApiResponse.failure(ownErr);
+        }
         SysUsers user = resolveOrCreateUser(form, false);
         if (user == null) {
             return ApiResponse.failure("用户不存在");
@@ -181,7 +193,7 @@ public class RegCodeUserController {
 
     @PostMapping("del")
     public ApiResponse delete(@RequestBody List<String> idList, HttpServletRequest request) {
-        String err = regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        String err = regCodeAccessService.requireManager(request);
         if (err != null) {
             return ApiResponse.failure(err);
         }
@@ -195,6 +207,10 @@ public class RegCodeUserController {
             SysUsers user = this.sysUsersService.getById(row.getUserId());
             if (user == null) {
                 continue;
+            }
+            String ownErr = denyIfNotOwnChild(request, user);
+            if (ownErr != null) {
+                return ApiResponse.failure(ownErr);
             }
             boolean isChild = (user.getParentId() != null && !user.getParentId().isBlank())
                     || RegCodeAccessService.ROLE_REGCODE_CLIENT_ID.equals(user.getRoleId());
@@ -243,6 +259,31 @@ public class RegCodeUserController {
         }
         if (form.getUserId() != null && form.getUserId().equals(form.getParentId())) {
             return "不能把用户挂到自己下面";
+        }
+        return null;
+    }
+
+    private void bindParent(RegCodeUserForm form, HttpServletRequest request) {
+        SysUsers operator = this.regCodeAccessService.currentUser(request);
+        if (operator == null || this.regCodeAccessService.isRootUser(operator)) {
+            return;
+        }
+        form.setParentId(operator.getId());
+    }
+
+    private String denyIfNotOwnChild(HttpServletRequest request, SysUsers target) {
+        SysUsers operator = this.regCodeAccessService.currentUser(request);
+        if (operator == null) {
+            return "请先登录";
+        }
+        if (this.regCodeAccessService.isRootUser(operator)) {
+            return null;
+        }
+        if (target == null) {
+            return null;
+        }
+        if (target.getParentId() == null || !operator.getId().equals(target.getParentId())) {
+            return "只能管理自己账户下的子用户";
         }
         return null;
     }

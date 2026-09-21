@@ -32,7 +32,7 @@ public class RegCodeConfigController {
 
     @GetMapping("getAll")
     public ApiResponse selectAll(Page<RegCodeConfig> page, RegCodeConfig query, HttpServletRequest request) {
-        String err = this.regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        String err = this.regCodeAccessService.requireManager(request);
         if (err != null) {
             return ApiResponse.failure(err);
         }
@@ -66,7 +66,7 @@ public class RegCodeConfigController {
 
     @PostMapping("add")
     public ApiResponse insert(@RequestBody RegCodeConfig entity, HttpServletRequest request) {
-        String deny = this.regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        String deny = this.regCodeAccessService.requireManager(request);
         if (deny != null) {
             return ApiResponse.failure(deny);
         }
@@ -88,7 +88,7 @@ public class RegCodeConfigController {
 
     @PostMapping("update")
     public ApiResponse update(@RequestBody RegCodeConfig entity, HttpServletRequest request) {
-        String deny = this.regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        String deny = this.regCodeAccessService.requireManager(request);
         if (deny != null) {
             return ApiResponse.failure(deny);
         }
@@ -105,7 +105,7 @@ public class RegCodeConfigController {
 
     @PostMapping("del")
     public ApiResponse delete(@RequestBody List<String> idList, HttpServletRequest request) {
-        String deny = this.regCodeAccessService.requireManager(RequestUserUtils.currentUserId(request));
+        String deny = this.regCodeAccessService.requireManager(request);
         if (deny != null) {
             return ApiResponse.failure(deny);
         }

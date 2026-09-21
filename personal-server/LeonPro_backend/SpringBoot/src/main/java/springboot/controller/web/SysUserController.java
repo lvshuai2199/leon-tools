@@ -53,23 +53,24 @@ public class SysUserController {
 //    }
     @GetMapping("getUsers")
     public ApiResponse selectAll(Page<SysUsers> page, SysUsers sysUsers) {
-
-        // 创建 QueryWrapper 实例
         LambdaQueryWrapper<SysUsers> queryWrapper = new LambdaQueryWrapper<>();
-
         if (sysUsers.getId() != null) {
             queryWrapper.eq(SysUsers::getId, sysUsers.getId());
         }
-        // 添加条件
-        if (sysUsers.getUsername() != null) {
+        if (sysUsers.getUsername() != null && !sysUsers.getUsername().isBlank()) {
             queryWrapper.like(SysUsers::getUsername, sysUsers.getUsername());
         }
-        // 用户管理只展示主用户：排除子用户和注册码客户角色
-        queryWrapper.and(w -> w.isNull(SysUsers::getParentId).or().eq(SysUsers::getParentId, ""));
-        queryWrapper.and(w -> w.isNull(SysUsers::getRoleId).or().ne(SysUsers::getRoleId, "role_regcode_client"));
+        boolean listingChildren = sysUsers.getParentId() != null && !sysUsers.getParentId().isBlank();
+        if (listingChildren) {
+            queryWrapper.eq(SysUsers::getParentId, sysUsers.getParentId().trim());
+        } else {
+            queryWrapper.and(w -> w.isNull(SysUsers::getParentId).or().eq(SysUsers::getParentId, ""));
+            queryWrapper.and(w -> w.isNull(SysUsers::getRoleId).or().ne(SysUsers::getRoleId, "role_regcode_client"));
+        }
 
-        // 执行分页查询
-        return ApiResponse.success(this.sysUsersService.page(page, queryWrapper));
+        Page<SysUsers> result = this.sysUsersService.page(page, queryWrapper);
+        fillChildCounts(result.getRecords());
+        return ApiResponse.success(result);
     }
 
     @PostMapping("userSaveOrUpdate")
@@ -81,6 +82,19 @@ public class SysUserController {
         sysUsers.setEmail(userDto.getEmail());
         sysUsers.setNickname(userDto.getNickname());
         sysUsers.setRoleId(userDto.getRoleId());
+        if (userDto.getParentId() != null && !userDto.getParentId().isBlank()) {
+            SysUsers parent = this.sysUsersService.getById(userDto.getParentId().trim());
+            if (parent == null) {
+                return ApiResponse.failure("父用户不存在");
+            }
+            if (parent.getParentId() != null && !parent.getParentId().isBlank()) {
+                return ApiResponse.failure("只能挂在主用户下");
+            }
+            sysUsers.setParentId(parent.getId());
+            if (sysUsers.getRoleId() == null || sysUsers.getRoleId().isBlank()) {
+                sysUsers.setRoleId("role_regcode_client");
+            }
+        }
 
         // 如果存在 ID，则更新用户
         if (userDto.getId() != null) {
@@ -103,6 +117,13 @@ public class SysUserController {
 //        sysUsers.setPassword(encryptedPassword);
 
         sysUsers.setPassword(userDto.getPassword());
+        if (sysUsers.getUsername() != null) {
+            LambdaQueryWrapper<SysUsers> existName = new LambdaQueryWrapper<>();
+            existName.eq(SysUsers::getUsername, sysUsers.getUsername().trim());
+            if (this.sysUsersService.count(existName) > 0) {
+                return ApiResponse.failure("用户名已存在");
+            }
+        }
 
         boolean saved = this.sysUsersService.save(sysUsers);
         return ApiResponse.success(saved ? "User registered successfully." : "User registration failed.");
@@ -143,8 +164,15 @@ public class SysUserController {
             return ApiResponse.failure("User ID list cannot be empty");
         }
 
-        // 执行批量删除
-        boolean result = sysUsersService.removeByIds(userIds);
+        LambdaQueryWrapper<SysUsers> children = new LambdaQueryWrapper<>();
+        children.in(SysUsers::getParentId, userIds);
+        List<String> childIds = this.sysUsersService.list(children).stream()
+                .map(SysUsers::getId)
+                .filter(id -> id != null && !id.isBlank())
+                .toList();
+        java.util.LinkedHashSet<String> allIds = new java.util.LinkedHashSet<>(userIds);
+        allIds.addAll(childIds);
+        boolean result = sysUsersService.removeByIds(allIds);
 
         if (result) {
             return ApiResponse.success("Users deleted successfully");
@@ -168,6 +196,27 @@ public class SysUserController {
             }
         }
         return ApiResponse.success(user);
+    }
+
+    private void fillChildCounts(List<SysUsers> records) {
+        if (records == null || records.isEmpty()) {
+            return;
+        }
+        List<String> ids = records.stream()
+                .map(SysUsers::getId)
+                .filter(id -> id != null && !id.isBlank())
+                .toList();
+        if (ids.isEmpty()) {
+            return;
+        }
+        LambdaQueryWrapper<SysUsers> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(SysUsers::getParentId, ids);
+        java.util.Map<String, Long> counts = this.sysUsersService.list(wrapper).stream()
+                .filter(item -> item.getParentId() != null)
+                .collect(java.util.stream.Collectors.groupingBy(SysUsers::getParentId, java.util.stream.Collectors.counting()));
+        for (SysUsers user : records) {
+            user.setChildCount(counts.getOrDefault(user.getId(), 0L).intValue());
+        }
     }
 
 }

@@ -28,26 +28,28 @@ public class RequestUserUtils {
         return headerValue(request, "X-User-Id");
     }
 
+    public static String currentUsername(HttpServletRequest request) {
+        return decode(headerValue(request, "X-Username"));
+    }
+
     private String resolve(HttpServletRequest request) {
         if (request == null) {
             return null;
         }
-        String userId = firstNonBlank(
-                headerValue(request, "X-User-Id"),
-                request.getParameter("userId"));
-        if (userId != null) {
+        String userId = headerValue(request, "X-User-Id");
+        if (userId != null && this.sysUsersService.getById(userId) != null) {
             return userId;
         }
-        String username = firstNonBlank(
-                decode(headerValue(request, "X-Username")),
-                request.getParameter("username"));
-        if (username == null) {
-            return null;
+        String username = currentUsername(request);
+        if (username != null) {
+            LambdaQueryWrapper<SysUsers> wrapper = new LambdaQueryWrapper<>();
+            wrapper.eq(SysUsers::getUsername, username);
+            SysUsers user = this.sysUsersService.getOne(wrapper, false);
+            if (user != null) {
+                return user.getId();
+            }
         }
-        LambdaQueryWrapper<SysUsers> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysUsers::getUsername, username);
-        SysUsers user = this.sysUsersService.getOne(wrapper, false);
-        return user == null ? null : user.getId();
+        return userId;
     }
 
     private static String headerValue(HttpServletRequest request, String name) {
@@ -67,17 +69,5 @@ public class RequestUserUtils {
         } catch (Exception ignored) {
             return value;
         }
-    }
-
-    private static String firstNonBlank(String... values) {
-        if (values == null) {
-            return null;
-        }
-        for (String value : values) {
-            if (value != null && !value.isBlank()) {
-                return value.trim();
-            }
-        }
-        return null;
     }
 }

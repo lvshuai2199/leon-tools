@@ -34,4 +34,7 @@ public class UserDto {
      * 角色ID（对应 sys_roles.id）
      */
     private String roleId;
+
+    /** 父用户 ID；有值表示子用户 */
+    private String parentId;
 }

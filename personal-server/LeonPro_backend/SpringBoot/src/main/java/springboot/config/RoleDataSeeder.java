@@ -84,7 +84,8 @@ public class RoleDataSeeder implements CommandLineRunner {
         extra.in(SysRoleMenu::getMenuId, List.of(
                 MenuDataSeeder.MENU_REGCODE_CONFIG,
                 MenuDataSeeder.MENU_REGCODE_USER,
-                MenuDataSeeder.MENU_REGISTRATION));
+                MenuDataSeeder.MENU_REGISTRATION,
+                MenuDataSeeder.MENU_CRAB));
         long removed = sysRoleMenuService.count(extra);
         if (removed > 0) {
             sysRoleMenuService.remove(extra);

@@ -15,6 +15,7 @@ import springboot.domain.CrabShipment;
 import springboot.domain.SysUsers;
 import springboot.service.CrabOrderParser;
 import springboot.service.CrabShipmentService;
+import springboot.service.RegCodeAccessService;
 import springboot.service.SysUsersService;
 import springboot.utils.ApiResponse;
 import springboot.utils.DateUtils;
@@ -44,14 +45,22 @@ public class CrabShipmentController {
 
     private final CrabShipmentService crabShipmentService;
     private final SysUsersService sysUsersService;
+    private final RegCodeAccessService regCodeAccessService;
 
-    public CrabShipmentController(CrabShipmentService crabShipmentService, SysUsersService sysUsersService) {
+    public CrabShipmentController(CrabShipmentService crabShipmentService,
+                                  SysUsersService sysUsersService,
+                                  RegCodeAccessService regCodeAccessService) {
         this.crabShipmentService = crabShipmentService;
         this.sysUsersService = sysUsersService;
+        this.regCodeAccessService = regCodeAccessService;
     }
 
     @GetMapping("crabShipment/getAll")
-    public ApiResponse selectAll(Page<CrabShipment> page, CrabShipment query) {
+    public ApiResponse selectAll(Page<CrabShipment> page, CrabShipment query, HttpServletRequest request) {
+        ApiResponse deny = denyUnlessCrab(request);
+        if (deny != null) {
+            return deny;
+        }
         LambdaQueryWrapper<CrabShipment> wrapper = new LambdaQueryWrapper<>();
         if (query != null) {
             if (notBlank(query.getShipDate())) {
@@ -83,7 +92,11 @@ public class CrabShipmentController {
     }
 
     @GetMapping("crabShipment/{id}")
-    public ApiResponse selectOne(@PathVariable Serializable id) {
+    public ApiResponse selectOne(@PathVariable Serializable id, HttpServletRequest request) {
+        ApiResponse deny = denyUnlessCrab(request);
+        if (deny != null) {
+            return deny;
+        }
         CrabShipment entity = this.crabShipmentService.getById(id);
         if (entity == null) {
             return ApiResponse.failure("记录不存在");
@@ -94,6 +107,10 @@ public class CrabShipmentController {
 
     @PostMapping("crabShipment/save")
     public ApiResponse save(@RequestBody CrabShipment body, HttpServletRequest request) {
+        ApiResponse deny = denyUnlessCrab(request);
+        if (deny != null) {
+            return deny;
+        }
         if (body == null) {
             return ApiResponse.failure("请填写出货信息");
         }
@@ -142,7 +159,11 @@ public class CrabShipmentController {
     }
 
     @PostMapping("crabShipment/status")
-    public ApiResponse updateStatus(@RequestBody CrabShipment body) {
+    public ApiResponse updateStatus(@RequestBody CrabShipment body, HttpServletRequest request) {
+        ApiResponse deny = denyUnlessCrab(request);
+        if (deny != null) {
+            return deny;
+        }
         if (body == null || body.getId() == null || body.getId().isBlank()) {
             return ApiResponse.failure("缺少记录");
         }
@@ -170,6 +191,10 @@ public class CrabShipmentController {
 
     @PostMapping("crabShipment/batchSave")
     public ApiResponse batchSave(@RequestBody CrabShipmentBatchRequest req, HttpServletRequest request) {
+        ApiResponse deny = denyUnlessCrab(request);
+        if (deny != null) {
+            return deny;
+        }
         if (req == null || req.getRecords() == null || req.getRecords().isEmpty()) {
             return ApiResponse.failure("没有可保存的记录");
         }
@@ -214,7 +239,11 @@ public class CrabShipmentController {
     }
 
     @PostMapping("crabShipment/parse")
-    public ApiResponse parse(@RequestBody CrabShipmentParseRequest req) {
+    public ApiResponse parse(@RequestBody CrabShipmentParseRequest req, HttpServletRequest request) {
+        ApiResponse deny = denyUnlessCrab(request);
+        if (deny != null) {
+            return deny;
+        }
         String text = req == null ? null : req.getText();
         List<CrabShipment> rows = CrabOrderParser.parse(text);
         Map<String, Object> data = new HashMap<>();
@@ -224,7 +253,11 @@ public class CrabShipmentController {
     }
 
     @PostMapping("crabShipment/del")
-    public ApiResponse delete(@RequestBody List<String> idList) {
+    public ApiResponse delete(@RequestBody List<String> idList, HttpServletRequest request) {
+        ApiResponse deny = denyUnlessCrab(request);
+        if (deny != null) {
+            return deny;
+        }
         if (idList == null || idList.isEmpty()) {
             return ApiResponse.failure("请选择要删除的记录");
         }
@@ -256,6 +289,11 @@ public class CrabShipmentController {
         view.put("shipDate", entity.getShipDate());
         view.put("updateTime", entity.getUpdateTime());
         return ApiResponse.success(view);
+    }
+
+    private ApiResponse denyUnlessCrab(HttpServletRequest request) {
+        String err = this.regCodeAccessService.requireCrab(RequestUserUtils.currentUserId(request));
+        return err == null ? null : ApiResponse.failure(err);
     }
 
     private void fillShare(CrabShipment entity) {

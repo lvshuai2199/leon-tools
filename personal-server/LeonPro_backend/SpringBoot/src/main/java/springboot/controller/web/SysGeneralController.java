@@ -122,7 +122,7 @@ public class SysGeneralController {
         // 通过用户名和密码检索数据库中是否存在对应的数据项
         LambdaQueryWrapper<SysUsers> lambdaQueryWrapper = new LambdaQueryWrapper<>();
         lambdaQueryWrapper.eq(SysUsers::getUsername, username).eq(SysUsers::getPassword, password);
-        SysUsers user = this.sysUsersService.getOne(lambdaQueryWrapper, false);
+        SysUsers user = this.regCodeAccessService.pickPreferredUser(this.sysUsersService.list(lambdaQueryWrapper));
         // 校验用户名和密码
         if (user == null) {
             return ApiResponse.failure("用户不存在");
@@ -134,14 +134,16 @@ public class SysGeneralController {
             }
         }
         String source = loginData.get("source");
-        if (source != null && ("app".equalsIgnoreCase(source) || "h5".equalsIgnoreCase(source))) {
+        boolean mobile = source != null && ("app".equalsIgnoreCase(source) || "h5".equalsIgnoreCase(source));
+        if (mobile) {
             if (!this.regCodeAccessService.canLoginMobile(user)) {
-                return ApiResponse.failure("仅注册码用户或 ROOT 可登录手机端");
+                return ApiResponse.failure("当前账号没有手机端可用功能，请联系管理员分配权限");
             }
         } else if (!this.regCodeAccessService.canLoginWeb(user)) {
-            return ApiResponse.failure("注册码用户请使用手机端登录，无法访问 Web 管理端");
+            return ApiResponse.failure("子用户请使用手机端登录，仅可生成注册码");
         }
         fillRoleName(user);
+        user.setMenuIds(this.regCodeAccessService.menuIdsOf(user));
         return ApiResponse.success(user);
     }
     /**
@@ -153,27 +155,24 @@ public class SysGeneralController {
      * @param username 当前登录用户名（可选）
      * */
     @GetMapping("getMenuList")
-    public ApiResponse getMenuList(@RequestParam(value = "username", required = false) String username) {
-        // 未携带用户名（兼容旧调用）：返回全部菜单
-        if (username == null || username.isEmpty()) {
+    public ApiResponse getMenuList(@RequestParam(value = "username", required = false) String username,
+                                   HttpServletRequest request) {
+        SysUsers user = this.regCodeAccessService.currentUser(request);
+        if (user == null && username != null && !username.isEmpty()) {
+            user = this.regCodeAccessService.findUser(null, username);
+        }
+        if (user == null) {
             return ApiResponse.success(listAllMenus());
         }
-
-        // 用户 → 角色
-        LambdaQueryWrapper<SysUsers> userWrapper = new LambdaQueryWrapper<>();
-        userWrapper.eq(SysUsers::getUsername, username);
-        SysUsers user = sysUsersService.getOne(userWrapper, false);
-        if (user == null || user.getRoleId() == null || user.getRoleId().isEmpty()) {
+        if (user.getRoleId() == null || user.getRoleId().isEmpty()) {
             return ApiResponse.success(Collections.emptyList());
         }
 
         SysRoles role = sysRolesService.getById(user.getRoleId());
-        // 超级管理员 ROOT：默认拥有全部菜单，不走角色-路由配置
         if (RoleUtils.isRoot(role)) {
             return ApiResponse.success(listAllMenus());
         }
 
-        // 角色已分配的菜单
         List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(user.getRoleId());
         if (menuIds == null || menuIds.isEmpty()) {
             return ApiResponse.success(Collections.emptyList());

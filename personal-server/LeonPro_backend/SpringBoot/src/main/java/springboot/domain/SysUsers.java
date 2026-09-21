@@ -63,6 +63,18 @@ public class SysUsers implements Serializable {
     @TableField(exist = false)
     private String roleName;
 
+    /**
+     * 直接下级用户数量（非表字段）
+     */
+    @TableField(exist = false)
+    private Integer childCount;
+
+    /**
+     * 角色已分配菜单 ID（非表字段，登录时回填；ROOT 为 null 表示全部）
+     */
+    @TableField(exist = false)
+    private java.util.List<String> menuIds;
+
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;
 
