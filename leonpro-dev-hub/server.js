@@ -12,15 +12,29 @@ const CONFIG_PATH = path.join(ROOT, "config.json");
 const SETTINGS_PATH = path.join(ROOT, "settings.json");
 
 const SERVICES = ["spring", "vue", "uni"];
+const PATH_KEYS = ["spring", "vue", "uni", "bootstrapEnv"];
 const DEFAULT_SETTINGS = { db: "dev", frontendTarget: "local", skipBuild: false };
-
-const config = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
-const tunnelCfg = {
-  mysqlLocal: 13306,
-  redisLocal: 16379,
-  apiLocal: 18089,
-  ...(config.tunnel || {}),
+const DEFAULT_CONFIG = {
+  hubPort: 3780,
+  paths: {
+    spring: "../personal-server/LeonPro_backend/SpringBoot",
+    vue: "../personal-server/LeonPro_frontend/vue3_frontend",
+    uni: "../personal-server/LeonPro_frontend/frontend_phone",
+    bootstrapEnv: "../personal-server/bootstrap/bootstrap.env",
+  },
+  urls: {
+    localApi: "http://127.0.0.1:8089",
+    remoteApi: "http://124.220.57.33",
+    serverHost: "124.220.57.33",
+    dbHost: "124.220.57.33",
+  },
+  ssh: { user: "ubuntu", port: "22" },
+  ports: { vue: 3000, uni: 5173, spring: 8089 },
+  tunnel: { mysqlLocal: 13306, redisLocal: 16379, apiLocal: 18089 },
 };
+
+let config = loadConfig();
+let tunnelCfg = makeTunnelCfg(config);
 const state = {
   settings: loadSettings(),
   services: Object.fromEntries(
@@ -38,7 +52,99 @@ const state = {
 };
 
 function resolveAppPath(rel) {
-  return path.resolve(ROOT, rel);
+  return path.resolve(ROOT, rel || "");
+}
+
+function makeTunnelCfg(cfg) {
+  return {
+    mysqlLocal: 13306,
+    redisLocal: 16379,
+    apiLocal: 18089,
+    ...(cfg.tunnel || {}),
+  };
+}
+
+function normalizeHost(value) {
+  return String(value || "")
+    .trim()
+    .replace(/^https?:\/\//i, "")
+    .replace(/\/.*$/, "")
+    .replace(/:\d+$/, "");
+}
+
+function loadConfig() {
+  let raw = {};
+  try {
+    raw = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+  } catch {
+    raw = {};
+  }
+  const serverHost = normalizeHost(
+    raw.urls?.serverHost || raw.urls?.dbHost || DEFAULT_CONFIG.urls.serverHost
+  );
+  return {
+    ...DEFAULT_CONFIG,
+    ...raw,
+    paths: { ...DEFAULT_CONFIG.paths, ...(raw.paths || {}) },
+    urls: {
+      ...DEFAULT_CONFIG.urls,
+      ...(raw.urls || {}),
+      serverHost,
+      dbHost: serverHost,
+      remoteApi: raw.urls?.remoteApi || `http://${serverHost}`,
+    },
+    ssh: { ...DEFAULT_CONFIG.ssh, ...(raw.ssh || {}) },
+    ports: { ...DEFAULT_CONFIG.ports, ...(raw.ports || {}) },
+    tunnel: { ...DEFAULT_CONFIG.tunnel, ...(raw.tunnel || {}) },
+  };
+}
+
+function persistConfig() {
+  fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2) + "\n");
+}
+
+function pathInfo(rel) {
+  const abs = resolveAppPath(rel);
+  return { path: rel || "", abs, exists: !!(rel && fs.existsSync(abs)) };
+}
+
+function publicConfig() {
+  return {
+    hubPort: config.hubPort,
+    paths: Object.fromEntries(PATH_KEYS.map((key) => [key, pathInfo(config.paths[key])])),
+    urls: {
+      localApi: config.urls.localApi,
+      remoteApi: config.urls.remoteApi,
+      serverHost: config.urls.serverHost,
+    },
+    ssh: { user: config.ssh.user || "ubuntu", port: String(config.ssh.port || "22") },
+    ports: config.ports,
+    tunnel: tunnelCfg,
+  };
+}
+
+function applyConfigPatch(body) {
+  if (body.paths && typeof body.paths === "object") {
+    for (const key of PATH_KEYS) {
+      if (typeof body.paths[key] === "string") config.paths[key] = body.paths[key].trim();
+    }
+  }
+  if (typeof body.serverHost === "string" || typeof body.urls?.serverHost === "string") {
+    const host = normalizeHost(body.serverHost || body.urls?.serverHost);
+    if (!host) throw new Error("服务器 IP / 主机名不能为空");
+    config.urls.serverHost = host;
+    config.urls.dbHost = host;
+    config.urls.remoteApi = `http://${host}`;
+  }
+  if (body.ssh && typeof body.ssh === "object") {
+    if (typeof body.ssh.user === "string" && body.ssh.user.trim()) config.ssh.user = body.ssh.user.trim();
+    if (body.ssh.port !== undefined && String(body.ssh.port).trim()) {
+      config.ssh.port = String(body.ssh.port).trim();
+    }
+  }
+  persistConfig();
+  config = loadConfig();
+  tunnelCfg = makeTunnelCfg(config);
 }
 
 function loadSettings() {
@@ -90,6 +196,7 @@ function appendLog(service, text, level = "info") {
 function snapshot() {
   return {
     settings: state.settings,
+    config: publicConfig(),
     urls: {
       vue: `http://127.0.0.1:${config.ports.vue}`,
       uni: `http://127.0.0.1:${config.ports.uni}`,
@@ -105,7 +212,10 @@ function snapshot() {
     },
     ssh: publicSsh(),
     deploys: SERVICES.map((id) => ({ id, ...state.deploys[id] })),
-    services: SERVICES.map((id) => ({ ...state.services[id], port: config.ports[id] })),
+    services: SERVICES.map((id) => {
+      const info = pathInfo(config.paths[id]);
+      return { ...state.services[id], port: config.ports[id], cwd: info.abs, cwdExists: info.exists };
+    }),
   };
 }
 
@@ -157,15 +267,15 @@ function loadSshConfig() {
   const springDir = resolveAppPath(config.paths.spring);
   const files = [
     path.join(springDir, "deploy", "deploy.env"),
-    path.resolve(ROOT, "../personal-server/bootstrap/bootstrap.env"),
-    path.resolve(ROOT, "../personal-server/LeonPro_frontend/frontend_phone/deploy/deploy.env"),
-    path.resolve(ROOT, "../personal-server/LeonPro_frontend/vue3_frontend/deploy/deploy.env"),
+    resolveAppPath(config.paths.bootstrapEnv),
+    path.join(resolveAppPath(config.paths.uni), "deploy", "deploy.env"),
+    path.join(resolveAppPath(config.paths.vue), "deploy", "deploy.env"),
   ];
   const merged = mergeDotEnv(files);
   return {
-    host: merged.DEPLOY_HOST || config.urls.dbHost,
-    user: merged.DEPLOY_USER || "ubuntu",
-    port: merged.DEPLOY_PORT || "22",
+    host: config.urls.serverHost || merged.DEPLOY_HOST || config.urls.dbHost,
+    user: config.ssh.user || merged.DEPLOY_USER || "ubuntu",
+    port: config.ssh.port || merged.DEPLOY_PORT || "22",
     password: merged.DEPLOY_PASSWORD || "",
     key: merged.DEPLOY_SSH_KEY || "",
     mysqlPassword: merged.MYSQL_PASSWORD || merged.MYSQL_ROOT_PASSWORD || "",
@@ -193,21 +303,21 @@ function publicSsh() {
     host: ssh.host || "",
     user: ssh.user || "",
     port: String(ssh.port || "22"),
-    auth: ssh.key ? "key" : ssh.password ? "password" : "missing",
+    auth: ssh.password ? "password" : ssh.key ? "key" : "missing",
     remotes,
   };
 }
 
 function applySshAuth(args, env, ssh) {
-  if (ssh.key) {
-    args.push("-i", ssh.key, "-o", "IdentitiesOnly=yes");
+  if (ssh.password) {
+    args.push("-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no");
+    env.DEPLOY_PASSWORD = ssh.password;
+    env.SSH_ASKPASS = ssh.askpass;
+    env.SSH_ASKPASS_REQUIRE = "force";
+    env.DISPLAY = "127.0.0.1:0";
     return;
   }
-  args.push("-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no");
-  env.DEPLOY_PASSWORD = ssh.password;
-  env.SSH_ASKPASS = ssh.askpass;
-  env.SSH_ASKPASS_REQUIRE = "force";
-  env.DISPLAY = "127.0.0.1:0";
+  args.push("-i", ssh.key, "-o", "IdentitiesOnly=yes");
 }
 
 function requireSshLogin(ssh) {
@@ -691,6 +801,21 @@ const server = http.createServer(async (req, res) => {
 
   try {
     if (req.method === "GET" && url.pathname === "/api/state") {
+      return sendJson(res, 200, snapshot());
+    }
+
+    if (req.method === "GET" && url.pathname === "/api/config") {
+      return sendJson(res, 200, publicConfig());
+    }
+
+    if (req.method === "POST" && url.pathname === "/api/config") {
+      const body = await readBody(req);
+      applyConfigPatch(body);
+      appendLog(
+        "hub",
+        `配置已保存：服务器=${config.urls.serverHost}，Spring=${config.paths.spring}`
+      );
+      broadcast({ type: "state", state: snapshot() });
       return sendJson(res, 200, snapshot());
     }
 

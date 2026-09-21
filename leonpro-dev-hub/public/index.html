@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>LeonPro 本地启动台</title>
-    <link rel="stylesheet" href="/styles.css?v=3" />
+    <link rel="stylesheet" href="/styles.css?v=4" />
   </head>
   <body>
     <main class="app">
@@ -17,6 +17,7 @@
           <div class="view-switch" id="viewSwitch">
             <button type="button" data-view="local" class="active">本机运行</button>
             <button type="button" data-view="remote">SSH / 部署</button>
+            <button type="button" data-view="config">路径 / 服务器</button>
           </div>
           <div class="actions view-only" data-for="local">
             <button id="startAll" class="btn primary">一键开启全部</button>
@@ -77,6 +78,58 @@
               </article>
             </section>
           </section>
+
+          <section class="stage-page" data-page="config">
+            <section class="grid config-grid">
+              <article class="card">
+                <h2>服务器</h2>
+                <p class="hint">SSH 隧道、部署、远端 API 都用这个主机。密码仍只从 deploy.env / bootstrap.env 读取。</p>
+                <div class="form-grid">
+                  <label class="field">
+                    服务器 IP / 主机名
+                    <input id="cfgServerHost" type="text" autocomplete="off" placeholder="124.220.57.33" />
+                  </label>
+                  <label class="field">
+                    SSH 用户
+                    <input id="cfgSshUser" type="text" autocomplete="off" placeholder="ubuntu" />
+                  </label>
+                  <label class="field">
+                    SSH 端口
+                    <input id="cfgSshPort" type="text" autocomplete="off" placeholder="22" />
+                  </label>
+                </div>
+              </article>
+              <article class="card">
+                <h2>项目目录</h2>
+                <p class="hint">相对启动台目录或绝对路径。保存后立刻用于启停和部署，无需重启启动台。</p>
+                <div class="form-grid">
+                  <label class="field">
+                    Spring Boot
+                    <input id="cfgPathSpring" type="text" autocomplete="off" />
+                    <span class="path-meta" id="cfgMetaSpring"></span>
+                  </label>
+                  <label class="field">
+                    Vue
+                    <input id="cfgPathVue" type="text" autocomplete="off" />
+                    <span class="path-meta" id="cfgMetaVue"></span>
+                  </label>
+                  <label class="field">
+                    手机 H5
+                    <input id="cfgPathUni" type="text" autocomplete="off" />
+                    <span class="path-meta" id="cfgMetaUni"></span>
+                  </label>
+                  <label class="field">
+                    bootstrap.env
+                    <input id="cfgPathBootstrap" type="text" autocomplete="off" />
+                    <span class="path-meta" id="cfgMetaBootstrap"></span>
+                  </label>
+                </div>
+                <div class="actions" style="margin-top: 14px">
+                  <button id="saveConfig" class="btn primary">保存配置</button>
+                </div>
+              </article>
+            </section>
+          </section>
         </div>
       </div>
 
@@ -88,6 +141,6 @@
         <pre id="logs"></pre>
       </section>
     </main>
-    <script src="/app.js?v=3"></script>
+    <script src="/app.js?v=4"></script>
   </body>
 </html>

@@ -13,6 +13,14 @@ const authNames = {
 const viewSubs = {
   local: "本机启停 Spring / Vue / 手机 H5",
   remote: "SSH 隧道，以及按各项目 deploy.env 部署到服务器",
+  config: "项目目录和服务器 IP，保存后立刻生效",
+};
+
+const pathFields = {
+  spring: { input: "cfgPathSpring", meta: "cfgMetaSpring" },
+  vue: { input: "cfgPathVue", meta: "cfgMetaVue" },
+  uni: { input: "cfgPathUni", meta: "cfgMetaUni" },
+  bootstrapEnv: { input: "cfgPathBootstrap", meta: "cfgMetaBootstrap" },
 };
 
 const logsEl = document.getElementById("logs");
@@ -23,7 +31,10 @@ const stageTrack = document.getElementById("stageTrack");
 const viewSub = document.getElementById("viewSub");
 
 let current = null;
-let currentView = localStorage.getItem("hubView") === "remote" ? "remote" : "local";
+const allowedViews = ["local", "remote", "config"];
+let currentView = allowedViews.includes(localStorage.getItem("hubView"))
+  ? localStorage.getItem("hubView")
+  : "local";
 
 async function post(url, body) {
   const res = await fetch(url, {
@@ -39,7 +50,7 @@ async function post(url, body) {
 }
 
 function setView(view) {
-  currentView = view === "remote" ? "remote" : "local";
+  currentView = allowedViews.includes(view) ? view : "local";
   localStorage.setItem("hubView", currentView);
   stageTrack.dataset.view = currentView;
   viewSub.textContent = viewSubs[currentView];
@@ -51,8 +62,29 @@ function setView(view) {
   });
 }
 
+function fillConfigForm(state) {
+  const cfg = state.config || {};
+  const hostEl = document.getElementById("cfgServerHost");
+  if (!hostEl) return;
+  if (document.activeElement && document.activeElement.closest(".stage-page[data-page=config]")) {
+    return;
+  }
+  hostEl.value = cfg.urls?.serverHost || "";
+  document.getElementById("cfgSshUser").value = cfg.ssh?.user || "";
+  document.getElementById("cfgSshPort").value = cfg.ssh?.port || "22";
+  const paths = cfg.paths || {};
+  for (const [key, refs] of Object.entries(pathFields)) {
+    const info = paths[key] || {};
+    document.getElementById(refs.input).value = info.path || "";
+    const meta = document.getElementById(refs.meta);
+    meta.textContent = info.abs ? `${info.exists ? "已找到" : "不存在"} · ${info.abs}` : "";
+    meta.className = `path-meta ${info.exists ? "ok" : "miss"}`;
+  }
+}
+
 function render(state) {
   current = state;
+  fillConfigForm(state);
   document.querySelectorAll("[data-group]").forEach((group) => {
     const key = group.dataset.group;
     group.querySelectorAll("button").forEach((btn) => {
@@ -98,6 +130,7 @@ function render(state) {
           <h2>${names[svc.id]}</h2>
           <div class="status ${svc.status}">状态：${svc.status}${svc.pid ? ` · pid ${svc.pid}` : ""}</div>
           <div>端口 ${svc.port}${href ? ` · <a href="${href}" target="_blank">打开</a>` : ""}</div>
+          <div class="hint">${svc.cwdExists ? svc.cwd : `目录不存在：${svc.cwd || ""}`}</div>
           <div class="svc-actions">
             <button class="btn primary" data-start="${svc.id}">启动</button>
             <button class="btn" data-stop="${svc.id}">停止</button>
@@ -138,6 +171,22 @@ document.getElementById("tunnelStart").addEventListener("click", () => post("/ap
 document.getElementById("tunnelStop").addEventListener("click", () => post("/api/tunnel/stop"));
 document.getElementById("deployAll").addEventListener("click", () => {
   post("/api/deploy", { service: "all", skipBuild: skipBuildEl.checked }).catch((err) => alert(err.message));
+});
+
+document.getElementById("saveConfig").addEventListener("click", () => {
+  post("/api/config", {
+    serverHost: document.getElementById("cfgServerHost").value,
+    ssh: {
+      user: document.getElementById("cfgSshUser").value,
+      port: document.getElementById("cfgSshPort").value,
+    },
+    paths: {
+      spring: document.getElementById("cfgPathSpring").value,
+      vue: document.getElementById("cfgPathVue").value,
+      uni: document.getElementById("cfgPathUni").value,
+      bootstrapEnv: document.getElementById("cfgPathBootstrap").value,
+    },
+  }).catch((err) => alert(err.message));
 });
 
 document.getElementById("deployList").addEventListener("click", (event) => {

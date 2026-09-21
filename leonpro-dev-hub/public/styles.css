@@ -87,16 +87,60 @@ body {
   margin-bottom: 16px;
 }
 
-.stage-page[data-page="remote"] {
+.stage-page[data-page="remote"],
+.stage-page[data-page="config"] {
   display: none;
 }
 
-.stage[data-view="remote"] .stage-page[data-page="local"] {
+.stage[data-view="remote"] .stage-page[data-page="local"],
+.stage[data-view="config"] .stage-page[data-page="local"] {
   display: none;
 }
 
-.stage[data-view="remote"] .stage-page[data-page="remote"] {
+.stage[data-view="remote"] .stage-page[data-page="remote"],
+.stage[data-view="config"] .stage-page[data-page="config"] {
   display: block;
+}
+
+.config-grid {
+  grid-template-columns: 1fr;
+}
+
+.form-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.field input {
+  width: 100%;
+  border: 1px solid var(--line);
+  background: #151924;
+  color: var(--text);
+  border-radius: 10px;
+  padding: 9px 12px;
+  font: inherit;
+}
+
+.path-meta {
+  font-size: 12px;
+  word-break: break-all;
+}
+
+.path-meta.ok {
+  color: var(--ok);
+}
+
+.path-meta.miss {
+  color: var(--bad);
 }
 
 h1,
