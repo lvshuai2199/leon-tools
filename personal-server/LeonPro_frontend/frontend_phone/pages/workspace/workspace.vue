@@ -65,7 +65,7 @@
 </template>
 
 <script>
-import { canEnterApp, canUseCrab, getUserInfo, clearUserInfo } from "@/utils/auth.js";
+import { canEnterApp, canUseCrab, canUseRegCode, getUserInfo, clearUserInfo } from "@/utils/auth.js";
 import api from "@/apiUtils/index.js";
 import { confirmAction, copyText, showToast } from "@/utils/ui.js";
 
@@ -150,7 +150,7 @@ export default {
   methods: {
     ensureLogin() {
       const user = getUserInfo();
-      if (!user || !canEnterApp(user)) {
+      if (!user || !canEnterApp(user) || !canUseRegCode(user)) {
         this.leaveToLogin();
         return;
       }

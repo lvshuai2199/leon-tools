@@ -72,7 +72,7 @@
 
 <script>
 import api from "@/apiUtils/index.js";
-import { canUseCrab, getUserInfo } from "@/utils/auth.js";
+import { canUseCrab, getUserInfo, homePath } from "@/utils/auth.js";
 import { parseCrabOrders, todayStr } from "@/utils/crab-parse.js";
 import { showToast } from "@/utils/ui.js";
 
@@ -95,7 +95,7 @@ export default {
   },
   mounted() {
     if (!canUseCrab(getUserInfo())) {
-      this.$router.replace("/pages/login/login");
+      this.$router.replace(homePath(getUserInfo()));
       return;
     }
     if (this.$route.query.date) this.shipDate = String(this.$route.query.date);

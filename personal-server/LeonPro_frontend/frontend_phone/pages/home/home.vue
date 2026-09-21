@@ -16,7 +16,7 @@
       </div>
     </button>
 
-    <button class="tile" type="button" @click="go('/pages/workspace/workspace')">
+    <button v-if="showRegCode" class="tile" type="button" @click="go('/pages/workspace/workspace')">
       <div class="icon key">码</div>
       <div class="meta">
         <div class="title">注册码生成</div>
@@ -27,7 +27,7 @@
 </template>
 
 <script>
-import { canUseCrab, clearUserInfo, getUserInfo } from "@/utils/auth.js";
+import { canUseCrab, canUseRegCode, clearUserInfo, getUserInfo, homePath } from "@/utils/auth.js";
 import { confirmAction } from "@/utils/ui.js";
 
 export default {
@@ -38,11 +38,14 @@ export default {
     displayName() {
       return this.user?.nickname || this.user?.username || "用户";
     },
+    showRegCode() {
+      return canUseRegCode(this.user);
+    },
   },
   mounted() {
     const user = getUserInfo();
     if (!canUseCrab(user)) {
-      this.$router.replace("/pages/workspace/workspace");
+      this.$router.replace(homePath(user));
       return;
     }
     this.user = user;

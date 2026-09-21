@@ -1,5 +1,5 @@
 import { createRouter, createWebHashHistory } from "vue-router";
-import { canEnterApp, getUserInfo, homePath } from "@/utils/auth.js";
+import { canEnterApp, canUseCrab, canUseRegCode, getUserInfo, homePath } from "@/utils/auth.js";
 
 const router = createRouter({
   history: createWebHashHistory(),
@@ -12,27 +12,27 @@ const router = createRouter({
     {
       path: "/pages/home/home",
       component: () => import("@/pages/home/home.vue"),
-      meta: { auth: true },
+      meta: { auth: true, needCrab: true },
     },
     {
       path: "/pages/workspace/workspace",
       component: () => import("@/pages/workspace/workspace.vue"),
-      meta: { auth: true },
+      meta: { auth: true, needRegCode: true },
     },
     {
       path: "/pages/crab/list",
       component: () => import("@/pages/crab/list.vue"),
-      meta: { auth: true },
+      meta: { auth: true, needCrab: true },
     },
     {
       path: "/pages/crab/entry",
       component: () => import("@/pages/crab/entry.vue"),
-      meta: { auth: true },
+      meta: { auth: true, needCrab: true },
     },
     {
       path: "/pages/crab/edit",
       component: () => import("@/pages/crab/edit.vue"),
-      meta: { auth: true },
+      meta: { auth: true, needCrab: true },
     },
     {
       path: "/pages/crab/share",
@@ -46,9 +46,8 @@ router.beforeEach((to) => {
   if (!to.meta.auth) return true;
   const user = getUserInfo();
   if (!canEnterApp(user)) return "/pages/login/login";
-  if (to.path === "/pages/home/home") {
-    return homePath(user) === "/pages/home/home" ? true : "/pages/workspace/workspace";
-  }
+  if (to.meta.needCrab && !canUseCrab(user)) return homePath(user);
+  if (to.meta.needRegCode && !canUseRegCode(user)) return homePath(user);
   return true;
 });
 

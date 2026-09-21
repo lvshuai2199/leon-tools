@@ -43,8 +43,9 @@ export default {
   },
   mounted() {
     if (consumeLogoutFlag()) return;
-    if (getUserInfo()?.id) {
-      this.$router.replace(homePath(getUserInfo()));
+    const user = getUserInfo();
+    if (user?.id && canEnterApp(user)) {
+      this.$router.replace(homePath(user));
     }
   },
   methods: {
@@ -73,7 +74,7 @@ export default {
           return;
         }
         if (!canEnterApp(data)) {
-          showToast("仅注册码用户或 ROOT 可登录");
+          showToast("当前账号无法登录手机端");
           return;
         }
         setUserInfo(data);

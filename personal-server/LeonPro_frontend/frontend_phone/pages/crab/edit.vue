@@ -32,7 +32,7 @@
 
 <script>
 import api from "@/apiUtils/index.js";
-import { canUseCrab, getUserInfo } from "@/utils/auth.js";
+import { canUseCrab, getUserInfo, homePath } from "@/utils/auth.js";
 import { shareUrl, todayStr } from "@/utils/crab-parse.js";
 import { confirmAction, copyText, showToast } from "@/utils/ui.js";
 
@@ -58,7 +58,7 @@ export default {
   },
   mounted() {
     if (!canUseCrab(getUserInfo())) {
-      this.$router.replace("/pages/login/login");
+      this.$router.replace(homePath(getUserInfo()));
       return;
     }
     const id = this.$route.query.id;

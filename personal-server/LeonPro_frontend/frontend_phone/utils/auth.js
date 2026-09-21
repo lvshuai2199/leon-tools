@@ -77,17 +77,20 @@ export function isRegCodeClient(user) {
   return !!(user.parentId && String(user.parentId).trim());
 }
 
-export function canEnterApp(user) {
-  if (!user) return false;
-  if (isRootUser(user)) return true;
-  if (String(user.roleId || "") === "role_regcode_client") return true;
-  return !!(user.parentId && String(user.parentId).trim());
+export function canUseCrab(user) {
+  return !!user && !isRegCodeClient(user);
 }
 
-export function canUseCrab(user) {
-  return canEnterApp(user) && !isRegCodeClient(user);
+export function canUseRegCode(user) {
+  return !!user;
+}
+
+export function canEnterApp(user) {
+  return canUseCrab(user) || canUseRegCode(user);
 }
 
 export function homePath(user) {
-  return canUseCrab(user) ? "/pages/home/home" : "/pages/workspace/workspace";
+  if (canUseCrab(user)) return "/pages/home/home";
+  if (canUseRegCode(user)) return "/pages/workspace/workspace";
+  return "/pages/login/login";
 }
