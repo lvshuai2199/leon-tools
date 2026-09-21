@@ -765,14 +765,18 @@ static std::wstring ConfigPath() {
     return dir + L"\\ui.ini";
 }
 
+static void SaveConfig();
+
 static void LoadConfig() {
     std::ifstream in(ConfigPath());
     if (!in) return;
     std::string line;
+    bool stripAlpha = false;
     while (std::getline(in, line)) {
         auto eq = line.find('=');
         if (eq == std::string::npos) continue;
         std::string k = line.substr(0, eq), v = line.substr(eq + 1);
+        if (k == "bgAlpha") { stripAlpha = true; continue; }
         if (k == "scale") {
             int sc = atoi(v.c_str());
             if (sc < 60) sc = 60;
@@ -787,6 +791,8 @@ static void LoadConfig() {
         if (k == "y") g.y = atoi(v.c_str());
         if (k == "showBot") g.showBot = v == "1";
     }
+    in.close();
+    if (stripAlpha) SaveConfig();
 }
 
 static void SaveConfig() {
@@ -1329,6 +1335,7 @@ struct InstalledApp {
     std::wstring name;
     std::wstring launchPath;
     std::wstring target;
+    bool system = false;
 };
 
 static std::vector<ShortcutItem> g_shortcuts;
@@ -1467,17 +1474,96 @@ static bool SkipInstalled(const std::wstring& name, const std::wstring& target) 
     return false;
 }
 
+static std::wstring EnvPath(const wchar_t* name) {
+    wchar_t b[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(name, b, MAX_PATH);
+    if (!n || n >= MAX_PATH) return L"";
+    return b;
+}
+
+static std::wstring NormPath(std::wstring p) {
+    if (p.size() >= 2 && p.front() == L'"') {
+        size_t e = p.find(L'"', 1);
+        if (e != std::wstring::npos) p = p.substr(1, e - 1);
+    }
+    for (auto& c : p) if (c == L'/') c = L'\\';
+    wchar_t full[MAX_PATH] = {};
+    if (GetFullPathNameW(p.c_str(), MAX_PATH, full, nullptr) && full[0])
+        p = full;
+    wchar_t lng[MAX_PATH] = {};
+    if (GetLongPathNameW(p.c_str(), lng, MAX_PATH) && lng[0])
+        p = lng;
+    while (!p.empty() && (p.back() == L'\\' || p.back() == L' ')) p.pop_back();
+    return LowerCopy(p);
+}
+
+static bool PathUnder(const std::wstring& path, const std::wstring& rootRaw) {
+    if (path.empty() || rootRaw.empty()) return false;
+    std::wstring root = NormPath(rootRaw);
+    if (root.empty() || path.size() < root.size()) return false;
+    if (path.compare(0, root.size(), root) != 0) return false;
+    return path.size() == root.size() || path[root.size()] == L'\\';
+}
+
+static std::wstring AppExePath(const InstalledApp& a) {
+    std::wstring exe = a.target.empty() ? a.launchPath : a.target;
+    if (EndsWithI(exe, L".lnk")) {
+        std::wstring t;
+        if (ResolveLnk(exe, t) && !t.empty()) exe = t;
+    }
+    return NormPath(exe);
+}
+
+static bool IsSystemInstalledApp(const InstalledApp& a) {
+    std::wstring t = AppExePath(a);
+    std::wstring n = LowerCopy(a.name);
+    std::wstring fn = LowerCopy(FileNameOf(t.empty() ? a.launchPath : t));
+
+    if (fn == L"iexplore.exe") return true;
+    if (fn == L"cmd.exe" || fn == L"powershell.exe" || fn == L"pwsh.exe" || fn == L"powershell_ise.exe")
+        return true;
+    if (fn == L"conhost.exe") return true;
+
+    std::wstring sys = EnvPath(L"SystemRoot");
+    if (sys.empty()) sys = EnvPath(L"windir");
+    if (!sys.empty() && PathUnder(t, sys)) return true;
+
+    std::wstring pf = EnvPath(L"ProgramFiles");
+    std::wstring pfx86 = EnvPath(L"ProgramFiles(x86)");
+    if (!pf.empty() && PathUnder(t, pf + L"\\Internet Explorer")) return true;
+    if (!pfx86.empty() && PathUnder(t, pfx86 + L"\\Internet Explorer")) return true;
+    if (t.find(L"\\internet explorer\\") != std::wstring::npos) return true;
+
+    if (t.find(L"\\windowsapps\\") != std::wstring::npos) return true;
+
+    if (n.find(L"developer command prompt") != std::wstring::npos) return true;
+    if (n.find(L"developer powershell") != std::wstring::npos) return true;
+    if (n.find(L"native tools command prompt") != std::wstring::npos) return true;
+    if (n.find(L"cross tools command prompt") != std::wstring::npos) return true;
+    if (n.find(L"visual studio") != std::wstring::npos && n.find(L"command prompt") != std::wstring::npos)
+        return true;
+    if (n.find(L"vs 20") != std::wstring::npos &&
+        (n.find(L"prompt") != std::wstring::npos || n.find(L"powershell") != std::wstring::npos))
+        return true;
+    if (t.find(L"vsdevcmd") != std::wstring::npos || t.find(L"vcvars") != std::wstring::npos ||
+        t.find(L"vsdevps") != std::wstring::npos)
+        return true;
+    return false;
+}
+
 static void AddInstalled(std::vector<InstalledApp>& out, std::set<std::wstring>& seen,
                          const std::wstring& name, const std::wstring& launch, const std::wstring& target) {
     if (name.empty() || launch.empty()) return;
     if (SkipInstalled(name, target)) return;
-    std::wstring key = LowerCopy(target.empty() ? launch : target);
-    if (key.empty() || seen.count(key)) return;
-    seen.insert(key);
     InstalledApp a;
     a.name = name;
     a.launchPath = launch;
     a.target = target;
+    a.system = IsSystemInstalledApp(a);
+    std::wstring key = AppExePath(a);
+    if (key.empty()) key = LowerCopy(launch);
+    if (key.empty() || seen.count(key)) return;
+    seen.insert(key);
     out.push_back(a);
 }
 
@@ -1576,7 +1662,16 @@ static std::vector<InstalledApp> EnumInstalledApps() {
     std::sort(out.begin(), out.end(), [](const InstalledApp& a, const InstalledApp& b) {
         return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0;
     });
-    return out;
+    std::vector<InstalledApp> uniq;
+    std::set<std::wstring> names;
+    uniq.reserve(out.size());
+    for (auto& a : out) {
+        std::wstring nk = LowerCopy(a.name);
+        if (!nk.empty() && names.count(nk)) continue;
+        if (!nk.empty()) names.insert(nk);
+        uniq.push_back(a);
+    }
+    return uniq;
 }
 
 static void LoadShortcuts() {
@@ -1725,6 +1820,7 @@ struct ManageDlg {
     HWND hwnd = nullptr;
     HWND list = nullptr;
     HWND search = nullptr;
+    HWND showSysChk = nullptr;
     std::vector<InstalledApp> apps;
     std::set<std::wstring> selected;
     std::vector<int> visible;
@@ -1745,17 +1841,21 @@ static void ManageRebuildList() {
     ListView_DeleteAllItems(g_manage.list);
     g_manage.visible.clear();
     std::wstring f = ManageFilterText();
+    bool showSys = g_manage.showSysChk &&
+        SendMessageW(g_manage.showSysChk, BM_GETCHECK, 0, 0) == BST_CHECKED;
     for (int i = 0; i < (int)g_manage.apps.size(); ++i) {
-        if (!f.empty() && LowerCopy(g_manage.apps[i].name).find(f) == std::wstring::npos)
+        auto& app = g_manage.apps[i];
+        bool selected = g_manage.selected.count(LowerCopy(app.launchPath)) != 0;
+        if (!showSys && app.system && !selected) continue;
+        if (!f.empty() && LowerCopy(app.name).find(f) == std::wstring::npos)
             continue;
         LVITEMW it{};
         it.mask = LVIF_TEXT;
         it.iItem = (int)g_manage.visible.size();
-        it.pszText = (LPWSTR)g_manage.apps[i].name.c_str();
+        it.pszText = (LPWSTR)app.name.c_str();
         int row = ListView_InsertItem(g_manage.list, &it);
         g_manage.visible.push_back(i);
-        bool on = g_manage.selected.count(LowerCopy(g_manage.apps[i].launchPath)) != 0;
-        ListView_SetCheckState(g_manage.list, row, on);
+        ListView_SetCheckState(g_manage.list, row, selected);
     }
     g_manage.rebuilding = false;
 }
@@ -1831,12 +1931,19 @@ static void ManageAddBrowse() {
         a.name = FileTitleOf(fp);
         if (EndsWithI(fp, L".lnk")) ResolveLnk(fp, a.target);
         else a.target = fp;
+        a.system = IsSystemInstalledApp(a);
+        std::wstring id = AppExePath(a);
         bool found = false;
         for (auto& x : g_manage.apps) {
-            if (_wcsicmp(x.launchPath.c_str(), fp.c_str()) == 0) { found = true; break; }
+            if (_wcsicmp(x.launchPath.c_str(), fp.c_str()) == 0 ||
+                (!id.empty() && AppExePath(x) == id)) {
+                found = true;
+                a = x;
+                break;
+            }
         }
         if (!found) g_manage.apps.push_back(a);
-        g_manage.selected.insert(LowerCopy(fp));
+        g_manage.selected.insert(LowerCopy(found ? a.launchPath : fp));
     }
     ManageRebuildList();
 }
@@ -1860,7 +1967,10 @@ static LRESULT CALLBACK ManageProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         col.cx = 476;
         col.pszText = (LPWSTR)L"程序";
         ListView_InsertColumn(lv, 0, &col);
-        CreateWindowW(L"BUTTON", L"浏览...", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 12, 436, 90, 28, h, (HMENU)204, nullptr, nullptr);
+        g_manage.showSysChk = CreateWindowW(L"BUTTON", L"显示系统应用",
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_AUTOCHECKBOX,
+            12, 436, 130, 28, h, (HMENU)205, nullptr, nullptr);
+        CreateWindowW(L"BUTTON", L"浏览...", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 148, 436, 90, 28, h, (HMENU)204, nullptr, nullptr);
         CreateWindowW(L"BUTTON", L"确定", WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_DEFPUSHBUTTON, 332, 436, 90, 28, h, (HMENU)202, nullptr, nullptr);
         CreateWindowW(L"BUTTON", L"取消", WS_CHILD | WS_VISIBLE | WS_TABSTOP, 430, 436, 90, 28, h, (HMENU)203, nullptr, nullptr);
         HFONT font = (HFONT)GetStockObject(DEFAULT_GUI_FONT);
@@ -1872,15 +1982,24 @@ static LRESULT CALLBACK ManageProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         g_manage.selected.clear();
         for (auto& s : g_shortcuts) {
             g_manage.selected.insert(LowerCopy(s.path));
+            InstalledApp probe;
+            probe.launchPath = s.path;
+            probe.target = s.target;
+            probe.name = s.name;
+            std::wstring sid = AppExePath(probe);
             bool found = false;
-            for (auto& a : g_manage.apps)
-                if (_wcsicmp(a.launchPath.c_str(), s.path.c_str()) == 0) { found = true; break; }
+            for (auto& a : g_manage.apps) {
+                if (_wcsicmp(a.launchPath.c_str(), s.path.c_str()) == 0 ||
+                    (!sid.empty() && AppExePath(a) == sid)) {
+                    found = true;
+                    g_manage.selected.erase(LowerCopy(s.path));
+                    g_manage.selected.insert(LowerCopy(a.launchPath));
+                    break;
+                }
+            }
             if (!found) {
-                InstalledApp a;
-                a.launchPath = s.path;
-                a.name = s.name.empty() ? FileTitleOf(s.path) : s.name;
-                a.target = s.target;
-                g_manage.apps.insert(g_manage.apps.begin(), a);
+                probe.system = IsSystemInstalledApp(probe);
+                g_manage.apps.insert(g_manage.apps.begin(), probe);
             }
         }
         ManageRebuildList();
@@ -1891,6 +2010,7 @@ static LRESULT CALLBACK ManageProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         int id = LOWORD(w);
         int code = HIWORD(w);
         if (id == 200 && code == EN_CHANGE) ManageRebuildList();
+        if (id == 205) ManageRebuildList();
         if (id == 202) ManageApplyAndClose();
         if (id == 203) DestroyWindow(h);
         if (id == 204) ManageAddBrowse();
@@ -1926,6 +2046,7 @@ static LRESULT CALLBACK ManageProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         g_manage.hwnd = nullptr;
         g_manage.list = nullptr;
         g_manage.search = nullptr;
+        g_manage.showSysChk = nullptr;
         g_manage.apps.clear();
         g_manage.selected.clear();
         g_manage.visible.clear();
