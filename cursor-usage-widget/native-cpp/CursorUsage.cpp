@@ -885,6 +885,7 @@ static RECT Work() {
 }
 
 static void SyncHotspots(HWND h);
+static void RaiseSettingsIfVisible();
 
 static void KeepTopMost(HWND h) {
     if (!h) return;
@@ -893,6 +894,7 @@ static void KeepTopMost(HWND h) {
         SetWindowLongPtrW(h, GWL_EXSTYLE, ex | WS_EX_TOPMOST);
     SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
+    RaiseSettingsIfVisible();
 }
 
 static void ApplyRegion(HWND h) {
@@ -2149,10 +2151,42 @@ static bool PtIn(const RECT& r, int x, int y) {
     return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
 }
 
+static void DestroySettingsWindow() {
+    HWND s = g_settings.hwnd;
+    g_settings.hwnd = nullptr;
+    if (s && IsWindow(s)) DestroyWindow(s);
+}
+
+static void CloseSettings() {
+    if (g_settings.hwnd && IsWindow(g_settings.hwnd))
+        ShowWindow(g_settings.hwnd, SW_HIDE);
+}
+
+static void RaiseSettingsIfVisible() {
+    HWND s = g_settings.hwnd;
+    if (!s || !IsWindow(s) || !IsWindowVisible(s)) return;
+    SetWindowPos(s, HWND_TOPMOST, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
+}
+
+static void ShowSettingsWindow(HWND hw) {
+    if (!hw || !IsWindow(hw)) return;
+    int hgt = SettingsContentH();
+    RECT wa; SystemParametersInfo(SPI_GETWORKAREA, 0, &wa, 0);
+    int x = wa.left + (wa.right - wa.left - kSettingsW) / 2;
+    int y = wa.top + (wa.bottom - wa.top - hgt) / 3;
+    SetWindowPos(hw, HWND_TOPMOST, x, y, kSettingsW, hgt, SWP_SHOWWINDOW);
+    ShowWindow(hw, SW_SHOW);
+    SetForegroundWindow(hw);
+    InvalidateRect(hw, nullptr, FALSE);
+    UpdateWindow(hw);
+}
+
 static void SettingsApplyMain() {
-    if (!g.hwnd) return;
+    if (!g.hwnd || !IsWindow(g.hwnd)) return;
     Place(g.hwnd);
     Repaint(g.hwnd);
+    RaiseSettingsIfVisible();
 }
 
 static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -2182,14 +2216,14 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             OpenManageShortcuts();
             return 0;
         }
-        if (PtIn(g_settings.closeBtn, x, y)) { DestroyWindow(h); return 0; }
+        if (PtIn(g_settings.closeBtn, x, y)) { CloseSettings(); return 0; }
         return 0;
     }
     case WM_CLOSE:
-        DestroyWindow(h);
+        CloseSettings();
         return 0;
     case WM_DESTROY:
-        g_settings.hwnd = nullptr;
+        if (g_settings.hwnd == h) g_settings.hwnd = nullptr;
         return 0;
     }
     return DefWindowProcW(h, m, w, l);
@@ -2197,9 +2231,7 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
 
 static void OpenSettings() {
     if (g_settings.hwnd && IsWindow(g_settings.hwnd)) {
-        ShowWindow(g_settings.hwnd, SW_SHOW);
-        SetForegroundWindow(g_settings.hwnd);
-        InvalidateRect(g_settings.hwnd, nullptr, FALSE);
+        ShowSettingsWindow(g_settings.hwnd);
         return;
     }
     g_settings.hwnd = nullptr;
@@ -2213,20 +2245,26 @@ static void OpenSettings() {
         wc.lpszClassName = L"CursorUsageSettings";
         wc.style = CS_HREDRAW | CS_VREDRAW;
         atom = RegisterClassExW(&wc);
+        if (!atom) {
+            WNDCLASSEXW existing{ sizeof(existing) };
+            if (!GetClassInfoExW(GetModuleHandleW(nullptr), L"CursorUsageSettings", &existing))
+                return;
+            atom = 1;
+        }
     }
     int hgt = SettingsContentH();
     RECT wa; SystemParametersInfo(SPI_GETWORKAREA, 0, &wa, 0);
     int x = wa.left + (wa.right - wa.left - kSettingsW) / 2;
     int y = wa.top + (wa.bottom - wa.top - hgt) / 3;
+    // Unowned popup: closing settings must not destroy the main widget HWND.
     HWND hw = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
         L"CursorUsageSettings", L"\u8bbe\u7f6e",
         WS_POPUP | WS_CLIPCHILDREN,
         x, y, kSettingsW, hgt,
-        g.hwnd, nullptr, GetModuleHandleW(nullptr), nullptr);
+        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
     if (!hw) return;
-    // Soft shadow / region rounded via paint; show
-    ShowWindow(hw, SW_SHOW);
-    UpdateWindow(hw);
+    g_settings.hwnd = hw;
+    ShowSettingsWindow(hw);
 }
 
 
@@ -2846,14 +2884,20 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (cmd == 14) DestroyWindow(h);
         return 0;
     }
+    case WM_CLOSE:
+        // Settings / owned popups must not quit the widget. 「退出」 uses DestroyWindow.
+        return 0;
     case WM_DESTROY:
+        if (h != g.hwnd) return 0;
         SaveConfig();
+        DestroySettingsWindow();
         DestroyHotspots();
         FreeShortcutIcons();
         KillTimer(h, 1);
         KillTimer(h, 2);
         KillTimer(h, 3);
         KillTimer(h, 4);
+        g.hwnd = nullptr;
         PostQuitMessage(0);
         return 0;
     }
