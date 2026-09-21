@@ -26,3 +26,8 @@ mybatis-plus:
 app:
   mindmap:
     storage-dir: ${MINDMAP_DIR:./data/mindmap}
+
+wechat:
+  enabled: ${WECHAT_ENABLED:false}
+  token: ${WECHAT_TOKEN:}
+  crab-operator-username: ${WECHAT_CRAB_USER:admin}
