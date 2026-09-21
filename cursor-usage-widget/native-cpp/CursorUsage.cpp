@@ -753,7 +753,7 @@ static int StripH() {
         int n = DualPairCount();
         float step = DualCenterGap();
         float lastY = y0 + step * (float)(n - 1);
-        float contentBottom = lastY + Ro + (float)S(10) + (float)S(10);
+        float contentBottom = lastY + Ro + (float)S(10);
         return (int)(contentBottom + topPad + 0.5f);
     }
     float r = RingR();
@@ -1315,9 +1315,9 @@ static int DualPairCount() {
 }
 static float DualOuterR() { return (float)S(14); } // diam ~28
 static float DualInnerR() { return (float)S(9); }  // diam ~18
-static float DualCenterGap() { float g = (float)S(52); float need = 2.f * DualOuterR() + (float)S(22); return g > need ? g : need; }
+static float DualCenterGap() { float gap = (float)S(52); float need = 2.f * DualOuterR() + (float)kRingGap; return gap > need ? gap : need; }
 
-static void DrawConcentricPair(Graphics& gph, Font& num, float cx, float cy,
+static void DrawConcentricPair(Graphics& gph, float cx, float cy,
     double outerPct, int outerKind, bool outerKnown,
     double innerPct, int innerKind, bool innerKnown,
     bool drawOuter, bool drawInner) {
@@ -1355,25 +1355,11 @@ static void DrawConcentricPair(Graphics& gph, Font& num, float cx, float cy,
         if (innerD < 6.f) innerD = Ri;
         float glyphSize = innerD * 0.635f / 0.595f;
         DrawRingGlyph(gph, cx, cy, glyphSize, innerKind);
-        if (live) {
-            wchar_t buf[16];
-            swprintf(buf, 16, (p > 0 && p < 0.5) ? L"<1%%" : L"%.0f%%", p);
-            SolidBrush text(IconInk());
-            if (g.dockEdge != 2) DrawCenter(gph, buf, num, text, cx, cy + Ro + (float)S(10));
-        }
     } else if (drawOuter) {
         // only outer: put glyph of outer kind
         float innerD = 2.f * Ro * 0.55f;
         float glyphSize = innerD * 0.635f / 0.595f;
         DrawRingGlyph(gph, cx, cy, glyphSize, outerKind);
-        bool live = g.snap.ok && outerKnown;
-        float p = live ? (float)std::max(0.0, std::min(100.0, outerPct)) : 0.f;
-        if (live) {
-            wchar_t buf[16];
-            swprintf(buf, 16, (p > 0 && p < 0.5) ? L"<1%%" : L"%.0f%%", p);
-            SolidBrush text(IconInk());
-            if (g.dockEdge != 2) DrawCenter(gph, buf, num, text, cx, cy + Ro + (float)S(10));
-        }
     }
 }
 static void AddBodyPath(GraphicsPath& body, float w, float hh, float rad, float inset) {
@@ -3038,12 +3024,12 @@ static void Paint(HWND h, HDC hdc) {
             float cy = (float)hh * 0.5f;
             float x0 = padL + Ro;
             float step = 2.f * Ro + gap;
-            DrawConcentricPair(gph, num, x0, cy,
+            DrawConcentricPair(gph, x0, cy,
                 g.snap.autoP, 0, true,
                 g.snap.api, 1, true,
                 true, true);
             if (g.showApi || g.showBot) {
-                DrawConcentricPair(gph, num, x0 + step, cy,
+                DrawConcentricPair(gph, x0 + step, cy,
                     g.snap.total, 2, true,
                     g.snap.botP, 3, g.snap.botKnown,
                     g.showApi, g.showBot);
@@ -3061,12 +3047,12 @@ static void Paint(HWND h, HDC hdc) {
             float topPad = (float)kCollapsedPad;
             float y0 = Ro + topPad;
             float step = DualCenterGap();
-            DrawConcentricPair(gph, num, cx, y0,
+            DrawConcentricPair(gph, cx, y0,
                 g.snap.autoP, 0, true,
                 g.snap.api, 1, true,
                 true, true);
             if (g.showApi || g.showBot) {
-                DrawConcentricPair(gph, num, cx, y0 + step,
+                DrawConcentricPair(gph, cx, y0 + step,
                     g.snap.total, 2, true,
                     g.snap.botP, 3, g.snap.botKnown,
                     g.showApi, g.showBot);
