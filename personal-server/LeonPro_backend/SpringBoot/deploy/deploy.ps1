@@ -82,16 +82,18 @@ $commonOpts = @(
 )
 $sshArgs = @("-p", $DEPLOY_PORT) + $commonOpts
 $scpArgs = @("-P", $DEPLOY_PORT) + $commonOpts
-if ($DEPLOY_SSH_KEY) {
-    $sshArgs += @("-i", $DEPLOY_SSH_KEY)
-    $scpArgs += @("-i", $DEPLOY_SSH_KEY)
-} elseif ($DEPLOY_PASSWORD) {
+if ($DEPLOY_PASSWORD) {
     $sshArgs += @("-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no")
     $scpArgs += @("-o", "PreferredAuthentications=password", "-o", "PubkeyAuthentication=no")
     $env:DEPLOY_PASSWORD = $DEPLOY_PASSWORD
     $env:SSH_ASKPASS = Join-Path $DeployDir "askpass.cmd"
     $env:SSH_ASKPASS_REQUIRE = "force"
     $env:DISPLAY = "127.0.0.1:0"
+} elseif ($DEPLOY_SSH_KEY) {
+    $sshArgs += @("-i", $DEPLOY_SSH_KEY)
+    $scpArgs += @("-i", $DEPLOY_SSH_KEY)
+} else {
+    Write-Error "未找到 SSH 密码或密钥。请填写 bootstrap.env 的 DEPLOY_PASSWORD，或在 deploy.env 填写 DEPLOY_SSH_KEY"
 }
 
 $remote = "${DEPLOY_USER}@${DEPLOY_HOST}"
