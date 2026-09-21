@@ -646,7 +646,9 @@ struct App {
     DWORD holdUntil = 0;
     int scale = 80;
     bool showBot = false;
-    int bgAlpha = 100; // card fill only: 100/85/70/55
+    bool showApi = true; // dual-ring lower outer; default on
+    int ringMode = 0; // 0=quad four rings, 1=dual concentric pairs
+    int bgAlpha = 100; // legacy unused
     int scrollY = 0;
     bool scrolling = false;
     bool dark = false;
@@ -694,18 +696,40 @@ static const int kPctBelow = 16; // % center below ring edge
 static float RingStepV() {
     return 2.f * RingR() + (float)kPctBelow + (float)S(12) + (float)kRingGap;
 }
-static int CollapsedRingCount() { return g.showBot ? 4 : 3; }
+
+
+static int DualPairCount();
+static float DualOuterR();
+static float DualInnerR();
+static float DualCenterGap();
+
+
+
+
+static int CollapsedRingCount() {
+    int n = 2; // Auto + Models
+    if (g.showApi) n++;
+    if (g.showBot) n++;
+    return n;
+}
+static void DrawCollapsedRingsHV(Graphics& gph, Font& num, float x0, float y0, float r,
+    float stepX, float stepY, bool horizontal);
 
 static int StripW() {
     if (g.dockEdge == 2) {
-        // pad 12, ring gap 10, rings L->R
+        if (g.ringMode == 1) {
+            float Ro = DualOuterR();
+            int n = DualPairCount();
+            int gap = 12;
+            return 12 * 2 + (int)(n * (2.f * Ro) + (n - 1) * gap + 0.5f);
+        }
         float r = RingR();
         int n = CollapsedRingCount();
         int gap = kRingGap;
         return kCollapsedPad * 2 + (int)(n * (2.f * r) + (n - 1) * gap + 0.5f);
     }
     {
-        float rSide = RingR();
+        float rSide = (g.ringMode == 1) ? DualOuterR() : RingR();
         int side = kCollapsedPad;
         int ww = (int)(2.f * rSide + (float)(side * 2) + 0.5f);
         int minW = S(44);
@@ -714,9 +738,23 @@ static int StripW() {
 }
 static int StripH() {
     if (g.dockEdge == 2) {
+        if (g.ringMode == 1) {
+            float Ro = DualOuterR();
+            int hh = (int)(2.f * Ro + 12.f + 0.5f);
+            return hh < 40 ? 40 : hh;
+        }
         float r = RingR();
-        // padTB 8 + ring + percent under ring
         return S(6) * 2 + (int)(2.f * r + (float)kPctBelow + (float)S(10) + 0.5f);
+    }
+    if (g.ringMode == 1) {
+        float Ro = DualOuterR();
+        float topPad = (float)kCollapsedPad;
+        float y0 = Ro + topPad;
+        int n = DualPairCount();
+        float step = DualCenterGap();
+        float lastY = y0 + step * (float)(n - 1);
+        float contentBottom = lastY + Ro + (float)S(10) + (float)S(10);
+        return (int)(contentBottom + topPad + 0.5f);
     }
     float r = RingR();
     float topPad = (float)kCollapsedPad;
@@ -736,7 +774,7 @@ static int PanelW() {
 static int MeterH() { return S(57); }
 static int ExpandedChromeH() {
     if (!g.snap.ok) return S(46) + S(36);
-    return S(46) + MeterH() * (g.showBot ? 4 : 3) + S(8);
+    return S(46) + MeterH() * CollapsedRingCount() + S(8);
 }
 static int TokenListH() {
     int n = (int)g.snap.models.size();
@@ -798,6 +836,8 @@ static void LoadConfig() {
         }
         if (k == "y") g.y = atoi(v.c_str());
         if (k == "showBot") g.showBot = v == "1";
+        if (k == "showApi") g.showApi = v == "1";
+        if (k == "ringMode") g.ringMode = (atoi(v.c_str()) == 1) ? 1 : 0;
         // bgAlpha removed — ignore legacy keys
     }
 }
@@ -809,6 +849,8 @@ static void SaveConfig() {
     out << "dock=" << (g.dockEdge == 0 ? "left" : g.dockEdge == 2 ? "top" : "right") << "\n";
     out << "y=" << g.y << "\n";
     out << "showBot=" << (g.showBot ? "1" : "0") << "\n";
+    out << "showApi=" << (g.showApi ? "1" : "0") << "\n";
+    out << "ringMode=" << g.ringMode << "\n";
 
 }
 
@@ -1221,7 +1263,7 @@ static void DrawRingGlyph(Graphics& gph, float cx, float cy, float size, int kin
 }
 
 static void DrawRingItem(Graphics& gph, Font& num, float cx, float y, float r, double pct, int kind, bool known = true) {
-    Color track(g.dark ? Color(255, 0x3A, 0x3E, 0x44) : Color(255, 220, 224, 228));
+    Color track(g.dark ? Color(255, 0x3A, 0x3E, 0x44) : Color(255, 0xC5, 0xCA, 0xD3));
     Color ink = IconInk();
     bool live = g.snap.ok && known;
     float p = live ? (float)std::max(0.0, std::min(100.0, pct)) : 0.f;
@@ -1252,6 +1294,88 @@ static void DrawRingItem(Graphics& gph, Font& num, float cx, float y, float r, d
     }
 }
 
+static void DrawCollapsedRingsHV(Graphics& gph, Font& num, float x0, float y0, float r,
+    float stepX, float stepY, bool horizontal) {
+    float x = x0, y = y0;
+    auto advance = [&]() {
+        if (horizontal) x += stepX;
+        else y += stepY;
+    };
+    DrawRingItem(gph, num, x, y, r, g.snap.autoP, 0); advance();
+    DrawRingItem(gph, num, x, y, r, g.snap.api, 1); advance();
+    if (g.showApi) { DrawRingItem(gph, num, x, y, r, g.snap.total, 2); advance(); }
+    if (g.showBot) { DrawRingItem(gph, num, x, y, r, g.snap.botP, 3, g.snap.botKnown); }
+}
+
+static int DualPairCount() {
+    // upper Auto/Model always; lower if Api or Bot visible
+    int n = 1;
+    if (g.showApi || g.showBot) n = 2;
+    return n;
+}
+static float DualOuterR() { return (float)S(14); } // diam ~28
+static float DualInnerR() { return (float)S(9); }  // diam ~18
+static float DualCenterGap() { float g = (float)S(52); float need = 2.f * DualOuterR() + (float)S(22); return g > need ? g : need; }
+
+static void DrawConcentricPair(Graphics& gph, Font& num, float cx, float cy,
+    double outerPct, int outerKind, bool outerKnown,
+    double innerPct, int innerKind, bool innerKnown,
+    bool drawOuter, bool drawInner) {
+    float Ro = DualOuterR(), Ri = DualInnerR();
+    if (drawOuter) {
+        // track + arc only (no center glyph on outer)
+        Color track(g.dark ? Color(255, 0x3A, 0x3E, 0x44) : Color(255, 0xC5, 0xCA, 0xD3));
+        Pen ring(track, 3.0f);
+        gph.DrawEllipse(&ring, cx - Ro, cy - Ro, Ro * 2, Ro * 2);
+        bool live = g.snap.ok && outerKnown;
+        float p = live ? (float)std::max(0.0, std::min(100.0, outerPct)) : 0.f;
+        if (live && p > 0.3f) {
+            Color go = RingColor(outerKind, p);
+            Pen arc(go, 3.0f);
+            arc.SetStartCap(Gdiplus::LineCapRound);
+            arc.SetEndCap(Gdiplus::LineCapRound);
+            gph.DrawArc(&arc, cx - Ro, cy - Ro, Ro * 2, Ro * 2, -90.f, 360.f * p / 100.f);
+        }
+    }
+    if (drawInner) {
+        Color track(g.dark ? Color(255, 0x3A, 0x3E, 0x44) : Color(255, 0xC5, 0xCA, 0xD3));
+        Pen ring(track, 2.5f);
+        gph.DrawEllipse(&ring, cx - Ri, cy - Ri, Ri * 2, Ri * 2);
+        bool live = g.snap.ok && innerKnown;
+        float p = live ? (float)std::max(0.0, std::min(100.0, innerPct)) : 0.f;
+        if (live && p > 0.3f) {
+            Color go = RingColor(innerKind, p);
+            Pen arc(go, 2.5f);
+            arc.SetStartCap(Gdiplus::LineCapRound);
+            arc.SetEndCap(Gdiplus::LineCapRound);
+            gph.DrawArc(&arc, cx - Ri, cy - Ri, Ri * 2, Ri * 2, -90.f, 360.f * p / 100.f);
+        }
+        // glyph in center (inner ring's kind)
+        float innerD = 2.f * Ri - 3.f;
+        if (innerD < 6.f) innerD = Ri;
+        float glyphSize = innerD * 0.635f / 0.595f;
+        DrawRingGlyph(gph, cx, cy, glyphSize, innerKind);
+        if (live) {
+            wchar_t buf[16];
+            swprintf(buf, 16, (p > 0 && p < 0.5) ? L"<1%%" : L"%.0f%%", p);
+            SolidBrush text(IconInk());
+            if (g.dockEdge != 2) DrawCenter(gph, buf, num, text, cx, cy + Ro + (float)S(10));
+        }
+    } else if (drawOuter) {
+        // only outer: put glyph of outer kind
+        float innerD = 2.f * Ro * 0.55f;
+        float glyphSize = innerD * 0.635f / 0.595f;
+        DrawRingGlyph(gph, cx, cy, glyphSize, outerKind);
+        bool live = g.snap.ok && outerKnown;
+        float p = live ? (float)std::max(0.0, std::min(100.0, outerPct)) : 0.f;
+        if (live) {
+            wchar_t buf[16];
+            swprintf(buf, 16, (p > 0 && p < 0.5) ? L"<1%%" : L"%.0f%%", p);
+            SolidBrush text(IconInk());
+            if (g.dockEdge != 2) DrawCenter(gph, buf, num, text, cx, cy + Ro + (float)S(10));
+        }
+    }
+}
 static void AddBodyPath(GraphicsPath& body, float w, float hh, float rad, float inset) {
     // inset only on free edges; dock flush side stays at 0 so no white seam on screen.
     float r = rad;
@@ -2099,14 +2223,21 @@ static void OpenManageShortcuts() {
 // ---- Settings window (美工 locked: 320 / cards / #F8F8FA) ----
 static const int IDM_SETTINGS = 18;
 static const int kSettingsW = 300;
+static const int kSettingsWinH = 420;
 
 struct SettingsDlg {
     HWND hwnd = nullptr;
     RECT closeBtn{};
     RECT dockBtn[3]{};
     RECT alphaBtn[4]{};
+    RECT modeBtn[2]{};
     RECT botRow{};
     RECT botSwitch{};
+    RECT apiRow{};
+    RECT apiSwitch{};
+    int scrollY = 0;
+    int contentH = 0;
+    int winH = 420;
     RECT addBtn{};
     RECT emptyHit{};
     RECT shortcutRow[8]{};
@@ -2132,41 +2263,51 @@ static int SettingsShortcutListH() {
 }
 
 static int SettingsContentH() {
-    const int pad = 12;
-    const int titleH = 28;
-    const int cardGap = 12;
-    const int cardPad = 12;
-    const int secLabelH = 18;
-    const int secGap = 6;
-    const int chipH = 28;
-    const int botRowH = 28;
-    const int addH = 28;
+    const int pad = 10;
+    const int titleH = 24;
+    const int cardGap = 10;
+    const int cardPad = 10;
+    const int secLabelH = 16;
+    const int secGap = 4;
+    const int chipH = 26;
+    const int rowH = 26;
+    const int addH = 26;
     const int listAddGap = 4;
     int dockCard = cardPad + chipH + cardPad;
-    int botCard = cardPad + botRowH + cardPad;
+    int modeCard = cardPad + chipH + cardPad;
+    int visCard = cardPad + rowH + 6 + rowH + cardPad;
     int listH = SettingsShortcutListH();
-    int scCard = cardPad + listH + listAddGap + addH + 8;
-    return pad + titleH + 12
+    int scCard = cardPad + listH + listAddGap + addH + 4;
+    return pad + titleH + 8
         + secLabelH + secGap + dockCard + cardGap
-        + botCard + cardGap
+        + secLabelH + secGap + modeCard + cardGap
+        + secLabelH + secGap + visCard + cardGap
         + secLabelH + secGap + scCard
         + pad;
 }
 
+static int SettingsWinH() {
+    int ch = SettingsContentH();
+    g_settings.contentH = ch;
+    g_settings.winH = ch;
+    g_settings.scrollY = 0; // long window, no scroll for now
+    return ch;
+}
+
 static void SettingsLayout(int /*cw*/, int /*ch*/) {
-    const int pad = 12;
+    const int pad = 10;
     const int inner = kSettingsW - pad * 2;
-    const int cardGap = 12;
-    const int cardPad = 12;
-    const int secLabelH = 18;
-    const int secGap = 6;
-    const int chipH = 28;
+    const int cardGap = 10;
+    const int cardPad = 10;
+    const int secLabelH = 16;
+    const int secGap = 4;
+    const int chipH = 26;
     const int listAddGap = 4;
-    const int addH = 28;
+    const int addH = 26;
 
-    g_settings.closeBtn = { kSettingsW - pad - 32, pad, kSettingsW - pad - 4, pad + 28 };
+    g_settings.closeBtn = { kSettingsW - pad - 32, pad, kSettingsW - pad - 4, pad + 24 };
 
-    int y = pad + 28 + 12;
+    int y = pad + 24 + 8;
 
     // Card 1: dock — title above card
     y += secLabelH + secGap;
@@ -2180,13 +2321,27 @@ static void SettingsLayout(int /*cw*/, int /*ch*/) {
     y = contentTop + chipH + cardPad + cardGap;
 
 
-    // Bot — no section title
+    // 显示模式
+    // display mode
+    y += secLabelH + secGap;
     contentTop = y + cardPad;
-    g_settings.botRow = { pad + cardPad, contentTop, pad + inner - cardPad, contentTop + 28 };
-    g_settings.botSwitch = { g_settings.botRow.right - 44, contentTop + 3, g_settings.botRow.right, contentTop + 3 + 22 };
-    y = contentTop + 28 + cardPad + cardGap;
+    int mw = (inner - cardPad * 2 - 8) / 2;
+    int mx = pad + cardPad;
+    g_settings.modeBtn[0] = { mx, contentTop, mx + mw, contentTop + chipH };
+    g_settings.modeBtn[1] = { mx + mw + 8, contentTop, mx + mw + 8 + mw, contentTop + chipH };
+    y = contentTop + chipH + cardPad + cardGap;
 
-    // Card 4: shortcuts
+    // visibility Bot+Api
+    y += secLabelH + secGap;
+    contentTop = y + cardPad;
+    g_settings.botRow = { pad + cardPad, contentTop, pad + inner - cardPad, contentTop + 26 };
+    g_settings.botSwitch = { g_settings.botRow.right - 44, contentTop + 2, g_settings.botRow.right, contentTop + 2 + 22 };
+    contentTop += 26 + 6;
+    g_settings.apiRow = { pad + cardPad, contentTop, pad + inner - cardPad, contentTop + 26 };
+    g_settings.apiSwitch = { g_settings.apiRow.right - 44, contentTop + 2, g_settings.apiRow.right, contentTop + 2 + 22 };
+    y = contentTop + 26 + cardPad + cardGap;
+
+    // shortcuts
     y += secLabelH + secGap;
     contentTop = y + cardPad;
     int listH = SettingsShortcutListH();
@@ -2247,7 +2402,8 @@ static void PaintSettings(HWND h) {
     RECT crc; GetClientRect(h, &crc);
     int cw = crc.right, ch = crc.bottom;
     if (cw <= 0 || ch <= 0) return;
-    SettingsLayout(cw, ch);
+    SettingsWinH(); // refresh contentH / clamp scroll
+    SettingsLayout(kSettingsW, g_settings.contentH);
     PAINTSTRUCT ps;
     HDC hdc = BeginPaint(h, &ps);
     HDC mem = CreateCompatibleDC(hdc);
@@ -2284,14 +2440,13 @@ static void PaintSettings(HWND h) {
         SolidBrush secBr(Color(255, 0x5A, 0x60, 0x69));
         SolidBrush muted(Color(255, 0x78, 0x7D, 0x85));
 
-        const int pad = 12;
+        const int pad = 10;
         const int inner = kSettingsW - pad * 2;
-        const int cardGap = 12;
-        const int cardPad = 12;
-        const int chipH = 28;
+        const int cardGap = 10;
+        const int cardPad = 10;
+        const int chipH = 26;
 
         gph.DrawString(L"\u8bbe\u7f6e", -1, &title, PointF((float)pad, (float)pad + 2.f), &titleBr);
-        // close X
         {
             RECT cr = g_settings.closeBtn;
             float cx = (cr.left + cr.right) / 2.f;
@@ -2304,8 +2459,8 @@ static void PaintSettings(HWND h) {
         }
 
         int y = pad + 28 + 12;
-        const int secLabelH = 18;
-        const int secGap = 6;
+        const int secLabelH = 16;
+        const int secGap = 4;
         const int listAddGap = 4;
         const int addH = 28;
 
@@ -2322,13 +2477,26 @@ static void PaintSettings(HWND h) {
         }
 
 
-        // --- Bot (no section title) ---
+                // --- 显示模式 ---
         {
-            int cardH = cardPad + 28 + cardPad;
+            gph.DrawString(L"\u663e\u793a\u6a21\u5f0f", -1, &sec, PointF((float)pad, (float)y), &secBr);
+            y += secLabelH + secGap;
+            int cardH = cardPad + chipH + cardPad;
+            DrawSettingsCard(gph, (float)pad, (float)y, (float)inner, (float)cardH);
+            DrawSettingsChip(gph, g_settings.modeBtn[0], L"\u56db\u73af", g.ringMode == 0, true, ui);
+            DrawSettingsChip(gph, g_settings.modeBtn[1], L"\u53cc\u73af", g.ringMode == 1, true, ui);
+            y += cardH + cardGap;
+        }
+
+        // --- visibility Bot + Api ---
+        {
+            gph.DrawString(L"\u663e\u793a\u9879", -1, &sec, PointF((float)pad, (float)y), &secBr);
+            y += secLabelH + secGap;
+            int cardH = cardPad + 26 + 6 + 26 + cardPad;
             DrawSettingsCard(gph, (float)pad, (float)y, (float)inner, (float)cardH);
             RECT rc = g_settings.botRow;
             gph.DrawString(L"\u663e\u793a Bot \u7528\u91cf", -1, &ui,
-                PointF((float)rc.left, (float)rc.top + 4.f), &titleBr);
+                PointF((float)rc.left, (float)rc.top + 3.f), &titleBr);
             float tx = (float)g_settings.botSwitch.left;
             float ty = (float)g_settings.botSwitch.top;
             float tw = 44.f, th = 22.f;
@@ -2340,6 +2508,17 @@ static void PaintSettings(HWND h) {
             float kx = g.showBot ? (tx + tw - knob - 2.f) : (tx + 2.f);
             SolidBrush knobBr(Color(255, 255, 255, 255));
             gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
+            rc = g_settings.apiRow;
+            gph.DrawString(L"\u663e\u793a Api \u7528\u91cf", -1, &ui,
+                PointF((float)rc.left, (float)rc.top + 3.f), &titleBr);
+            tx = (float)g_settings.apiSwitch.left;
+            ty = (float)g_settings.apiSwitch.top;
+            GraphicsPath tpath2;
+            RoundRectPath(tpath2, tx, ty, tw, th, th / 2.f);
+            SolidBrush tfill2(g.showApi ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0xD0, 0xD4, 0xDA));
+            gph.FillPath(&tfill2, &tpath2);
+            kx = g.showApi ? (tx + tw - knob - 2.f) : (tx + 2.f);
+            gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
             y += cardH + cardGap;
         }
 
@@ -2348,7 +2527,7 @@ static void PaintSettings(HWND h) {
             gph.DrawString(L"\u5feb\u6377\u65b9\u5f0f", -1, &sec, PointF((float)pad, (float)y), &secBr);
             y += secLabelH + secGap;
             int listH = SettingsShortcutListH();
-            int cardH = cardPad + listH + listAddGap + addH + 8;
+            int cardH = cardPad + listH + listAddGap + addH + 4;
             DrawSettingsCard(gph, (float)pad, (float)y, (float)inner, (float)cardH);
             if (g_shortcuts.empty()) {
                 StringFormat fmt;
@@ -2408,6 +2587,7 @@ static void PaintSettings(HWND h) {
                 gph.DrawString(L"\u6dfb\u52a0", -1, &uiSm, RectF(x, yy, ww, hh), &fmt, &ink);
             }
         }
+
     }
     BitBlt(hdc, 0, 0, cw, ch, mem, 0, 0, SRCCOPY);
     SelectObject(mem, old);
@@ -2422,12 +2602,12 @@ static bool PtIn(const RECT& r, int x, int y) {
 
 static void SettingsResize(HWND h) {
     if (!h || !IsWindow(h)) return;
-    int hgt = SettingsContentH();
+    int hgt = SettingsWinH();
     RECT rc; GetWindowRect(h, &rc);
     SetWindowPos(h, nullptr, rc.left, rc.top, kSettingsW, hgt, SWP_NOZORDER | SWP_NOACTIVATE);
     HRGN rgn = CreateRoundRectRgn(0, 0, kSettingsW + 1, hgt + 1, 24, 24);
     SetWindowRgn(h, rgn, TRUE);
-    SettingsLayout(kSettingsW, hgt);
+    SettingsLayout(kSettingsW, g_settings.contentH);
     InvalidateRect(h, nullptr, FALSE);
 }
 
@@ -2442,8 +2622,9 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_CREATE:
         g_settings.hwnd = h;
         {
-            int hgt = SettingsContentH();
-            SettingsLayout(kSettingsW, hgt);
+            g_settings.scrollY = 0;
+            int hgt = SettingsWinH();
+            SettingsLayout(kSettingsW, g_settings.contentH);
             HRGN rgn = CreateRoundRectRgn(0, 0, kSettingsW + 1, hgt + 1, 24, 24);
             SetWindowRgn(h, rgn, TRUE);
         }
@@ -2456,6 +2637,11 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_LBUTTONDOWN: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
         if (PtIn(g_settings.closeBtn, x, y)) { DestroyWindow(h); return 0; }
+        if (y < 34 && !PtIn(g_settings.closeBtn, x, y)) {
+            ReleaseCapture();
+            SendMessageW(h, WM_NCLBUTTONDOWN, HTCAPTION, 0);
+            return 0;
+        }
         return 0;
     }
     case WM_LBUTTONUP: {
@@ -2465,8 +2651,14 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (g.dockEdge != i) { g.dockEdge = i; g.y = -1; }
             SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
+        for (int i = 0; i < 2; ++i) if (PtIn(g_settings.modeBtn[i], x, y)) {
+            g.ringMode = i; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
+        }
         if (PtIn(g_settings.botRow, x, y) || PtIn(g_settings.botSwitch, x, y)) {
             g.showBot = !g.showBot; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
+        }
+        if (PtIn(g_settings.apiRow, x, y) || PtIn(g_settings.apiSwitch, x, y)) {
+            g.showApi = !g.showApi; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
         if (PtIn(g_settings.addBtn, x, y) || (g_shortcuts.empty() && PtIn(g_settings.emptyHit, x, y))) {
             OpenManageShortcuts();
@@ -2505,7 +2697,7 @@ static void OpenSettings() {
         wc.style = CS_HREDRAW | CS_VREDRAW;
         atom = RegisterClassExW(&wc);
     }
-    int hgt = SettingsContentH();
+    int hgt = SettingsWinH();
     RECT wa; SystemParametersInfo(SPI_GETWORKAREA, 0, &wa, 0);
     int x = wa.left + (wa.right - wa.left - kSettingsW) / 2;
     int y = wa.top + (wa.bottom - wa.top - hgt) / 3;
@@ -2839,30 +3031,52 @@ static void Paint(HWND h, HDC hdc) {
 
     if (!g.expanded) {
         float r = RingR();
-        if (g.dockEdge == 2) {
-            // Horizontal bar: rings L->R, pad 12/8, gap 10, % under each.
-            int n = CollapsedRingCount();
+        if (g.dockEdge == 2 && g.ringMode == 1) {
+            float Ro = DualOuterR();
+            float gap = 12.f;
+            float padL = 12.f;
+            float cy = (float)hh * 0.5f;
+            float x0 = padL + Ro;
+            float step = 2.f * Ro + gap;
+            DrawConcentricPair(gph, num, x0, cy,
+                g.snap.autoP, 0, true,
+                g.snap.api, 1, true,
+                true, true);
+            if (g.showApi || g.showBot) {
+                DrawConcentricPair(gph, num, x0 + step, cy,
+                    g.snap.total, 2, true,
+                    g.snap.botP, 3, g.snap.botKnown,
+                    g.showApi, g.showBot);
+            }
+        } else if (g.dockEdge == 2) {
             float gap = (float)kRingGap;
             float padL = (float)kCollapsedPad;
             float cy = (float)S(6) + r;
             float x0 = padL + r;
             float step = 2.f * r + gap;
-            DrawRingItem(gph, num, x0, cy, r, g.snap.autoP, 0);
-            DrawRingItem(gph, num, x0 + step, cy, r, g.snap.api, 1);
-            DrawRingItem(gph, num, x0 + step * 2.f, cy, r, g.snap.total, 2);
-            if (g.showBot)
-                DrawRingItem(gph, num, x0 + step * 3.f, cy, r, g.snap.botP, 3, g.snap.botKnown);
-            (void)n;
+            DrawCollapsedRingsHV(gph, num, x0, cy, r, step, 0.f, true);
+        } else if (g.ringMode == 1) {
+            float cx = w * 0.5f;
+            float Ro = DualOuterR();
+            float topPad = (float)kCollapsedPad;
+            float y0 = Ro + topPad;
+            float step = DualCenterGap();
+            DrawConcentricPair(gph, num, cx, y0,
+                g.snap.autoP, 0, true,
+                g.snap.api, 1, true,
+                true, true);
+            if (g.showApi || g.showBot) {
+                DrawConcentricPair(gph, num, cx, y0 + step,
+                    g.snap.total, 2, true,
+                    g.snap.botP, 3, g.snap.botKnown,
+                    g.showApi, g.showBot);
+            }
         } else {
             float cx = w * 0.5f;
             float topPad = (float)kCollapsedPad;
             float y0 = r + topPad;
             float step = RingStepV();
-            DrawRingItem(gph, num, cx, y0, r, g.snap.autoP, 0);
-            DrawRingItem(gph, num, cx, y0 + step, r, g.snap.api, 1);
-            DrawRingItem(gph, num, cx, y0 + step * 2, r, g.snap.total, 2);
-            if (g.showBot)
-                DrawRingItem(gph, num, cx, y0 + step * 3, r, g.snap.botP, 3, g.snap.botKnown);
+            DrawCollapsedRingsHV(gph, num, cx, y0, r, 0.f, step, false);
         }
     } else {
 
@@ -2886,7 +3100,8 @@ static void Paint(HWND h, HDC hdc) {
             y = S(46);
             y = Meter(gph, ui, sm, ux, y, ur, L"Auto", g.snap.autoP, L"");
             y = Meter(gph, ui, sm, ux, y, ur, L"Models", g.snap.api, L"");
-            y = Meter(gph, ui, sm, ux, y, ur, L"API", g.snap.total, L"");
+            if (g.showApi)
+                y = Meter(gph, ui, sm, ux, y, ur, L"API", g.snap.total, L"");
             if (g.showBot)
                 y = Meter(gph, ui, sm, ux, y, ur, L"Bot", g.snap.botP, L"", g.snap.botKnown);
         }
