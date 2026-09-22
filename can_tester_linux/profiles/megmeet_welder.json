@@ -19,7 +19,7 @@
       "name": "就绪",
       "note": "焊机就绪（对应 py「就绪」）",
       "kind": "bit",
-      "byte": 0,
+      "byte": 1,
       "bit": 0,
       "default": true,
       "key": "ready"
@@ -28,7 +28,7 @@
       "name": "故障",
       "note": "焊机故障（对应 py「故障」）",
       "kind": "bit",
-      "byte": 0,
+      "byte": 1,
       "bit": 1,
       "default": false,
       "key": "error"
@@ -37,7 +37,7 @@
       "name": "寻位成功",
       "note": "寻位/碰触成功（对应 py「寻位成功」）",
       "kind": "bit",
-      "byte": 0,
+      "byte": 1,
       "bit": 2,
       "default": false,
       "key": "touch_ok"
@@ -46,7 +46,7 @@
       "name": "起弧成功",
       "note": "起弧成功（对应 py「起弧成功」；起焊沿可自动勾）",
       "kind": "bit",
-      "byte": 1,
+      "byte": 2,
       "bit": 0,
       "default": false,
       "key": "arc_ok"
@@ -55,16 +55,16 @@
       "name": "电弧异常",
       "note": "电弧异常（对应 py「电弧异常」）",
       "kind": "bit",
-      "byte": 1,
+      "byte": 2,
       "bit": 1,
       "default": false,
       "key": "arc_ex"
     },
     {
-      "name": "其他异常",
-      "note": "其他异常（对应 py「其他异常」）",
+      "name": "气体流量异常",
+      "note": "手册 A10 气体流量异常（py「其他异常」同一位 data[2].bit2）",
       "kind": "bit",
-      "byte": 1,
+      "byte": 2,
       "bit": 2,
       "default": false,
       "key": "other_ex"
@@ -73,7 +73,7 @@
       "name": "粘丝",
       "note": "粘丝（对应 py「粘丝」）",
       "kind": "bit",
-      "byte": 1,
+      "byte": 2,
       "bit": 3,
       "default": false,
       "key": "stick"
@@ -82,7 +82,7 @@
       "name": "电流 A",
       "note": "焊接电流 A（对应 py「A」）",
       "kind": "u16",
-      "byte": 2,
+      "byte": 3,
       "scale": 1.0,
       "default": 180,
       "key": "current"
@@ -91,7 +91,7 @@
       "name": "电压 V",
       "note": "焊接电压 V（对应 py「V」，内部×10）",
       "kind": "u16",
-      "byte": 4,
+      "byte": 5,
       "scale": 0.1,
       "default": 22.5,
       "key": "voltage"
@@ -100,7 +100,7 @@
       "name": "错",
       "note": "错误码（对应 py「错」）",
       "kind": "u8",
-      "byte": 6,
+      "byte": 7,
       "scale": 1.0,
       "default": 0,
       "key": "errcode"
@@ -111,7 +111,7 @@
       "enabled": true,
       "match_id": "0x1FD07063",
       "extended": true,
-      "reply": "01 00 00 B4 00 E1 00 00",
+      "reply": "00 01 00 00 B4 00 E1 00",
       "delay_ms": 0,
       "note": "插件轮询 → 动态焊机回帧（HEX 为默认快照，运行时由 engine=megmeet 覆盖）"
     }

@@ -23,7 +23,7 @@ def test_reject_over_29bit():
 def test_megmeet_ids():
     assert megmeet.PLUGIN_TX_ID == 0x1FD07063
     assert megmeet.WELDER_RX_ID == 0x1FD08063
-    s = megmeet.decode_frame(0x1FD08063, bytes([0x01, 0, 0x00, 0xB4, 0x00, 0xE1, 0, 0]))
+    s = megmeet.decode_frame(0x1FD08063, bytes([0x00, 0x01, 0x00, 0x00, 0xB4, 0x00, 0xE1, 0x00]))
     assert "180A" in s and "22.5V" in s
 
 

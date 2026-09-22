@@ -73,7 +73,7 @@ def test_dual_virtual_megmeet_poll_reply():
     assert reply is not None, "client did not RX WELDER_ID reply"
     assert reply.is_extended
     assert len(reply.data) == 8
-    assert reply.data[0] & 0x01  # ready
+    assert reply.data[1] & 0x01  # ready (GOO Byte2)
 
     server.disconnect()
     client.disconnect()

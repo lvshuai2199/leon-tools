@@ -29,20 +29,20 @@ def test_build_reply_bit_packing():
     )
     data = build_reply(st)
     assert len(data) == 8
-    assert data[0] & 0x01  # ready
-    assert data[0] & 0x04  # touch_ok
-    assert data[1] & 0x01  # arc_ok
-    assert data[2] == 0x00 and data[3] == 0xB4  # 180 BE
-    assert data[4] == 0x00 and data[5] == 0xE1  # 225 BE (22.5*10)
-    assert data[6] == 0
+    assert data[0] == 0
+    assert data[1] & 0x01  # ready at Byte2
+    assert data[1] & 0x04  # touch_ok
+    assert data[2] & 0x01  # arc_ok
+    assert data[3] == 0x00 and data[4] == 0xB4  # 180 BE
+    assert data[5] == 0x00 and data[6] == 0xE1  # 225 BE (22.5*10)
     assert data[7] == 0
 
 
 def test_build_reply_defaults():
     data = build_reply(ResponderState())
-    assert data[0] & 0x01
-    assert data[3] == 180
-    assert (data[4] << 8 | data[5]) == 225
+    assert data[1] & 0x01
+    assert data[4] == 180
+    assert (data[5] << 8 | data[6]) == 225
 
 
 def test_auto_arc_rising_falling_edge():
