@@ -24,6 +24,7 @@
 #include <shlwapi.h>
 #include <commctrl.h>
 #include <commoncontrols.h>
+#include <tlhelp32.h>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
@@ -936,13 +937,30 @@ static RECT Work() {
 
 static void SyncHotspots(HWND h);
 
+static volatile DWORD g_yieldTopUntil = 0;
+
+static bool TopMostYielded() {
+    DWORD until = g_yieldTopUntil;
+    return until && (LONG)(until - GetTickCount()) > 0;
+}
+
+static void BeginTopMostYield(DWORD ms) {
+    g_yieldTopUntil = GetTickCount() + ms;
+    if (g.hwnd && IsWindow(g.hwnd))
+        SetWindowPos(g.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
+                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOSENDCHANGING);
+}
+
+static void RaiseHotspots();
+
 static void KeepTopMost(HWND h) {
-    if (!h) return;
+    if (!h || TopMostYielded()) return;
     LONG_PTR ex = GetWindowLongPtrW(h, GWL_EXSTYLE);
     if (!(ex & WS_EX_TOPMOST))
         SetWindowLongPtrW(h, GWL_EXSTYLE, ex | WS_EX_TOPMOST);
     SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
+    RaiseHotspots();
 }
 
 static void ApplyRegion(HWND h) {
@@ -1754,17 +1772,40 @@ struct FindAppWnd {
     std::wstring target;
     DWORD selfPid = 0;
     HWND best = nullptr;
+    long long bestScore = 0;
 };
+
+static long long WindowScore(HWND hwnd) {
+    LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+    if (ex & WS_EX_TOOLWINDOW) return 0;
+    BOOL cloaked = FALSE;
+    DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
+    bool iconic = IsIconic(hwnd) != FALSE;
+    bool vis = IsWindowVisible(hwnd) && !cloaked;
+    LONG style = GetWindowLongW(hwnd, GWL_STYLE);
+    if (!vis && !iconic) {
+        if (!(style & WS_CAPTION) && !(ex & WS_EX_APPWINDOW)) return 0;
+    }
+    RECT rc{};
+    GetWindowRect(hwnd, &rc);
+    long long w = rc.right - rc.left;
+    long long h = rc.bottom - rc.top;
+    if (w < 0) w = -w;
+    if (h < 0) h = -h;
+    if (!iconic && (w < 80 || h < 60)) return 0;
+    long long score = w * h;
+    if (score < 1) score = 1;
+    if (iconic) score += 100000;
+    if (!vis) score /= 4;
+    if (GetWindow(hwnd, GW_OWNER)) score = score / 2 + 1;
+    wchar_t title[4] = {};
+    if (GetWindowTextW(hwnd, title, 4) > 0) score += 20000;
+    return score;
+}
 
 static BOOL CALLBACK EnumAppWndProc(HWND hwnd, LPARAM lp) {
     auto* st = (FindAppWnd*)lp;
     if (hwnd == g.hwnd) return TRUE;
-    if (!IsWindowVisible(hwnd) || GetWindow(hwnd, GW_OWNER)) return TRUE;
-    LONG_PTR ex = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
-    if (ex & WS_EX_TOOLWINDOW) return TRUE;
-    RECT rc{};
-    GetWindowRect(hwnd, &rc);
-    if (rc.right - rc.left < 40 || rc.bottom - rc.top < 40) return TRUE;
     DWORD pid = 0;
     GetWindowThreadProcessId(hwnd, &pid);
     if (!pid || pid == st->selfPid) return TRUE;
@@ -1774,20 +1815,57 @@ static BOOL CALLBACK EnumAppWndProc(HWND hwnd, LPARAM lp) {
     DWORD n = MAX_PATH;
     BOOL ok = QueryFullProcessImageNameW(ph, 0, buf, &n);
     CloseHandle(ph);
-    if (!ok || !buf[0]) return TRUE;
-    if (!SameExe(buf, st->target)) return TRUE;
-    st->best = hwnd;
-    return FALSE;
+    if (!ok || !buf[0] || !SameExe(buf, st->target)) return TRUE;
+    long long sc = WindowScore(hwnd);
+    if (sc > st->bestScore) {
+        st->bestScore = sc;
+        st->best = hwnd;
+    }
+    return TRUE;
 }
 
-static void ForceForeground(HWND w) {
-    if (!w || !IsWindow(w)) return;
-    if (IsIconic(w)) ShowWindowAsync(w, SW_RESTORE);
-    else ShowWindowAsync(w, SW_SHOW);
-    SetWindowPos(w, HWND_TOP, 0, 0, 0, 0,
-                 SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_ASYNCWINDOWPOS | SWP_NOACTIVATE);
-    AllowSetForegroundWindow(ASFW_ANY);
+static bool ForceForeground(HWND w) {
+    if (!w || !IsWindow(w)) return false;
+    HWND root = GetAncestor(w, GA_ROOT);
+    if (root) w = root;
+    HWND pop = GetLastActivePopup(w);
+    if (pop && pop != w && IsWindow(pop) && (IsWindowVisible(pop) || IsIconic(pop))) {
+        RECT pr{};
+        GetWindowRect(pop, &pr);
+        if (pr.right - pr.left >= 80 && pr.bottom - pr.top >= 60) w = pop;
+    }
+    BOOL cloaked = FALSE;
+    DwmGetWindowAttribute(w, DWMWA_CLOAKED, &cloaked, sizeof(cloaked));
+    if (cloaked) return false;
+
+    if (IsIconic(w) || !IsWindowVisible(w)) ShowWindow(w, SW_RESTORE);
+    else ShowWindow(w, SW_SHOW);
+    SetWindowPos(w, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    SetWindowPos(w, HWND_NOTOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+    LockSetForegroundWindow(LSFW_UNLOCK);
     SetForegroundWindow(w);
+    BringWindowToTop(w);
+
+    if (IsIconic(w) || !IsWindowVisible(w)) return false;
+    RECT rc{};
+    GetWindowRect(w, &rc);
+    return rc.right - rc.left >= 160 && rc.bottom - rc.top >= 100;
+}
+
+static void ShellOpenShortcut(const std::wstring& path, const std::wstring& target) {
+    std::wstring dir;
+    if (EndsWithI(path, L".exe")) {
+        const std::wstring& exe = !target.empty() ? target : path;
+        size_t slash = exe.find_last_of(L"\\/");
+        if (slash != std::wstring::npos) dir = exe.substr(0, slash);
+    }
+    SHELLEXECUTEINFOW sei{ sizeof(sei) };
+    sei.fMask = SEE_MASK_ASYNCOK;
+    sei.lpVerb = L"open";
+    sei.lpFile = path.c_str();
+    sei.lpDirectory = dir.empty() ? nullptr : dir.c_str();
+    sei.nShow = SW_SHOWNORMAL;
+    ShellExecuteExW(&sei);
 }
 
 static HWND FindRunningWindow(const std::wstring& target) {
@@ -1799,28 +1877,13 @@ static HWND FindRunningWindow(const std::wstring& target) {
     return st.best;
 }
 
-struct LaunchJob {
-    std::wstring path;
-    std::wstring target;
-};
-
-static DWORD WINAPI LaunchThread(LPVOID p) {
-    auto* job = (LaunchJob*)p;
-    CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
-    HWND running = FindRunningWindow(job->target);
-    if (running) {
-        ForceForeground(running);
-    } else {
-        SHELLEXECUTEINFOW sei{ sizeof(sei) };
-        sei.fMask = SEE_MASK_FLAG_NO_UI;
-        sei.lpVerb = L"open";
-        sei.lpFile = job->path.c_str();
-        sei.nShow = SW_SHOWNORMAL;
-        ShellExecuteExW(&sei);
-    }
-    CoUninitialize();
-    delete job;
-    return 0;
+static void OpenShortcutNow(const std::wstring& path, const std::wstring& targetIn) {
+    std::wstring target = targetIn;
+    if ((target.empty() || !EndsWithI(target, L".exe")) && EndsWithI(path, L".lnk"))
+        ResolveLnk(path, target);
+    HWND running = FindRunningWindow(target);
+    if (!running || !ForceForeground(running))
+        ShellOpenShortcut(path, target);
 }
 
 static int QuickRowsUsed() {
@@ -2737,7 +2800,7 @@ static void DrawQuickLaunch(Graphics& gph, Font& ui, float x, float y, float qw,
             if (t > 1.f) t = 1.f;
             if (t < 0.18f) {
                 float u = t / 0.18f;
-                scale = 1.f - 0.08f * u;
+                scale = 1.f - 0.22f * u;
             } else if (t < 0.45f) {
                 float u = (t - 0.18f) / 0.27f;
                 scale = 0.92f + 0.14f * u;
@@ -2855,7 +2918,7 @@ static int HitQuickFromMsg(HWND h, LPARAM l, bool screen) {
 static void BeginLaunchAnim(int idx) {
     g_launchAnim = idx;
     g_launchAnimAt = GetTickCount();
-    g.holdUntil = g_launchAnimAt + kLaunchAnimMs + 200;
+    g.holdUntil = 0;
     if (g.hwnd) {
         SetTimer(g.hwnd, 3, 16, nullptr);
         Repaint(g.hwnd);
@@ -2865,12 +2928,21 @@ static void BeginLaunchAnim(int idx) {
 static HWND g_hotspot[9]{};
 static void LaunchShortcut(int idx);
 
+static void RaiseHotspots() {
+    for (int i = 0; i < 9; ++i) {
+        if (g_hotspot[i] && IsWindowVisible(g_hotspot[i]))
+            SetWindowPos(g_hotspot[i], HWND_TOPMOST, 0, 0, 0, 0,
+                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+    }
+}
+
 static LRESULT CALLBACK HotspotProc(HWND hs, UINT m, WPARAM w, LPARAM l) {
     if (m == WM_LBUTTONDOWN || m == WM_LBUTTONDBLCLK) {
-        int idx = (int)GetWindowLongPtrW(hs, GWLP_USERDATA);
-        LaunchShortcut(idx);
+        LaunchShortcut((int)GetWindowLongPtrW(hs, GWLP_USERDATA));
         return 0;
     }
+    if (m == WM_NCHITTEST) return HTCLIENT;
+    if (m == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
     if (m == WM_PAINT) {
         PAINTSTRUCT ps;
         BeginPaint(hs, &ps);
@@ -2878,7 +2950,6 @@ static LRESULT CALLBACK HotspotProc(HWND hs, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     if (m == WM_ERASEBKGND) return 1;
-    if (m == WM_NCHITTEST) return HTCLIENT;
     return DefWindowProcW(hs, m, w, l);
 }
 
@@ -2889,8 +2960,7 @@ static void SyncHotspots(HWND parent) {
         WNDCLASSEXW wc{ sizeof(wc) };
         wc.lpfnWndProc = HotspotProc;
         wc.hInstance = GetModuleHandleW(nullptr);
-        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-        wc.hbrBackground = (HBRUSH)GetStockObject(NULL_BRUSH);
+        wc.hCursor = LoadCursor(nullptr, IDC_HAND);
         wc.lpszClassName = L"CursorUsageHotspot";
         RegisterClassExW(&wc);
         reg = true;
@@ -2910,19 +2980,24 @@ static void SyncHotspots(HWND parent) {
         }
         int col = i / rows;
         int row = i % rows;
-        int ix = (int)(x + pad + col * (tile + gap));
-        int iy = (int)(y + pad + row * (tile + rowGap));
+        POINT origin{ (int)(x + pad + col * (tile + gap)), (int)(y + pad + row * (tile + rowGap)) };
+        ClientToScreen(parent, &origin);
         if (!g_hotspot[i]) {
-            g_hotspot[i] = CreateWindowExW(WS_EX_LAYERED,
-                L"CursorUsageHotspot", L"", WS_CHILD | WS_VISIBLE,
-                ix, iy, tile, tile, parent, nullptr, GetModuleHandleW(nullptr), nullptr);
+            // Top-level constant-alpha window. Child windows never receive clicks
+            // on an UpdateLayeredWindow parent, and transparent icon pixels are click-through.
+            g_hotspot[i] = CreateWindowExW(
+                WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
+                L"CursorUsageHotspot", L"", WS_POPUP,
+                origin.x, origin.y, tile, tile,
+                parent, nullptr, GetModuleHandleW(nullptr), nullptr);
             if (g_hotspot[i])
                 SetLayeredWindowAttributes(g_hotspot[i], 0, 1, LWA_ALPHA);
-        } else {
-            SetWindowPos(g_hotspot[i], HWND_TOP, ix, iy, tile, tile,
-                         SWP_NOACTIVATE | SWP_SHOWWINDOW);
         }
-        if (g_hotspot[i]) SetWindowLongPtrW(g_hotspot[i], GWLP_USERDATA, i);
+        if (g_hotspot[i]) {
+            SetWindowPos(g_hotspot[i], HWND_TOPMOST, origin.x, origin.y, tile, tile,
+                         SWP_NOACTIVATE | SWP_SHOWWINDOW);
+            SetWindowLongPtrW(g_hotspot[i], GWLP_USERDATA, i);
+        }
     }
 }
 
@@ -2935,23 +3010,17 @@ static void DestroyHotspots() {
     }
 }
 
+static DWORD g_lastLaunchAt = 0;
+static int g_lastLaunchIdx = -1;
+
 static void LaunchShortcut(int idx) {
     if (idx < 0 || idx >= (int)g_shortcuts.size()) return;
+    DWORD now = GetTickCount();
+    if (idx == g_lastLaunchIdx && now - g_lastLaunchAt < 450) return;
+    g_lastLaunchAt = now;
+    g_lastLaunchIdx = idx;
     BeginLaunchAnim(idx);
-    auto* job = new LaunchJob;
-    job->path = g_shortcuts[idx].path;
-    job->target = g_shortcuts[idx].target;
-    HANDLE th = CreateThread(nullptr, 0, LaunchThread, job, 0, nullptr);
-    if (th) CloseHandle(th);
-    else {
-        delete job;
-        SHELLEXECUTEINFOW sei{ sizeof(sei) };
-        sei.fMask = SEE_MASK_ASYNCOK | SEE_MASK_FLAG_NO_UI;
-        sei.lpVerb = L"open";
-        sei.lpFile = g_shortcuts[idx].path.c_str();
-        sei.nShow = SW_SHOWNORMAL;
-        ShellExecuteExW(&sei);
-    }
+    OpenShortcutNow(g_shortcuts[idx].path, g_shortcuts[idx].target);
 }
 
 static void DrawQuickEmpty(Graphics& gph, Font& ui, float x, float y, float qw, float qh) {
@@ -3186,7 +3255,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     case WM_WINDOWPOSCHANGING: {
         auto* wp = (WINDOWPOS*)l;
-        if (wp && !(wp->flags & SWP_NOZORDER))
+        if (wp && !(wp->flags & SWP_NOZORDER) && !TopMostYielded())
             wp->hwndInsertAfter = HWND_TOPMOST;
         return 0;
     }
@@ -3305,7 +3374,15 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         int launch = g.pressLaunch;
         g.pressLaunch = -1;
         ReleaseCapture();
-        if (launch >= 0) return 0;
+        if (launch >= 0) {
+            if (!CursorInWindow(h)) {
+                g.expanded = false;
+                g.holdUntil = 0;
+                g.scrollY = 0;
+                Place(h);
+            }
+            return 0;
+        }
         if (g.scrolling) {
             g.scrolling = false;
             return 0;
