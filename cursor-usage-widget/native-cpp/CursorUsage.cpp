@@ -67,6 +67,8 @@ static const int BASE_STRIP_H = 220;
 static const int BASE_PANEL_W = 276;
 static const int BASE_PANEL_H = 380;
 static const UINT WM_USAGE = WM_APP + 1;
+static const UINT WM_WAKE_PAINT = WM_APP + 4;
+static const UINT WM_QUICK_CLICK = WM_APP + 6;
 
 static std::wstring Utf8ToWide(const std::string& s) {
     if (s.empty()) return L"";
@@ -640,7 +642,7 @@ struct App {
     bool dragging = false;
     POINT press{};
     int pressY = 0;
-    int pressLaunch = -1;
+    int pressIcon = -1;
     Snapshot snap;
     ULONG_PTR gdip = 0;
     bool tracking = false;
@@ -935,23 +937,16 @@ static RECT Work() {
     RECT r; SystemParametersInfo(SPI_GETWORKAREA, 0, &r, 0); return r;
 }
 
-static void SyncHotspots(HWND h);
-
 static volatile DWORD g_yieldTopUntil = 0;
+static HHOOK g_mouseHook = nullptr;
+static DWORD g_lastWakePaint = 0;
+static POINT g_hookDown{};
+static bool g_hookDownOn = false;
 
 static bool TopMostYielded() {
     DWORD until = g_yieldTopUntil;
     return until && (LONG)(until - GetTickCount()) > 0;
 }
-
-static void BeginTopMostYield(DWORD ms) {
-    g_yieldTopUntil = GetTickCount() + ms;
-    if (g.hwnd && IsWindow(g.hwnd))
-        SetWindowPos(g.hwnd, HWND_NOTOPMOST, 0, 0, 0, 0,
-                     SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOSENDCHANGING);
-}
-
-static void RaiseHotspots();
 
 static void KeepTopMost(HWND h) {
     if (!h || TopMostYielded()) return;
@@ -960,7 +955,6 @@ static void KeepTopMost(HWND h) {
         SetWindowLongPtrW(h, GWL_EXSTYLE, ex | WS_EX_TOPMOST);
     SetWindowPos(h, HWND_TOPMOST, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER | SWP_NOSENDCHANGING);
-    RaiseHotspots();
 }
 
 static void ApplyRegion(HWND h) {
@@ -990,7 +984,6 @@ static void Place(HWND h) {
     KeepTopMost(h);
     ApplyRegion(h);
     RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
-    SyncHotspots(h);
 }
 
 static void DragMove(HWND h) {
@@ -1007,8 +1000,8 @@ static void DragMove(HWND h) {
         x = g.dockEdge == 1 ? wa.right - w : wa.left;
         y = g.y;
     }
-    SetWindowPos(h, nullptr, x, y, 0, 0,
-                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_NOREDRAW);
+    SetWindowPos(h, HWND_TOPMOST, x, y, 0, 0,
+                 SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }
 
 struct ACCENTPOLICY { int s, f; DWORD c; int a; };
@@ -1439,6 +1432,7 @@ static const int IDM_MANAGE_APPS = 199;
 static const int IDM_LAUNCH_BASE = 200;
 static void OpenManageShortcuts();
 static void OpenSettings();
+static void RefreshSettingsShortcuts();
 
 
 struct ShortcutItem {
@@ -1541,8 +1535,66 @@ static void AttachIcon(ShortcutItem& it) {
     if (!it.icon) it.icon = LoadPathIcon(it.path);
 }
 
+static Bitmap* BitmapFromIconHQ(HICON ico) {
+    if (!ico) return nullptr;
+    const int size = 128;
+    HDC hdc = CreateCompatibleDC(nullptr);
+    BITMAPINFO bi{};
+    bi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bi.bmiHeader.biWidth = size;
+    bi.bmiHeader.biHeight = -size;
+    bi.bmiHeader.biPlanes = 1;
+    bi.bmiHeader.biBitCount = 32;
+    bi.bmiHeader.biCompression = BI_RGB;
+    void* bits = nullptr;
+    HBITMAP hb = CreateDIBSection(hdc, &bi, DIB_RGB_COLORS, &bits, nullptr, 0);
+    Bitmap* out = nullptr;
+    if (hb && bits) {
+        HGDIOBJ old = SelectObject(hdc, hb);
+        memset(bits, 0, (size_t)size * size * 4);
+        DrawIconEx(hdc, 0, 0, ico, size, size, 0, nullptr, DI_NORMAL);
+        auto* px = (BYTE*)bits;
+        bool alpha = false;
+        bool straight = false;
+        for (int i = 0; i < size * size * 4; i += 4) {
+            BYTE a = px[i + 3];
+            if (!a) continue;
+            alpha = true;
+            if (px[i] > a || px[i + 1] > a || px[i + 2] > a) straight = true;
+        }
+        if (alpha && straight) {
+            for (int i = 0; i < size * size * 4; i += 4) {
+                BYTE a = px[i + 3];
+                px[i] = (BYTE)(px[i] * a / 255);
+                px[i + 1] = (BYTE)(px[i + 1] * a / 255);
+                px[i + 2] = (BYTE)(px[i + 2] * a / 255);
+            }
+        }
+        if (alpha) {
+            out = new Bitmap(size, size, PixelFormat32bppPARGB);
+            Gdiplus::BitmapData bd{};
+            Gdiplus::Rect rc(0, 0, size, size);
+            if (out->GetLastStatus() == Gdiplus::Ok &&
+                out->LockBits(&rc, Gdiplus::ImageLockModeWrite, PixelFormat32bppPARGB, &bd) == Gdiplus::Ok) {
+                for (int y = 0; y < size; ++y)
+                    memcpy((BYTE*)bd.Scan0 + (size_t)y * bd.Stride, px + (size_t)y * size * 4, (size_t)size * 4);
+                out->UnlockBits(&bd);
+            } else {
+                delete out;
+                out = nullptr;
+            }
+        }
+        SelectObject(hdc, old);
+    }
+    if (hb) DeleteObject(hb);
+    DeleteDC(hdc);
+    if (out && out->GetLastStatus() == Gdiplus::Ok) return out;
+    delete out;
+    return Bitmap::FromHICON(ico);
+}
+
 static Bitmap* IconBmp(ShortcutItem& s) {
-    if (!s.bmp && s.icon) s.bmp = Bitmap::FromHICON(s.icon);
+    if (!s.bmp && s.icon) s.bmp = BitmapFromIconHQ(s.icon);
     return s.bmp;
 }
 
@@ -1980,6 +2032,7 @@ static void ApplyShortcutPaths(const std::vector<std::wstring>& paths) {
         Place(g.hwnd);
         Repaint(g.hwnd);
     }
+    RefreshSettingsShortcuts();
 }
 
 static void ManageApplyAndClose() {
@@ -2269,10 +2322,10 @@ static void OpenManageShortcuts() {
 }
 
 
-// ---- Settings window (美工 locked: 320 / cards / #F8F8FA) ----
+// ---- Settings window: two columns, #F8F8FA ----
 static const int IDM_SETTINGS = 18;
-static const int kSettingsW = 300;
-static const int kSettingsWinH = 420;
+static const int kSettingsW = 560;
+static const int kSettingsWinH = 360;
 
 struct SettingsDlg {
     HWND hwnd = nullptr;
@@ -2289,8 +2342,18 @@ struct SettingsDlg {
     int winH = 420;
     RECT addBtn{};
     RECT emptyHit{};
-    RECT shortcutRow[8]{};
+    RECT shortcutRow[9]{};
     int shortcutRows = 0;
+    RECT dockCard{};
+    RECT modeCard{};
+    RECT visCard{};
+    RECT scCard{};
+    int dragFrom = -1;
+    int dragOver = -1;
+    POINT dragPt{};
+    bool dragMoved = false;
+    bool closeHot = false;
+    bool closeDown = false;
 } g_settings;
 
 static void RoundRectPath(GraphicsPath& path, float x, float y, float w, float h, float r) {
@@ -2304,110 +2367,141 @@ static void RoundRectPath(GraphicsPath& path, float x, float y, float w, float h
     path.CloseFigure();
 }
 
+static int SettingsTilePx() {
+    const int pad = 16;
+    const int colGap = 14;
+    const int cardPad = 10;
+    const int gap = 10;
+    const int cols = 3;
+    const int colW = (kSettingsW - pad * 2 - colGap) / 2;
+    const int inner = colW - cardPad * 2;
+    int tile = (inner - gap * (cols - 1)) / cols;
+    if (tile < 56) tile = 56;
+    if (tile > 84) tile = 84;
+    return tile;
+}
+
+static int SettingsGridRows(int n) {
+    if (n <= 0) return 0;
+    if (n >= 3) return 3;
+    return n;
+}
+
 static int SettingsShortcutListH() {
-    if (g_shortcuts.empty()) return 22; // one empty-state line, tight
     int n = (int)g_shortcuts.size();
-    if (n > 8) n = 8;
-    return n * 36;
+    if (n > kMaxShortcuts) n = kMaxShortcuts;
+    if (n <= 0) return 36;
+    int rows = SettingsGridRows(n);
+    const int nameH = 16;
+    const int rowGap = 8;
+    return rows * (SettingsTilePx() + nameH) + (rows - 1) * rowGap;
 }
 
-static int SettingsContentH() {
-    const int pad = 10;
-    const int titleH = 24;
-    const int cardGap = 10;
+static int LayoutSettings() {
+    const int pad = 16;
+    const int colGap = 14;
+    const int cardGap = 12;
     const int cardPad = 10;
     const int secLabelH = 16;
-    const int secGap = 4;
+    const int secGap = 6;
     const int chipH = 26;
-    const int rowH = 26;
-    const int addH = 26;
-    const int listAddGap = 4;
-    int dockCard = cardPad + chipH + cardPad;
-    int modeCard = cardPad + chipH + cardPad;
-    int visCard = cardPad + rowH + 6 + rowH + cardPad;
-    int listH = SettingsShortcutListH();
-    int scCard = cardPad + listH + listAddGap + addH + 4;
-    return pad + titleH + 8
-        + secLabelH + secGap + dockCard + cardGap
-        + secLabelH + secGap + modeCard + cardGap
-        + secLabelH + secGap + visCard + cardGap
-        + secLabelH + secGap + scCard
-        + pad;
-}
+    const int listAddGap = 6;
+    const int addH = 28;
+    const int colW = (kSettingsW - pad * 2 - colGap) / 2;
+    const int leftX = pad;
+    const int rightX = pad + colW + colGap;
+    const int y0 = pad + 28 + 14;
 
-static int SettingsWinH() {
-    int ch = SettingsContentH();
-    g_settings.contentH = ch;
-    g_settings.winH = ch;
-    g_settings.scrollY = 0; // long window, no scroll for now
-    return ch;
-}
+    g_settings.closeBtn = { kSettingsW - pad - 28, pad, kSettingsW - pad, pad + 24 };
 
-static void SettingsLayout(int /*cw*/, int /*ch*/) {
-    const int pad = 10;
-    const int inner = kSettingsW - pad * 2;
-    const int cardGap = 10;
-    const int cardPad = 10;
-    const int secLabelH = 16;
-    const int secGap = 4;
-    const int chipH = 26;
-    const int listAddGap = 4;
-    const int addH = 26;
+    int y = y0;
+    auto placeCard = [&](int x, int top, int h) -> RECT {
+        return { x, top, x + colW, top + h };
+    };
 
-    g_settings.closeBtn = { kSettingsW - pad - 32, pad, kSettingsW - pad - 4, pad + 24 };
-
-    int y = pad + 24 + 8;
-
-    // Card 1: dock — title above card
-    y += secLabelH + secGap;
-    int contentTop = y + cardPad;
-    int bw = (inner - cardPad * 2 - 8 * 2) / 3;
-    int bx = pad + cardPad;
+    // Left: dock
+    int cardTop = y + secLabelH + secGap;
+    int contentTop = cardTop + cardPad;
+    int inner = colW - cardPad * 2;
+    int bw = (inner - 8 * 2) / 3;
     for (int i = 0; i < 3; ++i) {
-        int x0 = bx + i * (bw + 8);
+        int x0 = leftX + cardPad + i * (bw + 8);
         g_settings.dockBtn[i] = { x0, contentTop, x0 + bw, contentTop + chipH };
     }
-    y = contentTop + chipH + cardPad + cardGap;
+    int dockH = cardPad + chipH + cardPad;
+    g_settings.dockCard = placeCard(leftX, cardTop, dockH);
+    y = g_settings.dockCard.bottom + cardGap;
 
-
-    // 显示模式
-    // display mode
-    y += secLabelH + secGap;
-    contentTop = y + cardPad;
-    int mw = (inner - cardPad * 2 - 8) / 2;
-    int mx = pad + cardPad;
+    // Left: display mode
+    cardTop = y + secLabelH + secGap;
+    contentTop = cardTop + cardPad;
+    int mw = (inner - 8) / 2;
+    int mx = leftX + cardPad;
     g_settings.modeBtn[0] = { mx, contentTop, mx + mw, contentTop + chipH };
     g_settings.modeBtn[1] = { mx + mw + 8, contentTop, mx + mw + 8 + mw, contentTop + chipH };
-    y = contentTop + chipH + cardPad + cardGap;
+    int modeH = cardPad + chipH + cardPad;
+    g_settings.modeCard = placeCard(leftX, cardTop, modeH);
+    y = g_settings.modeCard.bottom + cardGap;
 
-    // visibility Bot+Api
-    y += secLabelH + secGap;
-    contentTop = y + cardPad;
-    g_settings.botRow = { pad + cardPad, contentTop, pad + inner - cardPad, contentTop + 26 };
-    g_settings.botSwitch = { g_settings.botRow.right - 44, contentTop + 2, g_settings.botRow.right, contentTop + 2 + 22 };
-    contentTop += 26 + 6;
-    g_settings.apiRow = { pad + cardPad, contentTop, pad + inner - cardPad, contentTop + 26 };
-    g_settings.apiSwitch = { g_settings.apiRow.right - 44, contentTop + 2, g_settings.apiRow.right, contentTop + 2 + 22 };
-    y = contentTop + 26 + cardPad + cardGap;
+    // Left: visibility
+    cardTop = y + secLabelH + secGap;
+    contentTop = cardTop + cardPad;
+    g_settings.botRow = { leftX + cardPad, contentTop, leftX + colW - cardPad, contentTop + 26 };
+    g_settings.botSwitch = { g_settings.botRow.right - 44, contentTop + 2, g_settings.botRow.right, contentTop + 24 };
+    contentTop += 26 + 8;
+    g_settings.apiRow = { leftX + cardPad, contentTop, leftX + colW - cardPad, contentTop + 26 };
+    g_settings.apiSwitch = { g_settings.apiRow.right - 44, contentTop + 2, g_settings.apiRow.right, contentTop + 24 };
+    int visH = cardPad + 26 + 8 + 26 + cardPad;
+    g_settings.visCard = placeCard(leftX, cardTop, visH);
+    int leftEnd = g_settings.visCard.bottom;
 
-    // shortcuts
-    y += secLabelH + secGap;
-    contentTop = y + cardPad;
+    // Right: shortcuts, stretched to the left column when the list is short
+    int scTop = y0 + secLabelH + secGap;
     int listH = SettingsShortcutListH();
-    g_settings.emptyHit = { pad + cardPad, contentTop, pad + inner - cardPad, contentTop + listH };
+    int natural = cardPad + listH + listAddGap + addH + cardPad;
+    int scH = natural;
+    if (scTop + scH < leftEnd) scH = leftEnd - scTop;
+    g_settings.scCard = placeCard(rightX, scTop, scH);
+    int listTop = scTop + cardPad;
+    int addY = scTop + scH - cardPad - addH;
+    g_settings.addBtn = { rightX + cardPad, addY, rightX + cardPad + 72, addY + addH };
+    g_settings.emptyHit = { rightX + cardPad, listTop, rightX + colW - cardPad, addY - listAddGap };
     g_settings.shortcutRows = 0;
     if (!g_shortcuts.empty()) {
         int n = (int)g_shortcuts.size();
-        if (n > 8) n = 8;
-        g_settings.shortcutRows = n;
+        if (n > kMaxShortcuts) n = kMaxShortcuts;
+        int rows = SettingsGridRows(n);
+        int tile = SettingsTilePx();
+        const int gap = 10;
+        const int nameH = 16;
+        const int rowGap = 8;
         for (int i = 0; i < n; ++i) {
-            int ry = contentTop + i * 36;
-            g_settings.shortcutRow[i] = { pad + cardPad, ry, pad + inner - cardPad, ry + 36 };
+            int col = i / rows;
+            int row = i % rows;
+            int x = rightX + cardPad + col * (tile + gap);
+            int ry = listTop + row * (tile + nameH + rowGap);
+            g_settings.shortcutRow[i] = { x, ry, x + tile, ry + tile + nameH };
         }
+        g_settings.shortcutRows = n;
     }
-    int addY = contentTop + listH + listAddGap;
-    g_settings.addBtn = { pad + cardPad, addY, pad + cardPad + 72, addY + addH };
+
+    int bottom = leftEnd;
+    if (g_settings.scCard.bottom > bottom) bottom = g_settings.scCard.bottom;
+    bottom += pad;
+    g_settings.contentH = bottom;
+    return bottom;
 }
+
+static int SettingsContentH() { return LayoutSettings(); }
+
+static int SettingsWinH() {
+    int ch = SettingsContentH();
+    g_settings.winH = ch;
+    g_settings.scrollY = 0;
+    return ch;
+}
+
+static void SettingsLayout(int /*cw*/, int /*ch*/) { LayoutSettings(); }
 
 static void DrawSettingsChip(Graphics& gph, const RECT& rc, const wchar_t* label, bool on, bool blueSel, Font& f) {
     float x = (float)rc.left, y = (float)rc.top, w = (float)(rc.right - rc.left), h = (float)(rc.bottom - rc.top);
@@ -2489,95 +2583,75 @@ static void PaintSettings(HWND h) {
         SolidBrush secBr(Color(255, 0x5A, 0x60, 0x69));
         SolidBrush muted(Color(255, 0x78, 0x7D, 0x85));
 
-        const int pad = 10;
-        const int inner = kSettingsW - pad * 2;
-        const int cardGap = 10;
-        const int cardPad = 10;
-        const int chipH = 26;
+        const int pad = 16;
+        auto cardOf = [&](const RECT& rc) {
+            DrawSettingsCard(gph, (float)rc.left, (float)rc.top,
+                (float)(rc.right - rc.left), (float)(rc.bottom - rc.top));
+        };
+        auto labelOf = [&](const wchar_t* text, const RECT& card) {
+            gph.DrawString(text, -1, &sec, PointF((float)card.left, (float)card.top - 22.f), &secBr);
+        };
 
         gph.DrawString(L"\u8bbe\u7f6e", -1, &title, PointF((float)pad, (float)pad + 2.f), &titleBr);
         {
             RECT cr = g_settings.closeBtn;
+            float x = (float)cr.left, y = (float)cr.top;
+            float w = (float)(cr.right - cr.left), h = (float)(cr.bottom - cr.top);
+            bool down = g_settings.closeDown && g_settings.closeHot;
+            if (down || g_settings.closeHot) {
+                GraphicsPath bp;
+                RoundRectPath(bp, x + 0.5f, y + 0.5f, w - 1.f, h - 1.f, 6.f);
+                SolidBrush bb(down ? Color(255, 0xE2, 0xE5, 0xEA) : Color(255, 0xEE, 0xF0, 0xF4));
+                gph.FillPath(&bb, &bp);
+            }
             float cx = (cr.left + cr.right) / 2.f;
             float cy = (cr.top + cr.bottom) / 2.f;
-            Pen xp(Color(255, 0x5A, 0x60, 0x69), 1.6f);
+            Color ink = down ? Color(255, 0x20, 0x20, 0x22) : Color(255, 0x5A, 0x60, 0x69);
+            Pen xp(ink, down ? 2.f : 1.6f);
             xp.SetStartCap(Gdiplus::LineCapRound);
             xp.SetEndCap(Gdiplus::LineCapRound);
             gph.DrawLine(&xp, cx - 5.f, cy - 5.f, cx + 5.f, cy + 5.f);
             gph.DrawLine(&xp, cx + 5.f, cy - 5.f, cx - 5.f, cy + 5.f);
         }
 
-        int y = pad + 28 + 12;
-        const int secLabelH = 16;
-        const int secGap = 4;
-        const int listAddGap = 4;
-        const int addH = 28;
-
-        // --- 贴边 ---
         {
-            gph.DrawString(L"\u8d34\u8fb9", -1, &sec, PointF((float)pad, (float)y), &secBr);
-            y += secLabelH + secGap;
-            int cardH = cardPad + chipH + cardPad;
-            DrawSettingsCard(gph, (float)pad, (float)y, (float)inner, (float)cardH);
+            labelOf(L"\u8d34\u8fb9", g_settings.dockCard);
+            cardOf(g_settings.dockCard);
             const wchar_t* docks[] = { L"\u5de6", L"\u53f3", L"\u9876" };
             for (int i = 0; i < 3; ++i)
                 DrawSettingsChip(gph, g_settings.dockBtn[i], docks[i], g.dockEdge == i, true, ui);
-            y += cardH + cardGap;
         }
-
-
-                // --- 显示模式 ---
         {
-            gph.DrawString(L"\u663e\u793a\u6a21\u5f0f", -1, &sec, PointF((float)pad, (float)y), &secBr);
-            y += secLabelH + secGap;
-            int cardH = cardPad + chipH + cardPad;
-            DrawSettingsCard(gph, (float)pad, (float)y, (float)inner, (float)cardH);
+            labelOf(L"\u663e\u793a\u6a21\u5f0f", g_settings.modeCard);
+            cardOf(g_settings.modeCard);
             DrawSettingsChip(gph, g_settings.modeBtn[0], L"\u56db\u73af", g.ringMode == 0, true, ui);
             DrawSettingsChip(gph, g_settings.modeBtn[1], L"\u53cc\u73af", g.ringMode == 1, true, ui);
-            y += cardH + cardGap;
         }
-
-        // --- visibility Bot + Api ---
         {
-            gph.DrawString(L"\u663e\u793a\u9879", -1, &sec, PointF((float)pad, (float)y), &secBr);
-            y += secLabelH + secGap;
-            int cardH = cardPad + 26 + 6 + 26 + cardPad;
-            DrawSettingsCard(gph, (float)pad, (float)y, (float)inner, (float)cardH);
-            RECT rc = g_settings.botRow;
-            gph.DrawString(L"\u663e\u793a Bot \u7528\u91cf", -1, &ui,
-                PointF((float)rc.left, (float)rc.top + 3.f), &titleBr);
-            float tx = (float)g_settings.botSwitch.left;
-            float ty = (float)g_settings.botSwitch.top;
-            float tw = 44.f, th = 22.f;
-            GraphicsPath tpath;
-            RoundRectPath(tpath, tx, ty, tw, th, th / 2.f);
-            SolidBrush tfill(g.showBot ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0xD0, 0xD4, 0xDA));
-            gph.FillPath(&tfill, &tpath);
-            float knob = th - 4.f;
-            float kx = g.showBot ? (tx + tw - knob - 2.f) : (tx + 2.f);
-            SolidBrush knobBr(Color(255, 255, 255, 255));
-            gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
-            rc = g_settings.apiRow;
-            gph.DrawString(L"\u663e\u793a Api \u7528\u91cf", -1, &ui,
-                PointF((float)rc.left, (float)rc.top + 3.f), &titleBr);
-            tx = (float)g_settings.apiSwitch.left;
-            ty = (float)g_settings.apiSwitch.top;
-            GraphicsPath tpath2;
-            RoundRectPath(tpath2, tx, ty, tw, th, th / 2.f);
-            SolidBrush tfill2(g.showApi ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0xD0, 0xD4, 0xDA));
-            gph.FillPath(&tfill2, &tpath2);
-            kx = g.showApi ? (tx + tw - knob - 2.f) : (tx + 2.f);
-            gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
-            y += cardH + cardGap;
+            labelOf(L"\u663e\u793a\u9879", g_settings.visCard);
+            cardOf(g_settings.visCard);
+            auto drawSwitch = [&](const RECT& row, const RECT& sw, const wchar_t* text, bool on) {
+                gph.DrawString(text, -1, &ui, PointF((float)row.left, (float)row.top + 3.f), &titleBr);
+                float tx = (float)sw.left, ty = (float)sw.top, tw = 44.f, th = 22.f;
+                GraphicsPath tpath;
+                RoundRectPath(tpath, tx, ty, tw, th, th / 2.f);
+                SolidBrush tfill(on ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0xD0, 0xD4, 0xDA));
+                gph.FillPath(&tfill, &tpath);
+                float knob = th - 4.f;
+                float kx = on ? (tx + tw - knob - 2.f) : (tx + 2.f);
+                SolidBrush knobBr(Color(255, 255, 255, 255));
+                gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
+            };
+            drawSwitch(g_settings.botRow, g_settings.botSwitch, L"\u663e\u793a Bot \u7528\u91cf", g.showBot);
+            drawSwitch(g_settings.apiRow, g_settings.apiSwitch, L"\u663e\u793a Api \u7528\u91cf", g.showApi);
         }
-
-        // --- 快捷方式 ---
         {
-            gph.DrawString(L"\u5feb\u6377\u65b9\u5f0f", -1, &sec, PointF((float)pad, (float)y), &secBr);
-            y += secLabelH + secGap;
-            int listH = SettingsShortcutListH();
-            int cardH = cardPad + listH + listAddGap + addH + 4;
-            DrawSettingsCard(gph, (float)pad, (float)y, (float)inner, (float)cardH);
+            labelOf(L"\u5feb\u6377\u65b9\u5f0f", g_settings.scCard);
+            if (!g_shortcuts.empty()) {
+                gph.DrawString(L"\u62d6\u52a8\u6362\u4f4d", -1, &uiSm,
+                    PointF((float)g_settings.scCard.left + 62.f, (float)g_settings.scCard.top - 21.f), &muted);
+            }
+            cardOf(g_settings.scCard);
             if (g_shortcuts.empty()) {
                 StringFormat fmt;
                 fmt.SetAlignment(StringAlignmentCenter);
@@ -2588,37 +2662,50 @@ static void PaintSettings(HWND h) {
                     &fmt, &muted);
             } else {
                 int n = g_settings.shortcutRows;
-                {
-                    HDC gdc = gph.GetHDC();
-                    for (int i = 0; i < n; ++i) {
-                        RECT rr = g_settings.shortcutRow[i];
-                        int icon = 28;
-                        int iy = rr.top + (36 - icon) / 2;
-                        int ix = rr.left;
-                        if (g_shortcuts[i].icon)
-                            DrawIconEx(gdc, ix, iy, g_shortcuts[i].icon, icon, icon, 0, nullptr, DI_NORMAL);
+                int tile = SettingsTilePx();
+                auto oldInterp = gph.GetInterpolationMode();
+                gph.SetInterpolationMode(InterpolationModeHighQualityBicubic);
+                auto drawTile = [&](ShortcutItem& s, float x, float y, float tw, bool dim, bool hot) {
+                    float rad = 10.f;
+                    Color fill = dim ? Color(255, 0xEE, 0xF0, 0xF3) : Color(255, 0xF4, 0xF5, 0xF7);
+                    Color stroke = hot ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0xD2, 0xD6, 0xDC);
+                    SolidBrush tileBr(fill);
+                    FillRoundRect(gph, x, y, tw, tw, rad, tileBr);
+                    Pen tilePen(stroke, hot ? 1.8f : 1.15f);
+                    tilePen.SetAlignment(PenAlignmentInset);
+                    StrokeRoundRect(gph, x, y, tw, tw, rad, tilePen);
+                    float inset = tw * 0.16f;
+                    float sz = tw - inset * 2.f;
+                    Bitmap* bmp = IconBmp(s);
+                    if (bmp)
+                        gph.DrawImage(bmp, x + inset, y + inset, sz, sz);
+                    else {
+                        SolidBrush ph(Color(255, 0xE8, 0xEA, 0xEE));
+                        gph.FillRectangle(&ph, x + inset, y + inset, sz, sz);
                     }
-                    gph.ReleaseHDC(gdc);
-                }
+                };
                 for (int i = 0; i < n; ++i) {
                     RECT rr = g_settings.shortcutRow[i];
-                    int icon = 28;
-                    int iy = rr.top + (36 - icon) / 2;
-                    int ix = rr.left;
-                    if (!g_shortcuts[i].icon) {
-                        SolidBrush ph(Color(255, 0xE8, 0xEA, 0xEE));
-                        gph.FillRectangle(&ph, (float)ix, (float)iy, (float)icon, (float)icon);
-                    }
+                    bool dim = g_settings.dragMoved && i == g_settings.dragFrom;
+                    bool hot = g_settings.dragMoved && i == g_settings.dragOver && i != g_settings.dragFrom;
+                    drawTile(g_shortcuts[i], (float)rr.left, (float)rr.top, (float)tile, dim, hot);
                     std::wstring name = g_shortcuts[i].name;
-                    if (name.empty()) {
-                        const wchar_t* nms = g_shortcuts[i].path.c_str();
-                        for (const wchar_t* q = nms; *q; ++q)
-                            if (*q == L'\\' || *q == L'/') nms = q + 1;
-                        name = nms;
-                    }
+                    if (name.empty()) name = FileNameOf(g_shortcuts[i].path);
+                    StringFormat nameFmt;
+                    nameFmt.SetAlignment(StringAlignmentCenter);
+                    nameFmt.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+                    nameFmt.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
                     gph.DrawString(name.c_str(), -1, &uiSm,
-                        PointF((float)(ix + icon + 10), (float)(rr.top + 8)), &titleBr);
+                        RectF((float)rr.left - 4.f, (float)(rr.top + tile + 1), (float)tile + 8.f, 15.f),
+                        &nameFmt, &muted);
                 }
+                if (g_settings.dragMoved && g_settings.dragFrom >= 0 && g_settings.dragFrom < n) {
+                    float tw = (float)tile;
+                    float x = (float)g_settings.dragPt.x - tw * 0.5f;
+                    float y = (float)g_settings.dragPt.y - tw * 0.5f;
+                    drawTile(g_shortcuts[g_settings.dragFrom], x, y, tw, false, true);
+                }
+                gph.SetInterpolationMode(oldInterp);
             }
             {
                 RECT ar = g_settings.addBtn;
@@ -2649,6 +2736,12 @@ static bool PtIn(const RECT& r, int x, int y) {
     return x >= r.left && x < r.right && y >= r.top && y < r.bottom;
 }
 
+static int SettingsHitTile(int x, int y) {
+    for (int i = 0; i < g_settings.shortcutRows; ++i)
+        if (PtIn(g_settings.shortcutRow[i], x, y)) return i;
+    return -1;
+}
+
 static void SettingsResize(HWND h) {
     if (!h || !IsWindow(h)) return;
     int hgt = SettingsWinH();
@@ -2660,10 +2753,25 @@ static void SettingsResize(HWND h) {
     InvalidateRect(h, nullptr, FALSE);
 }
 
+static void RefreshSettingsShortcuts() {
+    if (!g_settings.hwnd || !IsWindow(g_settings.hwnd)) return;
+    SettingsResize(g_settings.hwnd);
+    UpdateWindow(g_settings.hwnd);
+}
+
 static void SettingsApplyMain(bool needPlace) {
     if (!g.hwnd) return;
     if (needPlace) Place(g.hwnd);
     Repaint(g.hwnd);
+}
+
+static void SwapShortcutSlots(int a, int b) {
+    if (a == b || a < 0 || b < 0) return;
+    if (a >= (int)g_shortcuts.size() || b >= (int)g_shortcuts.size()) return;
+    std::swap(g_shortcuts[a], g_shortcuts[b]);
+    SaveShortcuts();
+    SettingsApplyMain(true);
+    RefreshSettingsShortcuts();
 }
 
 static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
@@ -2685,17 +2793,83 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     case WM_LBUTTONDOWN: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-        if (PtIn(g_settings.closeBtn, x, y)) { DestroyWindow(h); return 0; }
-        if (y < 34 && !PtIn(g_settings.closeBtn, x, y)) {
+        if (PtIn(g_settings.closeBtn, x, y)) {
+            g_settings.closeDown = true;
+            g_settings.closeHot = true;
+            SetCapture(h);
+            InvalidateRect(h, nullptr, FALSE);
+            UpdateWindow(h);
+            return 0;
+        }
+        int tile = SettingsHitTile(x, y);
+        if (tile >= 0) {
+            g_settings.dragFrom = tile;
+            g_settings.dragOver = tile;
+            g_settings.dragPt = { x, y };
+            g_settings.dragMoved = false;
+            SetCapture(h);
+            return 0;
+        }
+        if (y < 52 && !PtIn(g_settings.closeBtn, x, y)) {
             ReleaseCapture();
             SendMessageW(h, WM_NCLBUTTONDOWN, HTCAPTION, 0);
             return 0;
         }
         return 0;
     }
+    case WM_MOUSEMOVE: {
+        int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        if (g_settings.dragFrom < 0) {
+            bool hot = PtIn(g_settings.closeBtn, x, y);
+            if (hot != g_settings.closeHot) {
+                g_settings.closeHot = hot;
+                InvalidateRect(h, nullptr, FALSE);
+            }
+            if (hot || g_settings.closeDown) {
+                TRACKMOUSEEVENT t{ sizeof(t), TME_LEAVE, h, 0 };
+                TrackMouseEvent(&t);
+            }
+            break;
+        }
+        if (abs(x - g_settings.dragPt.x) > 4 || abs(y - g_settings.dragPt.y) > 4)
+            g_settings.dragMoved = true;
+        if (g_settings.dragMoved) {
+            g_settings.dragPt = { x, y };
+            int hit = SettingsHitTile(x, y);
+            g_settings.dragOver = hit >= 0 ? hit : g_settings.dragFrom;
+            InvalidateRect(h, nullptr, FALSE);
+        }
+        return 0;
+    }
+    case WM_MOUSELEAVE:
+        if (!g_settings.closeDown && g_settings.closeHot) {
+            g_settings.closeHot = false;
+            InvalidateRect(h, nullptr, FALSE);
+        }
+        return 0;
     case WM_LBUTTONUP: {
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-        if (PtIn(g_settings.closeBtn, x, y)) { DestroyWindow(h); return 0; }
+        if (g_settings.closeDown) {
+            bool hit = PtIn(g_settings.closeBtn, x, y);
+            g_settings.closeDown = false;
+            g_settings.closeHot = false;
+            ReleaseCapture();
+            if (hit) { DestroyWindow(h); return 0; }
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        if (g_settings.dragFrom >= 0) {
+            int from = g_settings.dragFrom;
+            int over = g_settings.dragMoved ? SettingsHitTile(x, y) : -1;
+            bool moved = g_settings.dragMoved;
+            g_settings.dragFrom = -1;
+            g_settings.dragOver = -1;
+            g_settings.dragMoved = false;
+            ReleaseCapture();
+            if (moved && over >= 0) SwapShortcutSlots(from, over);
+            else InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
         for (int i = 0; i < 3; ++i) if (PtIn(g_settings.dockBtn[i], x, y)) {
             if (g.dockEdge != i) { g.dockEdge = i; g.y = -1; }
             SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
@@ -2719,6 +2893,11 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         DestroyWindow(h);
         return 0;
     case WM_DESTROY:
+        g_settings.dragFrom = -1;
+        g_settings.dragOver = -1;
+        g_settings.dragMoved = false;
+        g_settings.closeHot = false;
+        g_settings.closeDown = false;
         if (g_settings.hwnd == h) g_settings.hwnd = nullptr;
         return 0;
     }
@@ -2813,7 +2992,7 @@ static void DrawQuickLaunch(Graphics& gph, Font& ui, float x, float y, float qw,
         float th = tw;
         float tx = ix + ((float)tile - tw) * 0.5f;
         float ty = iy + ((float)tile - th) * 0.5f;
-        BYTE fillA = g.dark ? (BYTE)48 : (BYTE)210;
+        BYTE fillA = g.dark ? (BYTE)220 : (BYTE)255;
         Color fill = g.dark ? Color(fillA, 0x48, 0x48, 0x50) : Color(fillA, 0xF4, 0xF5, 0xF7);
         Color stroke = g.dark ? Color(255, 0x58, 0x58, 0x62) : Color(255, 0xD2, 0xD6, 0xDC);
         if (t >= 0.f) {
@@ -2856,22 +3035,9 @@ static bool QuickLayout(float* qx, float* qy, float* qw, float* qh) {
     *qh = (float)QuickContentH();
     if (*qh < (float)S(40)) *qh = (float)S(40);
     *qy = (float)S(46);
-    *qx = (float)(usageW + split);
+    if (g.dockEdge == 1) *qx = (float)S(8);
+    else *qx = (float)(usageW + split);
     return true;
-}
-
-static POINT ClientFromWindow(HWND h, POINT screen) {
-    RECT wr{};
-    GetWindowRect(h, &wr);
-    screen.x -= wr.left;
-    screen.y -= wr.top;
-    return screen;
-}
-
-static POINT ClientFromLParam(HWND h, LPARAM l, bool screen) {
-    POINT pt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
-    if (screen) return ClientFromWindow(h, pt);
-    return pt;
 }
 
 static int HitQuickIndex(int mx, int my) {
@@ -2905,16 +3071,6 @@ static int HitQuickIndex(int mx, int my) {
     return best;
 }
 
-static int HitQuickFromMsg(HWND h, LPARAM l, bool screen) {
-    POINT a = ClientFromLParam(h, l, screen);
-    int qi = HitQuickIndex(a.x, a.y);
-    if (qi >= 0) return qi;
-    POINT sp{};
-    GetCursorPos(&sp);
-    POINT b = ClientFromWindow(h, sp);
-    return HitQuickIndex(b.x, b.y);
-}
-
 static void BeginLaunchAnim(int idx) {
     g_launchAnim = idx;
     g_launchAnimAt = GetTickCount();
@@ -2922,91 +3078,6 @@ static void BeginLaunchAnim(int idx) {
     if (g.hwnd) {
         SetTimer(g.hwnd, 3, 16, nullptr);
         Repaint(g.hwnd);
-    }
-}
-
-static HWND g_hotspot[9]{};
-static void LaunchShortcut(int idx);
-
-static void RaiseHotspots() {
-    for (int i = 0; i < 9; ++i) {
-        if (g_hotspot[i] && IsWindowVisible(g_hotspot[i]))
-            SetWindowPos(g_hotspot[i], HWND_TOPMOST, 0, 0, 0, 0,
-                         SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
-    }
-}
-
-static LRESULT CALLBACK HotspotProc(HWND hs, UINT m, WPARAM w, LPARAM l) {
-    if (m == WM_LBUTTONDOWN || m == WM_LBUTTONDBLCLK) {
-        LaunchShortcut((int)GetWindowLongPtrW(hs, GWLP_USERDATA));
-        return 0;
-    }
-    if (m == WM_NCHITTEST) return HTCLIENT;
-    if (m == WM_MOUSEACTIVATE) return MA_NOACTIVATE;
-    if (m == WM_PAINT) {
-        PAINTSTRUCT ps;
-        BeginPaint(hs, &ps);
-        EndPaint(hs, &ps);
-        return 0;
-    }
-    if (m == WM_ERASEBKGND) return 1;
-    return DefWindowProcW(hs, m, w, l);
-}
-
-static void SyncHotspots(HWND parent) {
-    if (!parent) return;
-    static bool reg = false;
-    if (!reg) {
-        WNDCLASSEXW wc{ sizeof(wc) };
-        wc.lpfnWndProc = HotspotProc;
-        wc.hInstance = GetModuleHandleW(nullptr);
-        wc.hCursor = LoadCursor(nullptr, IDC_HAND);
-        wc.lpszClassName = L"CursorUsageHotspot";
-        RegisterClassExW(&wc);
-        reg = true;
-    }
-    float x = 0, y = 0, qw = 0, qh = 0;
-    bool show = g.expanded && QuickLayout(&x, &y, &qw, &qh) && !g_shortcuts.empty();
-    int tile = QuickTilePx();
-    int gap = QuickGap();
-    int pad = QuickPad();
-    int rowGap = QuickRowGap();
-    int rows = QuickRowsUsed();
-    if (rows < 1) rows = 1;
-    for (int i = 0; i < kMaxShortcuts; ++i) {
-        if (!show || i >= (int)g_shortcuts.size()) {
-            if (g_hotspot[i]) ShowWindow(g_hotspot[i], SW_HIDE);
-            continue;
-        }
-        int col = i / rows;
-        int row = i % rows;
-        POINT origin{ (int)(x + pad + col * (tile + gap)), (int)(y + pad + row * (tile + rowGap)) };
-        ClientToScreen(parent, &origin);
-        if (!g_hotspot[i]) {
-            // Top-level constant-alpha window. Child windows never receive clicks
-            // on an UpdateLayeredWindow parent, and transparent icon pixels are click-through.
-            g_hotspot[i] = CreateWindowExW(
-                WS_EX_LAYERED | WS_EX_NOACTIVATE | WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
-                L"CursorUsageHotspot", L"", WS_POPUP,
-                origin.x, origin.y, tile, tile,
-                parent, nullptr, GetModuleHandleW(nullptr), nullptr);
-            if (g_hotspot[i])
-                SetLayeredWindowAttributes(g_hotspot[i], 0, 1, LWA_ALPHA);
-        }
-        if (g_hotspot[i]) {
-            SetWindowPos(g_hotspot[i], HWND_TOPMOST, origin.x, origin.y, tile, tile,
-                         SWP_NOACTIVATE | SWP_SHOWWINDOW);
-            SetWindowLongPtrW(g_hotspot[i], GWLP_USERDATA, i);
-        }
-    }
-}
-
-static void DestroyHotspots() {
-    for (int i = 0; i < kMaxShortcuts; ++i) {
-        if (g_hotspot[i]) {
-            DestroyWindow(g_hotspot[i]);
-            g_hotspot[i] = nullptr;
-        }
     }
 }
 
@@ -3023,8 +3094,34 @@ static void LaunchShortcut(int idx) {
     OpenShortcutNow(g_shortcuts[idx].path, g_shortcuts[idx].target);
 }
 
-static void DrawQuickEmpty(Graphics& gph, Font& ui, float x, float y, float qw, float qh) {
-    DrawQuickLaunch(gph, ui, x, y, qw, qh);
+static LRESULT CALLBACK MouseHookProc(int code, WPARAM wp, LPARAM lp) {
+    if (code != HC_ACTION || !g.hwnd || !IsWindow(g.hwnd))
+        return CallNextHookEx(g_mouseHook, code, wp, lp);
+    auto* inf = (MSLLHOOKSTRUCT*)lp;
+    RECT wr{};
+    GetWindowRect(g.hwnd, &wr);
+    if (wp == WM_LBUTTONDOWN) {
+        g_hookDownOn = PtInRect(&wr, inf->pt) != FALSE;
+        g_hookDown = inf->pt;
+        return CallNextHookEx(g_mouseHook, code, wp, lp);
+    }
+    if (wp == WM_LBUTTONUP && g_hookDownOn) {
+        g_hookDownOn = false;
+        int dx = abs(inf->pt.x - g_hookDown.x);
+        int dy = abs(inf->pt.y - g_hookDown.y);
+        int along = (g.dockEdge == 2) ? dx : dy;
+        if (along <= 12 && PtInRect(&wr, inf->pt))
+            PostMessageW(g.hwnd, WM_QUICK_CLICK, (WPARAM)(inf->pt.x - wr.left), (LPARAM)(inf->pt.y - wr.top));
+        return CallNextHookEx(g_mouseHook, code, wp, lp);
+    }
+    if (wp == WM_MOUSEMOVE && PtInRect(&wr, inf->pt)) {
+        DWORD now = GetTickCount();
+        if (now - g_lastWakePaint > 250) {
+            g_lastWakePaint = now;
+            PostMessageW(g.hwnd, WM_WAKE_PAINT, 0, 0);
+        }
+    }
+    return CallNextHookEx(g_mouseHook, code, wp, lp);
 }
 
 static HBITMAP MakeDib(int w, int hh, void** bits) {
@@ -3141,6 +3238,8 @@ static void Paint(HWND h, HDC hdc) {
         float quickX = 0, quickY = 0, quickW = 0, quickH = 0;
         bool showQ = QuickLayout(&quickX, &quickY, &quickW, &quickH);
         int usageLeft = 0;
+        if (showQ && g.dockEdge == 1)
+            usageLeft = (int)(quickW + (float)S(16));
         int ux = usageLeft + pad;
         int ur = usageLeft + usageW;
         DrawTitleMark(gph, (float)ux, (float)S(14));
@@ -3211,12 +3310,12 @@ static void Paint(HWND h, HDC hdc) {
             p[1] = (BYTE)((p[1] * a) / 255);
             p[2] = (BYTE)((p[2] * a) / 255);
         }
-        RECT wr{}; GetWindowRect(h, &wr);
-        POINT dst{ wr.left, wr.top };
         POINT src{ 0, 0 };
         SIZE sz{ w, hh };
         BLENDFUNCTION bf{ AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
-        UpdateLayeredWindow(h, nullptr, &dst, &sz, mem, &src, 0, &bf, ULW_ALPHA);
+        // Do not pass a screen position. SetWindowPos owns placement; giving
+        // UpdateLayeredWindow a Y here makes clicks miss once the window is low.
+        UpdateLayeredWindow(h, nullptr, nullptr, &sz, mem, &src, 0, &bf, ULW_ALPHA);
         SelectObject(mem, old);
         DeleteObject(bmp);
     } else if (bmp) {
@@ -3291,6 +3390,16 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         Repaint(h);
         return 0;
     }
+    case WM_WAKE_PAINT:
+        KeepTopMost(h);
+        Repaint(h);
+        return 0;
+    case WM_QUICK_CLICK: {
+        if (!g.expanded || g.dragging) return 0;
+        int qi = HitQuickIndex((int)w, (int)l);
+        if (qi >= 0) LaunchShortcut(qi);
+        return 0;
+    }
     case WM_PAINT: {
         PAINTSTRUCT ps; HDC hdc = BeginPaint(h, &ps);
         Paint(h, hdc);
@@ -3304,61 +3413,43 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         break;
     case WM_NCHITTEST:
         return HTCLIENT;
-    case WM_NCLBUTTONDOWN:
     case WM_LBUTTONDOWN: {
-        bool nc = (m == WM_NCLBUTTONDOWN);
-        POINT cpt = ClientFromLParam(h, l, nc);
-        g.pressLaunch = -1;
-        if (g.expanded) {
-            int qi = HitQuickFromMsg(h, l, nc);
-            if (qi >= 0) {
-                g.pressLaunch = qi;
-                g.dragging = false;
-                g.scrolling = false;
-                SetCapture(h);
-                LaunchShortcut(qi);
-                return 0;
-            }
-        }
-        if (g.expanded && MaxScroll() > 0 && cpt.y >= TokenViewY()) {
+        POINT cpt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
+        g.dragging = false;
+        g.scrolling = false;
+        g.pressIcon = g.expanded ? HitQuickIndex(cpt.x, cpt.y) : -1;
+        if (g.pressIcon < 0 && g.expanded && MaxScroll() > 0 && cpt.y >= TokenViewY()) {
             g.scrolling = true;
             g.press = cpt;
             SetCapture(h);
             return 0;
         }
-        POINT sp{};
-        GetCursorPos(&sp);
-        g.press = sp;
+        if (g.y < 0) Place(h);
+        GetCursorPos(&g.press);
         g.pressY = g.y;
-        g.dragging = false;
-        g.scrolling = false;
         SetCapture(h);
         return 0;
     }
     case WM_MOUSEMOVE:
-        if (g.expanded && !g.tracking) TrackLeave(h);
-        if (g.pressLaunch >= 0) return 0;
-        if (GetCapture() == h && g.scrolling) {
+        if (g.expanded && !g.tracking && GetCapture() != h) TrackLeave(h);
+        if (GetCapture() != h) return 0;
+        if (g.scrolling) {
             int dy = GET_Y_LPARAM(l) - g.press.y;
             g.press.y = GET_Y_LPARAM(l);
             g.scrollY = ClampI(g.scrollY + dy * MaxScroll() / (std::max)(1, TokenViewH() - 16), 0, MaxScroll());
             Repaint(h);
             return 0;
         }
-        if (GetCapture() == h && !g.scrolling) {
+        {
             POINT pt;
             GetCursorPos(&pt);
-            int ax = abs(pt.x - g.press.x);
-            int ay = abs(pt.y - g.press.y);
-            int along = (g.dockEdge == 2) ? ax : ay;
-            if (along > 10 && along >= ax && along >= ay) {
-                g.dragging = true;
-                if (g.dockEdge == 2)
-                    g.y = g.pressY + (pt.x - g.press.x);
-                else
-                    g.y = g.pressY + (pt.y - g.press.y);
-                DragMove(h);
-            }
+            int delta = (g.dockEdge == 2) ? (pt.x - g.press.x) : (pt.y - g.press.y);
+            if (g.pressIcon >= 0 && abs(delta) < 12) return 0;
+            if (!g.dragging && abs(delta) <= 4) return 0;
+            g.dragging = true;
+            g.pressIcon = -1;
+            g.y = g.pressY + delta;
+            DragMove(h);
         }
         return 0;
     case WM_MOUSEWHEEL:
@@ -3369,44 +3460,44 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         break;
-    case WM_NCLBUTTONUP:
     case WM_LBUTTONUP: {
-        int launch = g.pressLaunch;
-        g.pressLaunch = -1;
+        bool dragged = g.dragging;
+        bool scrolling = g.scrolling;
+        g.dragging = false;
+        g.scrolling = false;
         ReleaseCapture();
-        if (launch >= 0) {
-            if (!CursorInWindow(h)) {
-                g.expanded = false;
-                g.holdUntil = 0;
-                g.scrollY = 0;
-                Place(h);
-            }
-            return 0;
-        }
-        if (g.scrolling) {
-            g.scrolling = false;
-            return 0;
-        }
-        if (g.dragging) {
+        if (scrolling) return 0;
+        if (dragged) {
             DragMove(h);
-            ApplyRegion(h);
             SaveConfig();
-        } else if (g.expanded) {
-            int qi = HitQuickFromMsg(h, l, m == WM_NCLBUTTONUP);
-            if (qi == -1) OpenManageShortcuts();
-            else if (qi >= 0) LaunchShortcut(qi);
-        } else {
+            return 0;
+        }
+        POINT cpt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
+        POINT cur{};
+        GetCursorPos(&cur);
+        ScreenToClient(h, &cur);
+        int qi = HitQuickIndex(cur.x, cur.y);
+        if (qi < 0) qi = HitQuickIndex(cpt.x, cpt.y);
+        if (g.pressIcon >= 0 && qi < 0) qi = g.pressIcon;
+        g.pressIcon = -1;
+        if (qi >= 0) {
+            LaunchShortcut(qi);
+            return 0;
+        }
+        if (!g.expanded) {
             g.expanded = true;
             g.scrollY = 0;
-            g.holdUntil = GetTickCount() + 800;
+            g.holdUntil = GetTickCount() + 300;
             Place(h);
             g.tracking = false;
             TrackLeave(h);
+            return 0;
         }
         return 0;
     }
     case WM_MOUSELEAVE:
         g.tracking = false;
+        if (GetCapture() == h || g.dragging) return 0;
         if (!g.expanded) return 0;
         if (GetTickCount() < g.holdUntil || CursorInWindow(h)) {
             TrackLeave(h);
@@ -3420,6 +3511,8 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_RBUTTONUP: {
         POINT pt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
         ClientToScreen(h, &pt);
+        RECT wr{}; GetWindowRect(h, &wr);
+        RECT wa = Work();
         HMENU menu = CreatePopupMenu();
         AppendMenuW(menu, MF_STRING, 10, L"\u7acb\u5373\u5237\u65b0");
         AppendMenuW(menu, MF_STRING, 11, L"\u6253\u5f00\u7528\u91cf\u9875");
@@ -3427,7 +3520,24 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         AppendMenuW(menu, MF_STRING, IDM_SETTINGS, L"\u8bbe\u7f6e");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING, 14, L"\u9000\u51fa");
-        int cmd = TrackPopupMenu(menu, TPM_RETURNCMD | TPM_RIGHTBUTTON, pt.x, pt.y, 0, h, nullptr);
+        UINT flags = TPM_RETURNCMD | TPM_RIGHTBUTTON;
+        int x = pt.x, y = pt.y;
+        if (g.dockEdge == 1) {
+            flags |= TPM_RIGHTALIGN;
+            x = wr.left - 2;
+        } else if (g.dockEdge == 0) {
+            flags |= TPM_LEFTALIGN;
+            x = wr.right + 2;
+        } else {
+            flags |= TPM_LEFTALIGN;
+            y = wr.bottom + 2;
+        }
+        if (g.dockEdge != 2 && y + 180 > wa.bottom)
+            flags |= TPM_BOTTOMALIGN;
+        TPMPARAMS tp{ sizeof(tp), wr };
+        SetForegroundWindow(h);
+        int cmd = TrackPopupMenuEx(menu, flags, x, y, h, &tp);
+        PostMessageW(h, WM_NULL, 0, 0);
         DestroyMenu(menu);
         if (cmd == 10) Refresh();
         if (cmd == 11) ShellExecuteW(nullptr, L"open", L"https://cursor.com/dashboard", nullptr, nullptr, SW_SHOWNORMAL);
@@ -3437,7 +3547,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     case WM_DESTROY:
         SaveConfig();
-        DestroyHotspots();
+        if (g_mouseHook) { UnhookWindowsHookEx(g_mouseHook); g_mouseHook = nullptr; }
         FreeShortcutIcons();
         KillTimer(h, 1);
         KillTimer(h, 2);
@@ -3489,6 +3599,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     Place(g.hwnd);
     ShowWindow(g.hwnd, SW_SHOW);
     UpdateWindow(g.hwnd);
+    g_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHookProc, GetModuleHandleW(nullptr), 0);
 
     MSG msg;
     while (GetMessage(&msg, nullptr, 0, 0)) {
@@ -3496,6 +3607,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
         TranslateMessage(&msg);
         DispatchMessage(&msg);
     }
+    if (g_mouseHook) { UnhookWindowsHookEx(g_mouseHook); g_mouseHook = nullptr; }
     Gdiplus::GdiplusShutdown(g.gdip);
     FreeShortcutIcons();
     CoUninitialize();
