@@ -650,6 +650,7 @@ struct App {
     int scale = 80;
     bool showBot = false;
     bool showApi = true; // dual-ring lower outer; default on
+    bool showModels = true;
     int ringMode = 0; // 0=quad four rings, 1=dual concentric pairs
     int bgAlpha = 100; // legacy unused
     int scrollY = 0;
@@ -710,7 +711,8 @@ static float DualCenterGap();
 
 
 static int CollapsedRingCount() {
-    int n = 2; // Auto + Models
+    int n = 1; // Auto stays
+    if (g.showModels) n++;
     if (g.showApi) n++;
     if (g.showBot) n++;
     return n;
@@ -840,6 +842,7 @@ static void LoadConfig() {
         if (k == "y") g.y = atoi(v.c_str());
         if (k == "showBot") g.showBot = v == "1";
         if (k == "showApi") g.showApi = v == "1";
+        if (k == "showModels") g.showModels = v == "1";
         if (k == "ringMode") g.ringMode = (atoi(v.c_str()) == 1) ? 1 : 0;
         // bgAlpha removed — ignore legacy keys
     }
@@ -853,6 +856,7 @@ static void SaveConfig() {
     out << "y=" << g.y << "\n";
     out << "showBot=" << (g.showBot ? "1" : "0") << "\n";
     out << "showApi=" << (g.showApi ? "1" : "0") << "\n";
+    out << "showModels=" << (g.showModels ? "1" : "0") << "\n";
     out << "ringMode=" << g.ringMode << "\n";
 
 }
@@ -1313,13 +1317,13 @@ static void DrawCollapsedRingsHV(Graphics& gph, Font& num, float x0, float y0, f
         else y += stepY;
     };
     DrawRingItem(gph, num, x, y, r, g.snap.autoP, 0); advance();
-    DrawRingItem(gph, num, x, y, r, g.snap.api, 1); advance();
+    if (g.showModels) { DrawRingItem(gph, num, x, y, r, g.snap.api, 1); advance(); }
     if (g.showApi) { DrawRingItem(gph, num, x, y, r, g.snap.total, 2); advance(); }
     if (g.showBot) { DrawRingItem(gph, num, x, y, r, g.snap.botP, 3, g.snap.botKnown); }
 }
 
 static int DualPairCount() {
-    // upper Auto/Model always; lower if Api or Bot visible
+    // upper Auto, inner Models if shown; lower if Api or Bot visible
     int n = 1;
     if (g.showApi || g.showBot) n = 2;
     return n;
@@ -2333,6 +2337,8 @@ struct SettingsDlg {
     RECT dockBtn[3]{};
     RECT alphaBtn[4]{};
     RECT modeBtn[2]{};
+    RECT modelsRow{};
+    RECT modelsSwitch{};
     RECT botRow{};
     RECT botSwitch{};
     RECT apiRow{};
@@ -2446,12 +2452,15 @@ static int LayoutSettings() {
     // Left: visibility
     cardTop = y + secLabelH + secGap;
     contentTop = cardTop + cardPad;
+    g_settings.modelsRow = { leftX + cardPad, contentTop, leftX + colW - cardPad, contentTop + 26 };
+    g_settings.modelsSwitch = { g_settings.modelsRow.right - 44, contentTop + 2, g_settings.modelsRow.right, contentTop + 24 };
+    contentTop += 26 + 8;
     g_settings.botRow = { leftX + cardPad, contentTop, leftX + colW - cardPad, contentTop + 26 };
     g_settings.botSwitch = { g_settings.botRow.right - 44, contentTop + 2, g_settings.botRow.right, contentTop + 24 };
     contentTop += 26 + 8;
     g_settings.apiRow = { leftX + cardPad, contentTop, leftX + colW - cardPad, contentTop + 26 };
     g_settings.apiSwitch = { g_settings.apiRow.right - 44, contentTop + 2, g_settings.apiRow.right, contentTop + 24 };
-    int visH = cardPad + 26 + 8 + 26 + cardPad;
+    int visH = cardPad + 26 + 8 + 26 + 8 + 26 + cardPad;
     g_settings.visCard = placeCard(leftX, cardTop, visH);
     int leftEnd = g_settings.visCard.bottom;
 
@@ -2642,6 +2651,7 @@ static void PaintSettings(HWND h) {
                 SolidBrush knobBr(Color(255, 255, 255, 255));
                 gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
             };
+            drawSwitch(g_settings.modelsRow, g_settings.modelsSwitch, L"\u663e\u793a Other Models \u7528\u91cf", g.showModels);
             drawSwitch(g_settings.botRow, g_settings.botSwitch, L"\u663e\u793a Bot \u7528\u91cf", g.showBot);
             drawSwitch(g_settings.apiRow, g_settings.apiSwitch, L"\u663e\u793a Api \u7528\u91cf", g.showApi);
         }
@@ -2876,6 +2886,9 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         for (int i = 0; i < 2; ++i) if (PtIn(g_settings.modeBtn[i], x, y)) {
             g.ringMode = i; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
+        }
+        if (PtIn(g_settings.modelsRow, x, y) || PtIn(g_settings.modelsSwitch, x, y)) {
+            g.showModels = !g.showModels; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
         if (PtIn(g_settings.botRow, x, y) || PtIn(g_settings.botSwitch, x, y)) {
             g.showBot = !g.showBot; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
@@ -3193,7 +3206,7 @@ static void Paint(HWND h, HDC hdc) {
             DrawConcentricPair(gph, x0, cy,
                 g.snap.autoP, 0, true,
                 g.snap.api, 1, true,
-                true, true);
+                true, g.showModels);
             if (g.showApi || g.showBot) {
                 DrawConcentricPair(gph, x0 + step, cy,
                     g.snap.total, 2, true,
@@ -3216,7 +3229,7 @@ static void Paint(HWND h, HDC hdc) {
             DrawConcentricPair(gph, cx, y0,
                 g.snap.autoP, 0, true,
                 g.snap.api, 1, true,
-                true, true);
+                true, g.showModels);
             if (g.showApi || g.showBot) {
                 DrawConcentricPair(gph, cx, y0 + step,
                     g.snap.total, 2, true,
@@ -3252,8 +3265,9 @@ static void Paint(HWND h, HDC hdc) {
             if (!g.snap.membership.empty())
                 DrawRight(gph, Utf8ToWide(g.snap.membership), ui, muted, (float)(ur - pad), (float)S(16));
             y = S(46);
-            y = Meter(gph, ui, sm, ux, y, ur, L"Auto", g.snap.autoP, L"");
-            y = Meter(gph, ui, sm, ux, y, ur, L"Models", g.snap.api, L"");
+            y = Meter(gph, ui, sm, ux, y, ur, L"Cursor Models", g.snap.autoP, L"");
+            if (g.showModels)
+                y = Meter(gph, ui, sm, ux, y, ur, L"Other Models", g.snap.api, L"");
             if (g.showApi)
                 y = Meter(gph, ui, sm, ux, y, ur, L"API", g.snap.total, L"");
             if (g.showBot)
@@ -3540,7 +3554,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         PostMessageW(h, WM_NULL, 0, 0);
         DestroyMenu(menu);
         if (cmd == 10) Refresh();
-        if (cmd == 11) ShellExecuteW(nullptr, L"open", L"https://cursor.com/dashboard", nullptr, nullptr, SW_SHOWNORMAL);
+        if (cmd == 11) ShellExecuteW(nullptr, L"open", L"https://cursor.com/dashboard/spending", nullptr, nullptr, SW_SHOWNORMAL);
         if (cmd == IDM_SETTINGS) OpenSettings();
         if (cmd == 14) DestroyWindow(h);
         return 0;
