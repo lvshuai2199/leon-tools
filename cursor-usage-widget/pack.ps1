@@ -57,43 +57,6 @@ if (-not (Test-Path -LiteralPath $outExe)) {
 Set-Content -LiteralPath (Join-Path $dist "latest.txt") -Value $verName -Encoding ASCII
 
 Write-Host ""
-Write-Host "OK"
-Write-Host $outExe
-Write-Host ""
-
-
-$stamp = Get-Date -Format "yyyyMMdd-HHmmss"
-$verName = "CursorUsage-Setup-$stamp.exe"
-
-New-Item -ItemType Directory -Force -Path $dist | Out-Null
-$outExe = Join-Path $dist $verName
-$bat = Join-Path $setupDir "_pack.cmd"
-@(
-  "@echo off"
-  "call `"$vcvars`" >nul"
-  "cd /d `"$setupDir`""
-  "rc /nologo /fo Setup.res Setup.rc"
-  "if errorlevel 1 exit /b 1"
-  "cl /nologo /O2 /EHsc /utf-8 /DUNICODE /D_UNICODE /W3 Setup.cpp Setup.res /Fe:`"$outExe`" /link /SUBSYSTEM:WINDOWS ole32.lib shell32.lib shlwapi.lib user32.lib advapi32.lib uuid.lib"
-  "if errorlevel 1 exit /b 1"
-  "del /q Setup.obj Setup.res 2>nul"
-) | Set-Content -LiteralPath $bat -Encoding ASCII
-
-try {
-  cmd.exe /c "`"$bat`""
-  if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-} finally {
-  Remove-Item -LiteralPath $bat -Force -ErrorAction SilentlyContinue
-}
-
-if (-not (Test-Path -LiteralPath $outExe)) {
-  Write-Host "Installer was not built."
-  exit 1
-}
-
-Set-Content -LiteralPath (Join-Path $dist "latest.txt") -Value $verName -Encoding ASCII
-
-Write-Host ""
 Write-Host "Installer:"
 Write-Host $outExe
 Write-Host ""
