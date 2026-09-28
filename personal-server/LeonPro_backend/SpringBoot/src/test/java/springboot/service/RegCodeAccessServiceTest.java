@@ -10,6 +10,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import springboot.domain.RegCodeUser;
 import springboot.domain.RegCodeUserConfig;
+import springboot.domain.SysMenus;
 import springboot.domain.SysRoles;
 import springboot.domain.SysUsers;
 
@@ -34,6 +35,7 @@ class RegCodeAccessServiceTest {
     SysRolesService roles;
     SysRoleMenuService roleMenus;
     RegCodeUserService regCodeUsers;
+    SysMenusService sysMenus;
     RegCodeAccessService svc;
     /** userId -> reg_code_user 状态 */
     Map<String, Integer> status = new HashMap<>();
@@ -46,6 +48,7 @@ class RegCodeAccessServiceTest {
         TableInfoHelper.initTableInfo(assistant, SysUsers.class);
         TableInfoHelper.initTableInfo(assistant, RegCodeUser.class);
         TableInfoHelper.initTableInfo(assistant, RegCodeUserConfig.class);
+        TableInfoHelper.initTableInfo(assistant, SysMenus.class);
     }
 
     @BeforeEach
@@ -55,7 +58,8 @@ class RegCodeAccessServiceTest {
         roles = mock(SysRolesService.class);
         roleMenus = mock(SysRoleMenuService.class);
         regCodeUsers = mock(RegCodeUserService.class);
-        svc = new RegCodeAccessService(users, roles, roleMenus, mock(SysMenusService.class), regCodeUsers,
+        sysMenus = mock(SysMenusService.class);
+        svc = new RegCodeAccessService(users, roles, roleMenus, sysMenus, regCodeUsers,
                 mock(RegCodeUserConfigService.class), mock(RegCodeConfigService.class));
         when(roleMenus.getMenuIdsByRole(anyString())).thenAnswer(inv -> menus.getOrDefault((String) inv.getArgument(0), List.of()));
         when(regCodeUsers.getOne(any(Wrapper.class), anyBoolean())).thenAnswer(inv -> {
@@ -152,11 +156,100 @@ class RegCodeAccessServiceTest {
         SysUsers plainSub = u("s", "role_x", "p");
         assertFalse(svc.isRegCodeUser(plainSub), "挂了父用户不等于注册码用户");
         assertTrue(svc.isSubAccount(plainSub));
-        assertTrue(svc.canUseCrab(plainSub), "普通子账号可以用出货");
+        u("p", "role_admin", null);
+        assertFalse(svc.canUseCrab(plainSub), "创建人角色没有出货菜单，子账号也不能用");
+        menus.put("role_admin", List.of("menu_user", "menu_regcode_user", "menu_crab"));
+        assertTrue(svc.canUseCrab(plainSub), "创建人角色有出货菜单，子账号跟着可以用");
         assertFalse(svc.canUseCrab(u("c", "role_regcode_client", "p")), "注册码客户不能用出货");
         assertTrue(svc.canUseCrab(u("m", "role_admin", null)));
         assertFalse(svc.canLoginWeb(plainSub));
         assertFalse(svc.canLoginWeb(u("c2", "role_regcode_client", null)));
         assertTrue(svc.canLoginWeb(u("m", "role_admin", null)));
+    }
+
+    private void appCrabMenu(String id, int disabled) {
+        SysMenus m = new SysMenus();
+        m.setId(id);
+        m.setClient("app");
+        m.setRouteKey("/crab");
+        m.setDisabled(disabled);
+        when(sysMenus.list(any(Wrapper.class))).thenReturn(List.of(m));
+    }
+
+    @Test
+    void crabNeedsMenuFallbackToAdminMenuCrab() {
+        menus.put("role_ops", List.of("menu_crab"));
+        menus.put("role_x", List.of("menu_user"));
+        assertEquals("menu_crab", svc.effectiveCrabMenuId(), "还没有用户端出货菜单时看 menu_crab");
+        assertTrue(svc.canUseCrab(u("root", "role_root", null)), "ROOT 可以");
+        assertTrue(svc.canUseCrab(u("ops", "role_ops", null)), "角色有 menu_crab");
+        assertFalse(svc.canUseCrab(u("x", "role_x", null)), "角色没有出货菜单");
+        assertFalse(svc.canUseCrab(u("norole", null, null)), "没有角色");
+        assertFalse(svc.canUseCrab(null));
+    }
+
+    @Test
+    void crabSubAccountFollowsCreatorEveryRequest() {
+        menus.put("role_ops", List.of("menu_crab"));
+        menus.put("role_x", List.of("menu_user"));
+        SysUsers ops = u("ops", "role_ops", null);
+        SysUsers sub = u("sub", "role_x", "ops");
+        assertTrue(svc.canUseCrab(sub), "子账号自己角色没有也行，看创建人");
+        assertFalse(svc.canUseCrab(u("subX", "role_ops", "xboss")), "子账号自己角色有但创建人不存在");
+        u("xboss", "role_x", null);
+        assertFalse(svc.canUseCrab(u("subY", "role_ops", "xboss")), "子账号自己角色有但创建人没有：不行");
+
+        menus.put("role_ops", List.of("menu_user"));
+        assertFalse(svc.canUseCrab(sub), "创建人角色失去出货菜单，下一次请求就不行");
+        menus.put("role_ops", List.of("menu_crab"));
+
+        SysRoles off = new SysRoles();
+        off.setId("role_ops");
+        off.setIsDisabled(1);
+        when(roles.getById("role_ops")).thenReturn(off);
+        assertFalse(svc.canUseCrab(sub), "创建人角色被禁用");
+        when(roles.getById("role_ops")).thenReturn(null);
+
+        status.put("ops", 0);
+        assertFalse(svc.canUseCrab(sub), "创建人账号被停用");
+        status.put("ops", 1);
+        status.put("sub", 0);
+        assertFalse(svc.canUseCrab(sub), "子账号自己被停用");
+        status.remove("sub");
+        assertTrue(svc.canUseCrab(sub));
+
+        assertFalse(svc.canUseCrab(u("subsub", "role_x", "sub")), "只允许一层：创建人自己是子账号");
+        assertFalse(svc.canUseCrab(u("subRc", "role_regcode_client", "ops")), "子账号是注册码客户角色");
+        menus.put("role_regcode_client", List.of("menu_regcode", "menu_crab"));
+        u("rc", "role_regcode_client", null);
+        assertFalse(svc.canUseCrab(u("subOfRc", "role_x", "rc")), "创建人是注册码客户：永远不行");
+        assertFalse(svc.canUseCrab(u("rc2", "role_regcode_client", null)), "注册码客户角色即使误勾了出货菜单也不行");
+        u("root", "role_root", null);
+        assertTrue(svc.canUseCrab(u("subOfRoot", "role_x", "root")), "ROOT 建的子账号可以");
+        assertTrue(ops.getParentId() == null);
+    }
+
+    @Test
+    void crabUsesAppMenuAfterSync() {
+        menus.put("role_ops", List.of("menu_crab"));
+        menus.put("role_boss", List.of("menu_app_crab"));
+        appCrabMenu("menu_app_crab", 0);
+        assertEquals("menu_app_crab", svc.effectiveCrabMenuId());
+        assertFalse(svc.canUseCrab(u("ops", "role_ops", null)), "同步后只认用户端出货菜单，只有 menu_crab 不行");
+        assertTrue(svc.canUseCrab(u("boss", "role_boss", null)));
+        assertTrue(svc.canUseCrab(u("bossSub", "role_x", "boss")), "子账号跟着创建人");
+
+        appCrabMenu("menu_app_crab", 1);
+        assertEquals(null, svc.effectiveCrabMenuId(), "用户端出货菜单已停用");
+        assertFalse(svc.canUseCrab(u("boss", "role_boss", null)), "菜单停用后谁都不能用");
+        assertTrue(svc.canUseCrab(u("root", "role_root", null)), "ROOT 除外");
+    }
+
+    @Test
+    void webBlockedMessageMatchesAccountKind() {
+        assertEquals("子用户请使用手机端登录，仅可生成注册码", svc.webBlockedMessage(u("s", "role_regcode_client", "cust")));
+        assertEquals("子用户请使用手机端登录，仅可生成注册码", svc.webBlockedMessage(u("s2", "role_x", "boss")));
+        assertEquals("注册码客户请使用手机端登录", svc.webBlockedMessage(u("c", "role_regcode_client", null)));
+        assertEquals("该账号请使用手机端登录", svc.webBlockedMessage(u("m", "role_admin", null)));
     }
 }

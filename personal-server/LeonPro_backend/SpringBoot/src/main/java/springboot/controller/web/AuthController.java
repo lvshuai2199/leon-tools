@@ -82,7 +82,7 @@ public class AuthController {
                 return ApiResponse.failure("当前账号没有手机端可用功能，请联系管理员分配权限");
             }
         } else if (!this.regCodeAccessService.canLoginWeb(user)) {
-            return ApiResponse.failure("子用户请使用手机端登录，仅可生成注册码");
+            return ApiResponse.failure(this.regCodeAccessService.webBlockedMessage(user));
         }
         fillRoleName(user);
         user.setMenuIds(this.regCodeAccessService.menuIdsOf(user));

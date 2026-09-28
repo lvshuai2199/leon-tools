@@ -2,6 +2,7 @@ package springboot.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import springboot.DTO.RegCodeQuotaVO;
 import springboot.DTO.RegCodeSubUser;
@@ -43,6 +44,10 @@ public class RegCodeAccessService {
     private final RegCodeUserService regCodeUserService;
     private final RegCodeUserConfigService regCodeUserConfigService;
     private final RegCodeConfigService regCodeConfigService;
+
+    /** 用户端出货菜单的路由（与菜单同步的首次授权用同一个配置） */
+    @Value("${app.menu-sync.first-grant.app-crab-route:/crab}")
+    private String appCrabRoute = "/crab";
 
     public RegCodeAccessService(SysUsersService sysUsersService,
                                 SysRolesService sysRolesService,
@@ -122,9 +127,81 @@ public class RegCodeAccessService {
         return user != null;
     }
 
-    /** 出货：注册码客户角色不能用；其他账号（含普通子账号）可以用，数据范围另行限制 */
+    /**
+     * 用户端螃蟹出货（/app/crabShipment/**）的访问规则，每次请求实时计算（与注册码同样的“跟着创建人走”模式）：
+     * <ol>
+     *   <li>ROOT：可以</li>
+     *   <li>注册码客户角色（role_regcode_client）：永远不可以（自己或创建人是这个角色都不行）</li>
+     *   <li>账号被停用（reg_code_user.status = 0）：不可以</li>
+     *   <li>顶层账号（parent_id 为空）：看自己的角色有没有“出货菜单”</li>
+     *   <li>子账号：看创建人（parent_id 指向的账号）——创建人存在、是顶层账号、角色未禁用、账号未停用、
+     *       角色有“出货菜单”，才可以；创建人是 ROOT 也可以。子账号自己的角色不参与判断</li>
+     * </ol>
+     * “出货菜单”：菜单同步后是用户端（client=app）的出货菜单（路由见 app.menu-sync.first-grant.app-crab-route，
+     * 默认 /crab）；该菜单已停用则谁都不能用（ROOT 除外）；库里还没有用户端出货菜单（清单没同步 / 没有新字段）时，
+     * 退回看原来的管理端 menu_crab。
+     */
     public boolean canUseCrab(SysUsers user) {
-        return user != null && !isRegCodeUser(user);
+        if (user == null) {
+            return false;
+        }
+        if (isRootUser(user)) {
+            return true;
+        }
+        if (isRegCodeUser(user) || isRegCodeDisabled(user)) {
+            return false;
+        }
+        String crabMenuId = effectiveCrabMenuId();
+        if (crabMenuId == null) {
+            return false;
+        }
+        if (!isSubAccount(user)) {
+            return roleHasMenu(user.getRoleId(), crabMenuId);
+        }
+        SysUsers creator = sysUsersService.getById(user.getParentId().trim());
+        if (creator == null) {
+            return false;
+        }
+        if (isRootUser(creator)) {
+            return !isRoleDisabled(creator);
+        }
+        if (isSubAccount(creator) || isRegCodeUser(creator) || isRoleDisabled(creator) || isRegCodeDisabled(creator)) {
+            return false;
+        }
+        return roleHasMenu(creator.getRoleId(), crabMenuId);
+    }
+
+    /**
+     * 判断用户端出货权限时要看的菜单 id：
+     * 有用户端出货菜单且未停用 → 它的 id；有但已停用 → null（谁都没有）；没有 → 管理端 menu_crab（同步前的兜底）。
+     */
+    public String effectiveCrabMenuId() {
+        SysMenus appCrab = findAppCrabMenu();
+        if (appCrab == null) {
+            return MENU_CRAB;
+        }
+        return appCrab.getDisabled() != null && appCrab.getDisabled() != 0 ? null : appCrab.getId();
+    }
+
+    private SysMenus findAppCrabMenu() {
+        try {
+            List<SysMenus> rows = sysMenusService.list(new LambdaQueryWrapper<SysMenus>()
+                    .eq(SysMenus::getClient, "app")
+                    .eq(SysMenus::getRouteKey, appCrabRoute)
+                    .last("LIMIT 1"));
+            return rows == null || rows.isEmpty() ? null : rows.get(0);
+        } catch (RuntimeException e) {
+            // 老库还没有 client / route_key 字段（SchemaPatcher 未能补列）时按“没有用户端菜单”处理
+            return null;
+        }
+    }
+
+    private boolean roleHasMenu(String roleId, String menuId) {
+        if (roleId == null || roleId.isBlank() || menuId == null) {
+            return false;
+        }
+        List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(roleId.trim());
+        return menuIds != null && menuIds.contains(menuId);
     }
 
     /**
@@ -312,6 +389,17 @@ public class RegCodeAccessService {
     /** Web 管理端：子账号和注册码客户都不能登录，也不能调 /admin/** */
     public boolean canLoginWeb(SysUsers user) {
         return user != null && !isWebBlocked(user);
+    }
+
+    /** 管理端登录被拒时的提示：子账号 / 顶层注册码客户分别说明，其它情况给中性提示 */
+    public String webBlockedMessage(SysUsers user) {
+        if (isSubAccount(user)) {
+            return "子用户请使用手机端登录，仅可生成注册码";
+        }
+        if (isRegCodeUser(user)) {
+            return "注册码客户请使用手机端登录";
+        }
+        return "该账号请使用手机端登录";
     }
 
     /** 管理端要挡掉的账号：子账号（parent_id 非空）或注册码客户角色 */
