@@ -40,6 +40,11 @@ app:
     mode: ${MENU_SYNC_MODE:apply}
     # 清单里删掉的页面标记停用（不删行、不删授权）
     disable-missing: ${MENU_SYNC_DISABLE_MISSING:true}
+    first-grant:
+      # 额外授予用户端出货菜单的角色 id（逗号分隔）。先跑 sql/crab_users_without_menu_check.sql 核对
+      # “录过出货单但角色没有出货菜单”的角色，确认后填在这里（例如 role_ops,role_xxx），每个角色只授予一次。
+      # 注意：docker-compose.yml 只传了 SPRING_PROFILES_ACTIVE，环境变量要生效需在 compose 里另加。
+      app-crab-extra-roles: ${MENU_SYNC_APP_CRAB_EXTRA_ROLES:}
 
 wechat:
   enabled: ${WECHAT_ENABLED:false}

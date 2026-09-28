@@ -40,6 +40,7 @@ import java.util.UUID;
  * <p>
  * 同步后执行一次性授权（各自记录标记，只执行一次）：用户端注册码菜单授予已有 menu_regcode 的角色；
  * 用户端出货菜单授予已有 menu_crab 的角色（注册码客户角色除外）。目标菜单还不存在时不执行、不记标记。
+ * 另外按配置 app.menu-sync.first-grant.app-crab-extra-roles 的显式名单补授用户端出货菜单（每个角色一个标记）。
  */
 @Slf4j
 @Component
@@ -53,6 +54,8 @@ public class MenuManifestSync implements CommandLineRunner {
     static final String LOCK_NAME = "leonpro_menu_sync";
     static final String MARKER_APP_REGCODE = "menu_first_grant_app_regcode";
     static final String MARKER_APP_CRAB = "menu_first_grant_app_crab";
+    /** 按名单补授用户端出货菜单：每个角色一个标记，后缀是角色 id */
+    static final String MARKER_APP_CRAB_ROLE_PREFIX = "menu_grant_app_crab_role:";
 
     private final JdbcTemplate jdbc;
     private final TransactionTemplate tx;
@@ -72,6 +75,12 @@ public class MenuManifestSync implements CommandLineRunner {
     String appRegCodeRoute = "/regcode";
     @Value("${app.menu-sync.first-grant.app-crab-route:/crab}")
     String appCrabRoute = "/crab";
+    /**
+     * 额外要授予用户端出货菜单的角色 id（逗号分隔），由管理员先跑 sql/crab_users_without_menu_check.sql 核对后填写：
+     * 在手机端录过出货单、但角色没有出货菜单的账号，避免上线后失去出货权限。每个角色只授予一次（记标记）。
+     */
+    @Value("${app.menu-sync.first-grant.app-crab-extra-roles:}")
+    String appCrabExtraRoles = "";
 
     public MenuManifestSync(JdbcTemplate jdbc, PlatformTransactionManager transactionManager, ResourceLoader resourceLoader) {
         this.jdbc = jdbc;
@@ -105,6 +114,8 @@ public class MenuManifestSync implements CommandLineRunner {
             grantOnce(MARKER_APP_REGCODE, appRegCodeRoute, MenuDataSeeder.MENU_REGCODE,
                     Set.of(RoleUtils.ROOT_ROLE_ID), apply, plannedAppKeys);
             grantOnce(MARKER_APP_CRAB, appCrabRoute, MenuDataSeeder.MENU_CRAB,
+                    Set.of(RoleUtils.ROOT_ROLE_ID, RegCodeAccessService.ROLE_REGCODE_CLIENT_ID), apply, plannedAppKeys);
+            grantToListedRoles(appCrabRoute, appCrabExtraRoles,
                     Set.of(RoleUtils.ROOT_ROLE_ID, RegCodeAccessService.ROLE_REGCODE_CLIENT_ID), apply, plannedAppKeys);
         } catch (Exception e) {
             log.error("菜单同步异常（不影响启动）：{}", e.getMessage(), e);
@@ -275,6 +286,97 @@ public class MenuManifestSync implements CommandLineRunner {
                 jdbc.update("INSERT INTO sys_setup_marker (marker_key, done_at, note) VALUES (?, ?, ?)",
                         marker, new Date(), note.length() > 500 ? note.substring(0, 500) : note);
                 log.info("{} 已把 {}（{}）授予 {} 个角色：{}", tag, target, route, roles.size(), roles);
+            });
+        } catch (Exception e) {
+            log.error("{} 执行失败，已回滚：{}", tag, e.getMessage(), e);
+        }
+    }
+
+    /** 解析逗号 / 空白分隔的角色 id 名单（去重，保持顺序） */
+    static List<String> parseRoleList(String raw) {
+        List<String> out = new ArrayList<>();
+        if (raw == null) {
+            return out;
+        }
+        for (String part : raw.split("[,，;；\\s]+")) {
+            String r = part.trim();
+            if (!r.isEmpty() && !out.contains(r)) {
+                out.add(r);
+            }
+        }
+        return out;
+    }
+
+    /**
+     * 按显式名单把用户端菜单 appRoute 授予指定角色（不在运行时推测）。每个角色写一个标记
+     * {@code menu_grant_app_crab_role:<角色id>}，已有标记的跳过，所以以后管理员在角色页取消授权也不会被加回来；
+     * 名单里以后新增的角色会在下次启动时授予。excluded（ROOT、注册码客户）和不存在的角色只打 WARN，不写标记。
+     * 目标菜单不存在时不执行。
+     */
+    void grantToListedRoles(String appRoute, String roleList, Set<String> excluded, boolean apply,
+                            Set<String> plannedAppKeys) {
+        List<String> listed = parseRoleList(roleList);
+        String route = MenuPaths.normalize(appRoute);
+        if (listed.isEmpty() || route == null) {
+            return;
+        }
+        String tag = "菜单名单授权[" + route + "]" + (apply ? "" : "[dry-run]");
+        try {
+            tx.executeWithoutResult(status -> {
+                List<String> targets = jdbc.queryForList(
+                        "SELECT id FROM sys_menus WHERE client = ? AND disabled = 0 AND LOWER(route_key) = LOWER(?) ORDER BY id",
+                        String.class, MenuClients.APP, route);
+                boolean plannedOnly = targets.isEmpty() && !apply && plannedAppKeys.contains(MenuPaths.key(route));
+                if (targets.isEmpty() && !plannedOnly) {
+                    log.info("{} 用户端菜单 {} 还不存在，名单 {} 暂不授予", tag, route, listed);
+                    return;
+                }
+                String target = plannedOnly ? "（待新增）" : targets.get(0);
+                Set<String> excludedLower = new HashSet<>();
+                excluded.forEach(r -> excludedLower.add(r.toLowerCase(Locale.ROOT)));
+                List<String> granted = new ArrayList<>();
+                List<String> markedOnly = new ArrayList<>();
+                for (String role : listed) {
+                    if (excludedLower.contains(role.toLowerCase(Locale.ROOT))) {
+                        log.warn("{} 名单里的角色 {} 不允许授予出货菜单（ROOT 自动拥有全部，注册码客户永远不能用出货），已忽略", tag, role);
+                        continue;
+                    }
+                    String marker = MARKER_APP_CRAB_ROLE_PREFIX + role;
+                    if (marker.length() > 100) {
+                        log.warn("{} 角色 id {} 太长，已忽略", tag, role);
+                        continue;
+                    }
+                    Integer done = jdbc.queryForObject("SELECT COUNT(*) FROM sys_setup_marker WHERE marker_key = ?",
+                            Integer.class, marker);
+                    if (done != null && done > 0) {
+                        continue;
+                    }
+                    Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM sys_roles WHERE id = ?", Integer.class, role);
+                    if (exists == null || exists == 0) {
+                        log.warn("{} 名单里的角色 {} 不存在，已忽略（请检查配置 app.menu-sync.first-grant.app-crab-extra-roles）", tag, role);
+                        continue;
+                    }
+                    boolean has = !plannedOnly && !jdbc.queryForList(
+                            "SELECT id FROM sys_role_menu WHERE rold_id = ? AND menu_id = ?", String.class, role, target).isEmpty();
+                    if (!apply) {
+                        (has ? markedOnly : granted).add(role);
+                        continue;
+                    }
+                    if (!has) {
+                        jdbc.update("INSERT INTO sys_role_menu (id, rold_id, menu_id) VALUES (?, ?, ?)",
+                                UUID.randomUUID().toString().replace("-", ""), role, target);
+                        granted.add(role);
+                    } else {
+                        markedOnly.add(role);
+                    }
+                    jdbc.update("INSERT INTO sys_setup_marker (marker_key, done_at, note) VALUES (?, ?, ?)",
+                            marker, new Date(), (has ? "already had " : "granted ") + target);
+                }
+                if (!apply) {
+                    log.info("{} 计划把 {} 授予名单角色：{}；已有授权只记标记：{}", tag, target, granted, markedOnly);
+                } else if (!granted.isEmpty() || !markedOnly.isEmpty()) {
+                    log.info("{} 已把 {} 授予名单角色：{}；已有授权只记标记：{}", tag, target, granted, markedOnly);
+                }
             });
         } catch (Exception e) {
             log.error("{} 执行失败，已回滚：{}", tag, e.getMessage(), e);
