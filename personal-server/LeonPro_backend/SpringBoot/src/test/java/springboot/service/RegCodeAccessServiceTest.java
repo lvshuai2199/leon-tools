@@ -285,9 +285,21 @@ class RegCodeAccessServiceTest {
 
     @Test
     void webBlockedMessageMatchesAccountKind() {
-        assertEquals("子用户请使用手机端登录，仅可生成注册码", svc.webBlockedMessage(u("s", "role_regcode_client", "cust")));
-        assertEquals("子用户请使用手机端登录，仅可生成注册码", svc.webBlockedMessage(u("s2", "role_x", "boss")));
+        u("root", "role_root", null);
+        u("admin", "role_admin", null);
+        assertEquals("注册码客户请使用手机端登录", svc.webBlockedMessage(u("cRoot", "role_regcode_client", "root")),
+                "ROOT 建的注册码客户（有 parent_id）是客户，不是子用户");
+        assertEquals("注册码客户请使用手机端登录", svc.webBlockedMessage(u("cAdmin", "role_regcode_client", "admin")),
+                "管理员建的注册码客户（有 parent_id）是客户，不是子用户");
         assertEquals("注册码客户请使用手机端登录", svc.webBlockedMessage(u("c", "role_regcode_client", null)));
+        assertEquals("子用户请使用手机端登录，仅可生成注册码", svc.webBlockedMessage(u("s", "role_regcode_client", "cAdmin")),
+                "创建人是注册码客户：子用户");
+        assertEquals("子用户请使用手机端登录，仅可生成注册码", svc.webBlockedMessage(u("s1", "role_x", "c")),
+                "创建人是注册码客户（子用户自己不是客户角色）：子用户");
+        assertEquals("子用户请使用手机端登录，仅可生成注册码", svc.webBlockedMessage(u("s2", "role_x", "gone")),
+                "创建人已不存在：按子用户");
+        assertEquals("该账号请使用手机端登录", svc.webBlockedMessage(u("adminSub", "role_x", "admin")),
+                "管理员名下的普通子账号：中性提示");
         assertEquals("该账号请使用手机端登录", svc.webBlockedMessage(u("m", "role_admin", null)));
     }
 }

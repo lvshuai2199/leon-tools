@@ -442,9 +442,16 @@ public class RegCodeAccessService {
         return user != null && !isWebBlocked(user);
     }
 
-    /** 管理端登录被拒时的提示：子账号 / 顶层注册码客户分别说明，其它情况给中性提示 */
+    /**
+     * 管理端登录被拒时的提示，按层级和角色判断（不能只看 parent_id：ROOT / 管理员在后台建的注册码客户也有 parent_id）：
+     * <ul>
+     *   <li>底层子用户（创建人是注册码客户等不能登录管理端的账号，或创建人已不存在）→ 子用户提示；</li>
+     *   <li>注册码客户角色（parent_id 为空，或创建人是 ROOT / 管理端账号）→ 注册码客户提示；</li>
+     *   <li>其他（如管理员名下的普通子账号）→ 中性提示。</li>
+     * </ul>
+     */
     public String webBlockedMessage(SysUsers user) {
-        if (isSubAccount(user)) {
+        if (isBottomSubUser(user)) {
             return "子用户请使用手机端登录，仅可生成注册码";
         }
         if (isRegCodeUser(user)) {

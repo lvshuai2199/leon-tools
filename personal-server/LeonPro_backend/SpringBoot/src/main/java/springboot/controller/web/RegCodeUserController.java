@@ -155,22 +155,19 @@ public class RegCodeUserController {
         if (form.getId() == null || form.getId().isBlank()) {
             return ApiResponse.failure("缺少主键");
         }
+        // 先确认客户存在（404）、归当前管理员管理（403），再校验表单
+        RegCodeUser entity = resolveRow(form.getId());
+        if (entity == null) {
+            return notFound();
+        }
+        SysUsers existing = this.sysUsersService.getById(entity.getUserId());
+        requireManages(request, existing);
         bindParent(form, request);
         err = validateForm(form, false);
         if (err != null) {
             return ApiResponse.failure(err);
         }
-
-        RegCodeUser entity = resolveRow(form.getId());
-        if (entity == null) {
-            return notFound();
-        }
         form.setUserId(entity.getUserId());
-        SysUsers existing = this.sysUsersService.getById(entity.getUserId());
-        String ownErr = denyIfNotOwnChild(request, existing);
-        if (ownErr != null) {
-            return ApiResponse.failure(ownErr);
-        }
         SysUsers user = resolveOrCreateUser(form, false);
         if (user == null) {
             return ApiResponse.failure("用户不存在");
@@ -214,10 +211,7 @@ public class RegCodeUserController {
         }
         // 先整体做权限检查，避免删到一半才发现某条无权操作
         for (RegCodeUser row : rows) {
-            String ownErr = denyIfNotOwnChild(request, this.sysUsersService.getById(row.getUserId()));
-            if (ownErr != null) {
-                return ApiResponse.failure(ownErr);
-            }
+            requireManages(request, this.sysUsersService.getById(row.getUserId()));
         }
         List<String> accountUserIds = new ArrayList<>();
         List<String> retired = new ArrayList<>();
@@ -329,11 +323,18 @@ public class RegCodeUserController {
         }
     }
 
-    /** 非 ROOT 管理员只能看 / 改自己名下的客户（客户的 parent_id = 自己） */
+    static final String NOT_OWN_CUSTOMER = "只能管理自己账户下的客户";
+    static final String NOT_OWN_SUB_USER = "只能管理自己账户下的子用户";
+
+    /** 非 ROOT 管理员只能看 / 改自己名下的客户（客户的 parent_id = 自己），否则 HTTP 403 */
     private void requireManages(HttpServletRequest request, SysUsers customer) {
+        requireManages(request, customer, NOT_OWN_CUSTOMER);
+    }
+
+    private void requireManages(HttpServletRequest request, SysUsers customer, String message) {
         String err = denyIfNotOwnChild(request, customer);
         if (err != null) {
-            throw new ForbiddenException(err);
+            throw new ForbiddenException(NOT_OWN_CUSTOMER.equals(err) ? message : err);
         }
     }
 
@@ -347,11 +348,12 @@ public class RegCodeUserController {
         if (customer == null) {
             // 创建人已删除：只有 ROOT 能处理
             if (!this.regCodeAccessService.isRootUser(this.regCodeAccessService.currentUser(request))) {
-                throw new ForbiddenException("只能管理自己账户下的子用户");
+                throw new ForbiddenException(NOT_OWN_SUB_USER);
             }
             return sub;
         }
-        requireManages(request, customer);
+        // 目标是子用户：它的创建人不归当前管理员管理时，用“子用户”的说法
+        requireManages(request, customer, NOT_OWN_SUB_USER);
         return sub;
     }
 
@@ -427,7 +429,7 @@ public class RegCodeUserController {
             return null;
         }
         if (target.getParentId() == null || !operator.getId().equals(target.getParentId())) {
-            return "只能管理自己账户下的子用户";
+            return NOT_OWN_CUSTOMER;
         }
         return null;
     }

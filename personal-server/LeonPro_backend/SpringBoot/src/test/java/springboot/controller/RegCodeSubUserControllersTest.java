@@ -162,4 +162,42 @@ class RegCodeSubUserControllersTest {
         assertTrue(r.getData().toString().contains("NewPass1234"));
         verify(tokens).revokeAllForUser("sub");
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void nonRootAdminGets403ForCustomersThatAreNotTheirs() {
+        SysUsers tAdmin = u("t_admin", "role_admin", null);
+        SysUsers mine = u("mine", "role_regcode_client", "t_admin");
+        when(users.getById("t_admin")).thenReturn(tAdmin);
+        when(users.getById("mine")).thenReturn(mine);
+        when(access.currentUser(any())).thenReturn(tAdmin);
+
+        // 删除 / 修改别人的客户：HTTP 403（ForbiddenException → GlobalExceptionHandler），说“客户”
+        ForbiddenException e = assertThrows(ForbiddenException.class, () -> admin.delete(List.of("row-cust"), req));
+        assertEquals("只能管理自己账户下的客户", e.getMessage());
+        verify(regUsers, never()).removeByIds(any(Collection.class));
+        verify(quota, never()).removeAll(anyString());
+        verify(quota, never()).retireSubUsers(anyString());
+
+        springboot.DTO.RegCodeUserForm form = new springboot.DTO.RegCodeUserForm();
+        form.setId("row-cust");
+        e = assertThrows(ForbiddenException.class, () -> admin.update(form, req), "表单不完整也先判归属");
+        assertEquals("只能管理自己账户下的客户", e.getMessage());
+        verify(regUsers, never()).updateById(any());
+        verify(quota, never()).replaceCustomerQuotas(anyString(), any());
+
+        e = assertThrows(ForbiddenException.class, () -> admin.listSubUsers("cust", req));
+        assertEquals("只能管理自己账户下的客户", e.getMessage());
+
+        // 目标是子用户（创建人不是自己的客户）：说“子用户”
+        e = assertThrows(ForbiddenException.class, () -> admin.subUserQuota("sub", req));
+        assertEquals("只能管理自己账户下的子用户", e.getMessage());
+        e = assertThrows(ForbiddenException.class, () -> admin.adjustSubUserQuota("sub", new RegCodeSubUser.DeltaForm(), req));
+        assertEquals("只能管理自己账户下的子用户", e.getMessage());
+        verify(quota, never()).adjustByAdmin(any(), any());
+
+        // 自己的客户正常
+        assertEquals(200, admin.listSubUsers("mine", req).getStatus());
+        assertEquals(404, admin.delete(List.of("nope"), req).getStatus(), "不存在仍是 404");
+    }
 }
