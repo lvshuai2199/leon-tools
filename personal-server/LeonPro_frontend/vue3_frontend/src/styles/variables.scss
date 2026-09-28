@@ -1,24 +1,27 @@
+@use "../../../shared/theme" as lp;
+
+// Element Plus 的 scss 变量也取共用主题的值（CSS 变量由 index.scss 里的 lp.css-vars 输出）
 @forward "element-plus/theme-chalk/src/common/var.scss" with (
   $colors: (
     "primary": (
-      "base": #4080ff,
+      "base": lp.$primary,
     ),
     "success": (
-      "base": #23c343,
+      "base": lp.$success,
     ),
     "warning": (
-      "base": #ff9a2e,
+      "base": lp.$warning,
     ),
     "danger": (
-      "base": #f76560,
+      "base": lp.$danger,
     ),
-    "info": (
-      "base": #a9aeb8,
+    "error": (
+      "base": lp.$danger,
     ),
   ),
 
   $bg-color: (
-    "page": #f5f8fd,
+    "page": lp.$bg-page,
   )
 );
 

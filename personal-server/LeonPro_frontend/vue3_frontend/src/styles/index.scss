@@ -1,4 +1,8 @@
 @use "./reset";
+@use "../../../shared/theme" as lp;
+
+// 共用主题的 CSS 变量，整个管理端只输出这一次
+@include lp.css-vars;
 
 .app-container {
   padding: 15px;
@@ -19,10 +23,10 @@
 
 .link-type,
 .link-type:focus {
-  color: #337ab7;
+  color: var(--el-color-primary);
   cursor: pointer;
 
   &:hover {
-    color: rgb(32 160 255);
+    color: var(--el-color-primary-light-3);
   }
 }

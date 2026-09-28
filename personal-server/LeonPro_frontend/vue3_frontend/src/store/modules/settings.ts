@@ -1,7 +1,7 @@
 import defaultSettings from "@/settings";
 import { SidebarColorEnum, ThemeEnum } from "@/enums/ThemeEnum";
 import { LayoutEnum } from "@/enums/LayoutEnum";
-import { generateThemeColors, applyTheme, toggleDarkMode, toggleSidebarColor } from "@/utils/theme";
+import { toggleDarkMode, toggleSidebarColor } from "@/utils/theme";
 
 type SettingsValue = boolean | string;
 
@@ -24,18 +24,15 @@ export const useSettingsStore = defineStore("setting", () => {
     "watermarkEnabled",
     defaultSettings.watermarkEnabled
   );
-
-  // 主题
-  const themeColor = useStorage<string>("themeColor", defaultSettings.themeColor);
   const theme = useStorage<string>("theme", defaultSettings.theme);
 
   //  监听主题变化
+  // 主色固定取共用主题 shared/theme.scss，不再支持自定义主题色
+  localStorage.removeItem("themeColor");
   watch(
-    [theme, themeColor],
-    ([newTheme, newThemeColor]) => {
+    theme,
+    (newTheme) => {
       toggleDarkMode(newTheme === ThemeEnum.DARK);
-      const colors = generateThemeColors(newThemeColor);
-      applyTheme(colors);
     },
     { immediate: true }
   );
@@ -71,10 +68,6 @@ export const useSettingsStore = defineStore("setting", () => {
     sidebarColorScheme.value = val;
   }
 
-  function changeThemeColor(color: string) {
-    themeColor.value = color;
-  }
-
   function changeLayout(val: LayoutEnum) {
     layout.value = val;
   }
@@ -85,12 +78,10 @@ export const useSettingsStore = defineStore("setting", () => {
     sidebarLogo,
     sidebarColorScheme,
     layout,
-    themeColor,
     theme,
     watermarkEnabled,
     changeSetting,
     changeTheme,
-    changeThemeColor,
     changeLayout,
     changeSidebarColor,
   };

@@ -26,6 +26,5 @@ declare module "vue" {
     SidebarMixTopMenu: (typeof import("./../layout/components/Sidebar/components/SidebarMixTopMenu.vue"))["default"];
     SizeSelect: (typeof import("./../components/SizeSelect/index.vue"))["default"];
     TagsView: (typeof import("./../layout/components/TagsView/index.vue"))["default"];
-    ThemeColorPicker: (typeof import("./../layout/components/Settings/components/ThemeColorPicker.vue"))["default"];
   }
 }
