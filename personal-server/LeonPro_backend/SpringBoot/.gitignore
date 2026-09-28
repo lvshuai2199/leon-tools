@@ -38,3 +38,6 @@ deploy/deploy.env
 
 ### Local mindmap images ###
 data/
+
+### Local wallpaper uploads ###
+uploads/wallpaper/

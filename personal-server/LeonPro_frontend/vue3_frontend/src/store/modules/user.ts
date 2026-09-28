@@ -4,7 +4,7 @@ import { usePermissionStoreHook } from "@/store/modules/permission";
 import AuthAPI, { type LoginFormData } from "@/api/auth";
 import UserAPI, { type UserInfo } from "@/api/system/user";
 
-import { setAccessToken, clearToken } from "@/utils/auth";
+import { getAccessToken, setAccessToken, clearToken } from "@/utils/auth";
 import { isRegCodeClientUser, resolveLoginRoles, WEB_SUBUSER_LOGIN_BLOCKED } from "@/utils/role";
 
 export const useUserStore = defineStore("user", () => {
@@ -13,8 +13,8 @@ export const useUserStore = defineStore("user", () => {
   /**
    * 登录（对接 LeonPro_backend /auth/login2）
    *
-   * 后端返回 SysUsers 而非 JWT token，
-   * 此处以本地标记 token 维持登录态，用户信息存入 localStorage
+   * 后端返回用户对象，其中 token 为登录凭证（Redis 保存 7 天，有效请求自动续期），
+   * 之后所有后台接口以 Authorization: Bearer <token> 鉴权；用户信息存入 localStorage
    */
   function login(LoginFormData: LoginFormData) {
     return new Promise<void>((resolve, reject) => {
@@ -28,11 +28,20 @@ export const useUserStore = defineStore("user", () => {
             reject(WEB_SUBUSER_LOGIN_BLOCKED);
             return;
           }
-          // LeonPro_backend 未启用 JWT，写入会话标记维持登录态
-          setAccessToken(`session-${Date.now()}`);
+          const token = typeof data.token === "string" ? data.token.trim() : "";
+          if (!token) {
+            // 不再写入假的会话标记：没有 token 就无法调用后台接口，按登录失败处理
+            reject("登录失败：服务端未返回登录凭证（token），请确认后端已升级或联系管理员");
+            return;
+          }
+          setAccessToken(token);
+          // token 只放在 access_token 里，password 等敏感字段不写入 userInfo
+          const user: Record<string, any> = { ...data };
+          delete user.token;
+          delete user.password;
           const roles = resolveLoginRoles(data.roleId, data.roleName);
           userInfo.value = {
-            ...data,
+            ...user,
             avatar: data.avatarUrl,
             roles,
             perms: roles.includes("ROOT") ? ["*"] : [],
@@ -81,22 +90,18 @@ export const useUserStore = defineStore("user", () => {
   }
 
   /**
-   * 登出（前端本地清理会话）
+   * 登出：尽力调用 POST /auth/logout 让后端作废 token，
+   * 不论成功、失败还是 401，都清理本地 token 和用户信息（跳转登录页由调用方负责）
    */
-  function logout() {
-    return new Promise<void>((resolve) => {
-      AuthAPI.logout();
-      clearUserData();
-      resolve();
-    });
-  }
-
-  /**
-   * 刷新 token
-   * LeonPro_backend 未启用 token 刷新机制，直接成功返回
-   */
-  function refreshToken() {
-    return Promise.resolve();
+  async function logout() {
+    if (getAccessToken()) {
+      try {
+        await AuthAPI.logout();
+      } catch {
+        // 尽力而为：网络错误 / token 已失效（401）都不影响本地退出
+      }
+    }
+    await clearUserData();
   }
 
   /**
@@ -117,7 +122,6 @@ export const useUserStore = defineStore("user", () => {
     login,
     logout,
     clearUserData,
-    refreshToken,
   };
 });
 

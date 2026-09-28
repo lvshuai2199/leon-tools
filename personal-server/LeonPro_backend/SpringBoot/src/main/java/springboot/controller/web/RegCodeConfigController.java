@@ -45,18 +45,11 @@ public class RegCodeConfigController {
         return ApiResponse.success(listAvailable(query, RequestUserUtils.currentUserId(request), null));
     }
 
+    /** body 中的 userId / username 已废弃（仅兼容旧客户端，忽略），身份只取登录 token */
     @PostMapping("available")
     public ApiResponse listAvailablePost(@RequestBody(required = false) java.util.Map<String, String> body,
                                          HttpServletRequest request) {
-        String userId = RequestUserUtils.currentUserId(request);
-        String username = null;
-        if (body != null) {
-            if (userId == null || userId.isBlank()) {
-                userId = body.get("userId");
-            }
-            username = body.get("username");
-        }
-        return ApiResponse.success(listAvailable(null, userId, username));
+        return ApiResponse.success(listAvailable(null, RequestUserUtils.currentUserId(request), null));
     }
 
     @GetMapping("{id}")

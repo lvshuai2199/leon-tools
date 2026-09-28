@@ -18,6 +18,11 @@ export default {
 		});
 	},
 
+	// 退出登录：尽力通知后端作废 token，失败/超时都忽略（不提示、不触发 401 跳转）
+	logout() {
+		return http.post("/auth/logout", {}, { silent: true, timeout: 3000 }).catch(() => null);
+	},
+
 	listRegCodeConfig() {
 		return http.post("/regCodeConfig/available", currentUserQuery());
 	},

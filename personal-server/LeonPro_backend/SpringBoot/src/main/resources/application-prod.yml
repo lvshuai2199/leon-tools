@@ -7,8 +7,8 @@ spring:
 
   servlet:
     multipart:
-      max-file-size: 10MB
-      max-request-size: 10MB
+      max-file-size: 20MB
+      max-request-size: 25MB
 
   data:
     redis:
@@ -25,6 +25,15 @@ mybatis-plus:
 app:
   mindmap:
     storage-dir: ${MINDMAP_DIR:./data/mindmap}
+  wallpaper:
+    # original + thumbnail files: {storage-dir}/{groupId}/
+    storage-dir: ${WALLPAPER_DIR:./uploads/wallpaper}
+    # static URL path mapped to storage-dir
+    url-prefix: /uploads/wallpaper
+    # public API prefix for /extern/wallpaper/random 302 Location and json url/thumbUrl (list APIs stay /uploads/...)
+    redirect-prefix: ${WALLPAPER_REDIRECT_PREFIX:/prod-api}
+    thumb-width: 640
+    max-file-size: 20MB
 
 wechat:
   enabled: ${WECHAT_ENABLED:false}

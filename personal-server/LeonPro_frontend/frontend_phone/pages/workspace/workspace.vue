@@ -249,8 +249,9 @@ export default {
     goHome() {
       this.$router.replace("/pages/home/home");
     },
-    handleLogout() {
+    async handleLogout() {
       if (!confirmAction("退出登录", "确定退出当前账号？")) return;
+      await this.api.logout();
       this.leaveToLogin();
     },
     leaveToLogin() {

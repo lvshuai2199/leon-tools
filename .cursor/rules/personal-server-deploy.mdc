@@ -1,5 +1,5 @@
 ---
-description: 用户要求部署 personal-server（后端、Vue3、uni-app H5）时使用。先提交业务改动，再跑三端 deploy.ps1，最后检查 /、/h5/、/prod-api/。
+description: 用户要求部署 personal-server（后端、Vue3 管理端、uni-app H5、展示端 portal）时使用。先提交业务改动，再跑四个 deploy.ps1，最后检查 /、/h5/、/portal/、/prod-api/。
 alwaysApply: false
 ---
 
@@ -8,10 +8,14 @@ alwaysApply: false
 用户说部署 `personal-server` 时按这个顺序做：
 
 1. **先整理提交**：看 `git status` / `git diff` / `git log`，把本次业务改动提交。不要提交 `deploy.env`、`bootstrap.env`、`migrate.env`、密码、以及 `node_modules`。
-2. **再部署三端**：
+2. **有数据库脚本变更时先执行 SQL**：例如新增的 `sql/wallpaper_module.sql`（壁纸表和菜单）。后端 `docker-compose.yml` 需带 `./uploads:/app/uploads` 卷再重建，否则上传的文件会在重建时丢失。
+3. **再部署四个**：
    - `personal-server/LeonPro_backend/SpringBoot/deploy/deploy.ps1`
    - `personal-server/LeonPro_frontend/vue3_frontend/deploy/deploy.ps1`
    - `personal-server/LeonPro_frontend/frontend_phone/deploy/deploy.ps1`
-3. 用 `http://<主机>/`、`/h5/`、`/prod-api/` 做一次可达性检查。
+   - `personal-server/LeonPro_frontend/portal/deploy/deploy.ps1`（公开只读展示端，放 `/var/www/leonpro-portal`，访问 `/portal/`）
+4. 对 `http://<主机>/`、`/h5/`、`/portal/`、`/prod-api/` 做一次可达性检查。
+
+Nginx 站点配置只有一份：`LeonPro_frontend/vue3_frontend/deploy/nginx.conf`。三个前端的 deploy.ps1 都会上传这同一份，新增子路径只改这一个文件。
 
 没有未提交改动时，直接部署并说明工作区是干净的。

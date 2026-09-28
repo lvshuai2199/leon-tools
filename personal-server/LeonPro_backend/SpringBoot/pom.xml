@@ -16,6 +16,7 @@
 	<properties>
 		<java.version>21</java.version>
 		<mybatis-plus.version>3.5.17</mybatis-plus.version>
+		<twelvemonkeys.version>3.12.0</twelvemonkeys.version>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -69,6 +70,17 @@
 			<groupId>com.baomidou</groupId>
 			<artifactId>mybatis-plus-extension</artifactId>
 			<version>${mybatis-plus.version}</version>
+		</dependency>
+		<!-- 壁纸模块：让 ImageIO 能解码 WebP 与 CMYK JPEG，用于读取尺寸和生成缩略图 -->
+		<dependency>
+			<groupId>com.twelvemonkeys.imageio</groupId>
+			<artifactId>imageio-webp</artifactId>
+			<version>${twelvemonkeys.version}</version>
+		</dependency>
+		<dependency>
+			<groupId>com.twelvemonkeys.imageio</groupId>
+			<artifactId>imageio-jpeg</artifactId>
+			<version>${twelvemonkeys.version}</version>
 		</dependency>
 	</dependencies>
 

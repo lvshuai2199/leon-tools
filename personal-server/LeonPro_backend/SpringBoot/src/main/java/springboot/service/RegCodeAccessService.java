@@ -183,22 +183,9 @@ public class RegCodeAccessService {
         return user.getParentId() != null && !user.getParentId().isBlank();
     }
 
+    /** 当前登录用户：只按 token 校验后得到的 userId 查找，不再按用户名兜底 */
     public SysUsers currentUser(HttpServletRequest request) {
-        String userId = RequestUserUtils.currentUserId(request);
-        String username = RequestUserUtils.currentUsername(request);
-        SysUsers byId = (userId == null || userId.isBlank()) ? null : sysUsersService.getById(userId.trim());
-        if (byId != null && isManager(byId)) {
-            return byId;
-        }
-        String name = username;
-        if ((name == null || name.isBlank()) && byId != null) {
-            name = byId.getUsername();
-        }
-        SysUsers preferred = pickPreferredUser(listByUsername(name));
-        if (preferred != null && isManager(preferred)) {
-            return preferred;
-        }
-        return byId != null ? byId : preferred;
+        return findUser(RequestUserUtils.currentUserId(request), null);
     }
 
     public boolean isManager(String userId) {

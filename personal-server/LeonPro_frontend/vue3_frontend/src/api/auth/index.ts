@@ -12,8 +12,11 @@ const AuthAPI = {
   /**
    * 登录接口（无需验证码）
    *
-   * 后端返回 data 为 SysUsers 对象：
-   * { id, username, nickname, avatarUrl, password, email, createTime, roleId }
+   * 后端返回 data 为用户对象（含登录凭证 token，不再返回 password）：
+   * { id, username, nickname, avatarUrl, email, createTime, roleId, roleName, token }
+   *
+   * 标记 no-auth：不带旧 token，且密码错误等失败不会被当成「登录失效」处理；
+   * 错误提示由登录页统一弹出（skipErrorMessage 避免拦截器再弹一次）
    */
   login(data: LoginFormData) {
     return request<any, LoginUserVO>({
@@ -26,7 +29,9 @@ const AuthAPI = {
       },
       headers: {
         "Content-Type": "application/json",
+        Authorization: "no-auth",
       },
+      skipErrorMessage: true,
     });
   },
 
@@ -45,7 +50,9 @@ const AuthAPI = {
       },
       headers: {
         "Content-Type": "application/json",
+        Authorization: "no-auth",
       },
+      skipErrorMessage: true,
     });
   },
 
@@ -64,11 +71,17 @@ const AuthAPI = {
   },
 
   /**
-   * 注销登录
-   * LeonPro_backend 无登出接口，由前端本地清理会话
+   * 注销登录：后端作废当前 token（需携带 token）。
+   * 尽力而为：401 不触发「登录失效」跳转、出错不弹提示，调用方无论结果都清理本地会话
    */
   logout() {
-    return Promise.resolve();
+    return request<any, unknown>({
+      url: `${AUTH_BASE_URL}/auth/logout`,
+      method: "post",
+      timeout: 5000,
+      skipAuthRedirect: true,
+      skipErrorMessage: true,
+    });
   },
 };
 
@@ -101,6 +114,8 @@ export interface LoginUserVO {
   /** 父用户 ID；有值表示注册码子用户 */
   parentId?: string;
   menuIds?: string[] | null;
+  /** 登录凭证：之后请求头携带 Authorization: Bearer <token> */
+  token?: string;
 }
 
 /** 验证码信息 */

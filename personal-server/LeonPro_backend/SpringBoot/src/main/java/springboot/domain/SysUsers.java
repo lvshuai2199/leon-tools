@@ -4,6 +4,8 @@ import com.baomidou.mybatisplus.annotation.IdType;
 import com.baomidou.mybatisplus.annotation.TableField;
 import com.baomidou.mybatisplus.annotation.TableId;
 import com.baomidou.mybatisplus.annotation.TableName;
+import com.fasterxml.jackson.annotation.JsonInclude;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import lombok.Data;
 
 import java.io.Serializable;
@@ -33,8 +35,9 @@ public class SysUsers implements Serializable {
 
 
     /**
-     * 用户密码
+     * 用户密码（只接收不输出：任何接口响应都不返回密码）
      */
+    @JsonProperty(access = JsonProperty.Access.WRITE_ONLY)
     private String password;
 
     /**
@@ -74,6 +77,13 @@ public class SysUsers implements Serializable {
      */
     @TableField(exist = false)
     private java.util.List<String> menuIds;
+
+    /**
+     * 登录凭证（非表字段，仅 /auth/login2 等登录接口返回；为空时不输出）
+     */
+    @TableField(exist = false)
+    @JsonInclude(JsonInclude.Include.NON_NULL)
+    private String token;
 
     @TableField(exist = false)
     private static final long serialVersionUID = 1L;

@@ -30,6 +30,43 @@ public class SchemaPatcher implements CommandLineRunner {
         ensureRegCodeUserTables();
         ensureToolMindmapTable();
         ensureCrabShipmentTable();
+        ensureWallpaperTables();
+    }
+
+    /** 壁纸模块表，与 sql/wallpaper_module.sql 保持一致 */
+    private void ensureWallpaperTables() {
+        ensureTable("wallpaper_group",
+                "CREATE TABLE `wallpaper_group` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '主键',"
+                        + "`name` VARCHAR(100) NOT NULL COMMENT '分组名称',"
+                        + "`group_key` VARCHAR(64) NOT NULL COMMENT '分组标识（小写字母/数字/-），外部接口按此取图',"
+                        + "`description` VARCHAR(500) DEFAULT NULL COMMENT '描述',"
+                        + "`sort` INT DEFAULT 0 COMMENT '排序（升序）',"
+                        + "`is_public` INT DEFAULT 1 COMMENT '是否公开 1是 0否',"
+                        + "`access_token` VARCHAR(128) DEFAULT NULL COMMENT '访问令牌（创建分组时自动生成，外部随机接口必须携带）',"
+                        + "`create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',"
+                        + "`update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',"
+                        + "PRIMARY KEY (`id`),"
+                        + "UNIQUE KEY `uk_wallpaper_group_key` (`group_key`),"
+                        + "KEY `idx_wallpaper_group_sort` (`sort`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='壁纸分组'");
+        ensureTable("wallpaper_image",
+                "CREATE TABLE `wallpaper_image` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '主键',"
+                        + "`group_id` VARCHAR(64) NOT NULL COMMENT '分组ID',"
+                        + "`title` VARCHAR(200) DEFAULT NULL COMMENT '标题',"
+                        + "`file_path` VARCHAR(500) NOT NULL COMMENT '原图相对路径（相对壁纸存储目录，如 {groupId}/{uuid}.jpg）',"
+                        + "`thumb_path` VARCHAR(500) DEFAULT NULL COMMENT '缩略图相对路径',"
+                        + "`width` INT DEFAULT NULL COMMENT '原图宽',"
+                        + "`height` INT DEFAULT NULL COMMENT '原图高',"
+                        + "`file_size` BIGINT DEFAULT NULL COMMENT '原图字节数',"
+                        + "`sort` INT DEFAULT 0 COMMENT '组内排序（升序）',"
+                        + "`enabled` INT DEFAULT 1 COMMENT '是否启用 1是 0否',"
+                        + "`create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',"
+                        + "`update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',"
+                        + "PRIMARY KEY (`id`),"
+                        + "KEY `idx_wallpaper_image_group` (`group_id`, `enabled`, `sort`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='壁纸图片'");
     }
 
     private void ensureRegCodeConfigTable() {

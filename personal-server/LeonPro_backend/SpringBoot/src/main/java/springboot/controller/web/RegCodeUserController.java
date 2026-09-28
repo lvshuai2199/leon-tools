@@ -91,15 +91,11 @@ public class RegCodeUserController {
         return quota(RequestUserUtils.currentUserId(request), null);
     }
 
+    /** body 中的 userId / username 已废弃（仅兼容旧客户端，忽略），身份只取登录 token */
     @PostMapping("myQuota")
     public ApiResponse myQuotaPost(@RequestBody(required = false) java.util.Map<String, String> body,
                                    HttpServletRequest request) {
-        String userId = RequestUserUtils.currentUserId(request);
-        String username = body == null ? null : body.get("username");
-        if (userId == null || userId.isBlank()) {
-            userId = body == null ? null : body.get("userId");
-        }
-        return quota(userId, username);
+        return quota(RequestUserUtils.currentUserId(request), null);
     }
 
     private ApiResponse quota(String userId, String username) {

@@ -5,6 +5,24 @@ import { ResultEnum } from "@/enums/ResultEnum";
 import { getAccessToken } from "@/utils/auth";
 import router from "@/router";
 
+declare module "axios" {
+  interface AxiosRequestConfig {
+    /**
+     * 为 true 时，401 不走「登录失效 → 清理登录态并跳转登录页」流程，按普通错误处理。
+     * 设置了 `Authorization: "no-auth"` 的请求（登录、验证码、/public/** 等）会自动置为 true。
+     */
+    skipAuthRedirect?: boolean;
+    /** 为 true 时出错不弹任何提示（如登出这类尽力而为的请求） */
+    skipErrorMessage?: boolean;
+    /** 内部使用：发请求时携带的 token，用于识别登录态已变化后才返回的过期请求 */
+    sentAccessToken?: string;
+  }
+}
+
+/** 后端约定：token 无效 / 缺失 / 过期时返回 HTTP 401 + { status: 401, message } */
+const UNAUTHORIZED = "401";
+const SESSION_EXPIRED_MESSAGE = "登录已失效，请重新登录";
+
 // 创建 axios 实例
 const service = axios.create({
   baseURL: import.meta.env.VITE_APP_BASE_API,
@@ -16,20 +34,18 @@ const service = axios.create({
 // 请求拦截器
 service.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const accessToken = getAccessToken();
-    // 如果 Authorization 设置为 no-auth，则不携带 Token，用于登录、刷新 Token 等接口
-    if (config.headers.Authorization !== "no-auth" && accessToken) {
-      config.headers.Authorization = `Bearer ${accessToken}`;
-    } else {
+    // Authorization 为 no-auth 时不携带 Token（登录、验证码、公开接口等），且 401 不触发跳转登录
+    if (config.headers.Authorization === "no-auth") {
+      config.skipAuthRedirect = true;
       delete config.headers.Authorization;
-    }
-    const user = useUserStoreHook().userInfo;
-    const userId = user?.id ?? user?.userId;
-    if (userId != null && String(userId).trim() !== "") {
-      config.headers["X-User-Id"] = String(userId);
-    }
-    if (user?.username) {
-      config.headers["X-Username"] = encodeURIComponent(user.username);
+    } else {
+      const accessToken = getAccessToken();
+      if (accessToken) {
+        config.headers.Authorization = `Bearer ${accessToken}`;
+      } else {
+        delete config.headers.Authorization;
+      }
+      config.sentAccessToken = accessToken;
     }
     return config;
   },
@@ -46,10 +62,12 @@ service.interceptors.response.use(
 
     const res = response.data;
 
-    // 响应体不是标准业务结构（后端返回 HTML 错误页、空响应等）时，
-    // 避免 status.toString() 因 status 为 undefined 而崩溃
+    // 响应体不是标准业务结构（如后端返回 HTML 错误页、空响应等）时，
+    // 避免 status.toString() 因 status 为 undefined 而报错
     if (!res || typeof res !== "object" || !("status" in res)) {
-      ElMessage.error("服务器返回数据格式异常，请联系管理员");
+      if (!response.config.skipErrorMessage) {
+        ElMessage.error("服务器返回数据格式异常，请联系管理员");
+      }
       return Promise.reject(new Error("Invalid response: 非预期的数据结构"));
     }
 
@@ -59,25 +77,42 @@ service.interceptors.response.use(
       return data;
     }
 
-    ElMessage.error(message || "系统出错-拦截器");
+    // 业务体 status 为 401（旧接口 HTTP 200 + status 401 的写法也兼容）
+    if (isSessionExpiredStatus(status) && !response.config.skipAuthRedirect) {
+      return rejectSessionExpired(response.config, message);
+    }
+
+    if (!response.config.skipErrorMessage) {
+      ElMessage.error(message || "系统出错-响应");
+    }
     return Promise.reject(new Error(message || "Error"));
   },
   async (error) => {
     // 非 2xx 状态码处理 401、403、500 等
     const { config, response } = error;
-    if (response && response.data && typeof response.data === "object" && "status" in response.data) {
-      const { status, message } = response.data;
-      if (String(status) === ResultEnum.ACCESS_TOKEN_INVALID) {
-        // Token 过期，刷新 Token
-        return handleTokenRefresh(config);
-      } else if (String(status) === ResultEnum.REFRESH_TOKEN_INVALID) {
-        return Promise.reject(new Error(message || "Error"));
+    if (axios.isCancel(error)) {
+      return Promise.reject(error);
+    }
+    const body = response?.data;
+    const hasBody = !!body && typeof body === "object" && "status" in body;
+    const bodyStatus = hasBody ? body.status : undefined;
+    const message: string | undefined = hasBody ? body.message : undefined;
+
+    if (
+      response &&
+      (response.status === 401 || isSessionExpiredStatus(bodyStatus)) &&
+      !config?.skipAuthRedirect
+    ) {
+      return rejectSessionExpired(config, message);
+    }
+
+    if (!config?.skipErrorMessage) {
+      if (hasBody) {
+        ElMessage.error(message || "系统出错-请求");
       } else {
-        ElMessage.error(message || "系统出错-报错");
+        // 网络错误 / 后端未返回业务结构
+        ElMessage.error(error?.message || "网络请求失败，请稍后重试");
       }
-    } else {
-      // 网络错误 / 后端未返回业务结构
-      ElMessage.error(error?.message || "网络请求失败，请稍后重试");
     }
     return Promise.reject(error.message);
   }
@@ -85,50 +120,56 @@ service.interceptors.response.use(
 
 export default service;
 
-// 是否正在刷新标识，避免重复刷新
-let isRefreshing = false;
-// 因 Token 过期导致的请求等待队列
-const waitingQueue: Array<() => void> = [];
+/**
+ * 401 以及模板遗留的 A0230 / A0231（token 失效 / 刷新 token 失效）一律视为登录失效。
+ * 后端没有刷新 token 接口，不再尝试刷新，直接重新登录，避免卡在失效状态或循环刷新。
+ */
+function isSessionExpiredStatus(status: unknown) {
+  if (status == null) return false;
+  const s = String(status);
+  return (
+    s === UNAUTHORIZED ||
+    s === ResultEnum.ACCESS_TOKEN_INVALID ||
+    s === ResultEnum.REFRESH_TOKEN_INVALID
+  );
+}
 
-// 刷新 Token 处理
-async function handleTokenRefresh(config: InternalAxiosRequestConfig) {
-  return new Promise((resolve) => {
-    // 封装需要重试的请求
-    const retryRequest = () => {
-      config.headers.Authorization = getAccessToken();
-      resolve(service(config));
-    };
+/** 正在处理登录失效（提示 + 清理 + 跳转）时为 true，保证并发请求只提示、跳转一次 */
+let sessionExpiredHandling = false;
 
-    waitingQueue.push(retryRequest);
+function rejectSessionExpired(config: InternalAxiosRequestConfig | undefined, message?: string) {
+  const msg = message || SESSION_EXPIRED_MESSAGE;
+  // 请求发出后登录态已经变了（已被清理或已重新登录），这是过期请求，静默失败即可，
+  // 避免同一批并发请求在跳转完成后又重复提示 / 把新登录的用户踢下线
+  const stale = (config?.sentAccessToken ?? "") !== getAccessToken();
+  if (!stale) {
+    handleSessionExpired(msg);
+  }
+  return Promise.reject(new Error(msg));
+}
 
-    if (!isRefreshing) {
-      isRefreshing = true;
+function handleSessionExpired(message: string) {
+  if (sessionExpiredHandling) return;
+  sessionExpiredHandling = true;
 
-      // 刷新 Token
-      useUserStoreHook()
-        .refreshToken()
-        .then(() => {
-          // 依次重试队列中所有请求, 重试后清空队列
-          waitingQueue.forEach((callback) => callback());
-          waitingQueue.length = 0;
-        })
-        .catch((error: any) => {
-          console.log("handleTokenRefresh error", error);
-          // 刷新 Token 失败，跳转登录页
-          ElNotification({
-            title: "提示",
-            message: "您的会话已过期，请重新登录",
-            type: "info",
-          });
-          useUserStoreHook()
-            .clearUserData()
-            .then(() => {
-              router.push("/login");
-            });
-        })
-        .finally(() => {
-          isRefreshing = false;
-        });
-    }
-  });
+  const current = router.currentRoute.value;
+  const onLoginPage = current.path === "/login";
+  if (!onLoginPage) {
+    ElMessage.warning({ message, grouping: true });
+  }
+
+  useUserStoreHook()
+    .clearUserData()
+    .then(() => {
+      if (onLoginPage) return;
+      const redirect = current.fullPath;
+      return router.replace({
+        path: "/login",
+        query: redirect && redirect !== "/" ? { redirect } : undefined,
+      });
+    })
+    .catch((e) => console.error("跳转登录页失败", e))
+    .finally(() => {
+      sessionExpiredHandling = false;
+    });
 }

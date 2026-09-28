@@ -1,7 +1,7 @@
 import type { RouteLocationNormalized, RouteRecordRaw } from "vue-router";
 import { ElMessage } from "element-plus";
 import NProgress from "@/utils/nprogress";
-import { getAccessToken } from "@/utils/auth";
+import { getAccessToken, isLegacySessionToken } from "@/utils/auth";
 import router from "@/router";
 import { usePermissionStore, useUserStore } from "@/store";
 import { isRegCodeClientUser, PHONE_LOGIN_PATH, WEB_SUBUSER_LOGIN_BLOCKED } from "@/utils/role";
@@ -17,8 +17,15 @@ export function setupPermission() {
   router.beforeEach(async (to) => {
     NProgress.start();
 
-    let isLogin = !!getAccessToken();
     const userStore = useUserStore();
+    let token = getAccessToken();
+    const hasUser = !!userStore.userInfo?.username;
+    // 旧版本的假 token、只有用户信息没有 token、只有 token 没有用户信息：都清理后重新登录
+    if ((token && isLegacySessionToken(token)) || !!token !== hasUser) {
+      await userStore.clearUserData();
+      token = "";
+    }
+    let isLogin = !!token;
     if (isLogin && isRegCodeClientUser(userStore.userInfo)) {
       await userStore.clearUserData();
       isLogin = false;

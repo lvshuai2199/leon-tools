@@ -25,6 +25,7 @@
 #include <commctrl.h>
 #include <commoncontrols.h>
 #include <tlhelp32.h>
+#include <wincodec.h>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
@@ -37,6 +38,7 @@
 #pragma comment(lib, "advapi32.lib")
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shlwapi.lib")
+#pragma comment(lib, "windowscodecs.lib")
 
 using Gdiplus::Graphics;
 using Gdiplus::Pen;
@@ -812,6 +814,21 @@ static int MaxScroll() {
 static int WinW() { return g.expanded ? PanelW() : StripW(); }
 static int WinH() { return g.expanded ? ExpandedH() : StripH(); }
 
+// ---- Scheduled wallpaper state (persisted in ui.ini) ----
+struct WallpaperState {
+    bool enabled = false;
+    std::wstring url;
+    int interval = 3;            // 0=30min 1=1h 2=3h 3=daily 4=only at startup
+    long long lastChange = 0;    // unix seconds of last successful change
+    std::string status;          // "", "ok", "net", "notimg", "decode", "big", "save", "set", "badurl", "http:<code>"
+    long long statusAt = 0;      // unix seconds of last attempt result
+    bool busy = false;           // worker running
+    bool startupPending = false; // "only at startup": one change owed for this session
+    bool sessTried = false;      // retry backoff (session only)
+    DWORD sessTryTick = 0;
+} g_wp;
+static const UINT WM_WALLPAPER_DONE = WM_APP + 9;
+
 static std::wstring ConfigPath() {
     wchar_t ad[MAX_PATH];
     GetEnvironmentVariableW(L"APPDATA", ad, MAX_PATH);
@@ -844,6 +861,13 @@ static void LoadConfig() {
         if (k == "showApi") g.showApi = v == "1";
         if (k == "showModels") g.showModels = v == "1";
         if (k == "ringMode") g.ringMode = (atoi(v.c_str()) == 1) ? 1 : 0;
+        if (!v.empty() && v.back() == '\r') v.pop_back();
+        if (k == "wpEnabled") g_wp.enabled = v == "1";
+        if (k == "wpUrl") g_wp.url = Utf8ToWide(v);
+        if (k == "wpInterval") { int iv = atoi(v.c_str()); g_wp.interval = (iv >= 0 && iv <= 4) ? iv : 3; }
+        if (k == "wpLastChange") g_wp.lastChange = _atoi64(v.c_str());
+        if (k == "wpStatus") g_wp.status = v;
+        if (k == "wpStatusAt") g_wp.statusAt = _atoi64(v.c_str());
         // bgAlpha removed — ignore legacy keys
     }
 }
@@ -858,6 +882,16 @@ static void SaveConfig() {
     out << "showApi=" << (g.showApi ? "1" : "0") << "\n";
     out << "showModels=" << (g.showModels ? "1" : "0") << "\n";
     out << "ringMode=" << g.ringMode << "\n";
+    {
+        std::wstring u = g_wp.url;
+        u.erase(std::remove_if(u.begin(), u.end(), [](wchar_t c) { return c == L'\r' || c == L'\n'; }), u.end());
+        out << "wpEnabled=" << (g_wp.enabled ? "1" : "0") << "\n";
+        out << "wpUrl=" << WideToUtf8(u) << "\n";
+        out << "wpInterval=" << g_wp.interval << "\n";
+        out << "wpLastChange=" << g_wp.lastChange << "\n";
+        out << "wpStatus=" << g_wp.status << "\n";
+        out << "wpStatusAt=" << g_wp.statusAt << "\n";
+    }
 
 }
 
@@ -2360,7 +2394,22 @@ struct SettingsDlg {
     bool dragMoved = false;
     bool closeHot = false;
     bool closeDown = false;
+    RECT wpCard{};
+    RECT wpRow{};
+    RECT wpSwitch{};
+    RECT wpUrlBox{};
+    RECT wpHint{};
+    RECT wpIntervalRow{};
+    RECT wpDrop{};
+    RECT wpStatus{};
+    RECT wpBtn{};
+    HWND wpEdit = nullptr;
+    HWND wpTip = nullptr;
+    HFONT wpFont = nullptr;
+    bool wpEditFocus = false;
+    bool scrollable = false;
 } g_settings;
+static const int kSettingsHdrH = 52; // fixed header (title + close), draggable
 
 static void RoundRectPath(GraphicsPath& path, float x, float y, float w, float h, float r) {
     if (r < 0.5f) r = 0.5f;
@@ -2402,6 +2451,536 @@ static int SettingsShortcutListH() {
     const int rowGap = 8;
     return rows * (SettingsTilePx() + nameH) + (rows - 1) * rowGap;
 }
+
+// ---- Scheduled wallpaper: URL check, download worker, scheduling ----
+static const wchar_t* kWpIntervals[5] = { L"30 \u5206\u949f", L"1 \u5c0f\u65f6", L"3 \u5c0f\u65f6", L"\u6bcf\u5929", L"\u53ea\u5728\u5f00\u673a\u65f6\u6362" };
+static const size_t kWpMaxBytes = 30u * 1024u * 1024u;
+static const DWORD kWpRetryMs = 15u * 60u * 1000u;
+static void SettingsResize(HWND h);
+static void WpRefreshSettings();
+
+static std::wstring WpTrim(const std::wstring& in) {
+    std::wstring s;
+    for (wchar_t c : in) if (c != L'\r' && c != L'\n') s += c;
+    size_t a = 0, b = s.size();
+    while (a < b && iswspace(s[a])) ++a;
+    while (b > a && iswspace(s[b - 1])) --b;
+    return s.substr(a, b - a);
+}
+
+static bool WpHasParam(const std::wstring& q, const wchar_t* name) {
+    size_t nlen = wcslen(name), i = 0;
+    while (i <= q.size()) {
+        size_t amp = q.find(L'&', i);
+        if (amp == std::wstring::npos) amp = q.size();
+        std::wstring part = q.substr(i, amp - i);
+        size_t eq = part.find(L'=');
+        if (eq == nlen && _wcsnicmp(part.c_str(), name, nlen) == 0 && eq + 1 < part.size()) return true;
+        i = amp + 1;
+    }
+    return false;
+}
+
+struct WpUrl {
+    bool ok = false;
+    int problem = 1; // 0 ok, 1 not a URL, 2 no group, 3 no token, 4 neither
+    bool secure = true;
+    std::wstring host;
+    INTERNET_PORT port = 0;
+    std::wstring pathQuery;
+};
+
+static WpUrl WpParse(const std::wstring& raw) {
+    WpUrl r;
+    std::wstring u = WpTrim(raw);
+    if (u.empty()) return r;
+    std::vector<wchar_t> host(u.size() + 1), path(u.size() + 1), extra(u.size() + 1);
+    URL_COMPONENTS uc{};
+    uc.dwStructSize = sizeof(uc);
+    uc.lpszHostName = host.data(); uc.dwHostNameLength = (DWORD)host.size();
+    uc.lpszUrlPath = path.data(); uc.dwUrlPathLength = (DWORD)path.size();
+    uc.lpszExtraInfo = extra.data(); uc.dwExtraInfoLength = (DWORD)extra.size();
+    if (!WinHttpCrackUrl(u.c_str(), (DWORD)u.size(), 0, &uc)) return r;
+    if (uc.nScheme != INTERNET_SCHEME_HTTP && uc.nScheme != INTERNET_SCHEME_HTTPS) return r;
+    if (!host[0]) return r;
+    std::wstring ex(extra.data());
+    size_t hash = ex.find(L'#');
+    if (hash != std::wstring::npos) ex.resize(hash);
+    std::wstring q = (!ex.empty() && ex[0] == L'?') ? ex.substr(1) : L"";
+    bool hasG = WpHasParam(q, L"group"), hasT = WpHasParam(q, L"token");
+    r.problem = (!hasG && !hasT) ? 4 : !hasG ? 2 : !hasT ? 3 : 0;
+    r.secure = uc.nScheme == INTERNET_SCHEME_HTTPS;
+    r.host = host.data();
+    r.port = uc.nPort;
+    r.pathQuery = std::wstring(path.data()) + ex;
+    if (r.pathQuery.empty() || r.pathQuery[0] != L'/') r.pathQuery = L"/" + r.pathQuery;
+    r.ok = r.problem == 0;
+    return r;
+}
+
+static bool WpUrlOk() { return WpParse(g_wp.url).ok; }
+
+static std::wstring WpUrlHint() {
+    if (WpTrim(g_wp.url).empty()) return L"";
+    switch (WpParse(g_wp.url).problem) {
+    case 1: return L"\u5730\u5740\u683c\u5f0f\u4e0d\u6b63\u786e\uff0c\u8bf7\u7c98\u8d34\u5b8c\u6574\u7684\u63a5\u53e3\u5730\u5740";
+    case 2: return L"\u5730\u5740\u7f3a\u5c11 group \u53c2\u6570";
+    case 3: return L"\u5730\u5740\u7f3a\u5c11 token \u53c2\u6570";
+    case 4: return L"\u5730\u5740\u7f3a\u5c11 group \u548c token \u53c2\u6570";
+    }
+    return L"";
+}
+
+static std::string WpLower(std::string v) {
+    for (auto& c : v) c = (char)tolower((unsigned char)c);
+    return v;
+}
+
+static const char* WpSniff(const std::string& b) {
+    const unsigned char* p = (const unsigned char*)b.data();
+    size_t n = b.size();
+    if (n >= 3 && p[0] == 0xFF && p[1] == 0xD8 && p[2] == 0xFF) return "jpg";
+    if (n >= 8 && memcmp(p, "\x89PNG\r\n\x1a\n", 8) == 0) return "png";
+    if (n >= 6 && (memcmp(p, "GIF87a", 6) == 0 || memcmp(p, "GIF89a", 6) == 0)) return "gif";
+    if (n >= 12 && memcmp(p, "RIFF", 4) == 0 && memcmp(p + 8, "WEBP", 4) == 0) return "webp";
+    if (n >= 14 && p[0] == 'B' && p[1] == 'M') return "bmp";
+    return nullptr;
+}
+
+static const char* WpExtFromType(const std::string& ct) {
+    std::string t = WpLower(ct);
+    size_t sc = t.find(';');
+    if (sc != std::string::npos) t.resize(sc);
+    while (!t.empty() && isspace((unsigned char)t.back())) t.pop_back();
+    while (!t.empty() && isspace((unsigned char)t.front())) t.erase(t.begin());
+    if (t == "image/jpeg" || t == "image/jpg" || t == "image/pjpeg") return "jpg";
+    if (t == "image/png") return "png";
+    if (t == "image/webp") return "webp";
+    if (t == "image/gif") return "gif";
+    if (t == "image/bmp" || t == "image/x-ms-bmp" || t == "image/x-bmp") return "bmp";
+    return nullptr;
+}
+
+template <class T> static void WpRelease(T*& p) { if (p) { p->Release(); p = nullptr; } }
+
+// Decodes the bytes with WIC (proves it is a real image). If jpgOut is set, re-encodes frame 0 as JPEG there.
+static bool WpDecode(const std::string& bytes, const std::wstring& jpgOut) {
+    IWICImagingFactory* fac = nullptr;
+    if (FAILED(CoCreateInstance(CLSID_WICImagingFactory, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&fac)))) return false;
+    bool ok = false;
+    IStream* ms = SHCreateMemStream((const BYTE*)bytes.data(), (UINT)bytes.size());
+    IWICBitmapDecoder* dec = nullptr;
+    IWICBitmapFrameDecode* frame = nullptr;
+    UINT w = 0, h = 0;
+    if (ms && SUCCEEDED(fac->CreateDecoderFromStream(ms, nullptr, WICDecodeMetadataCacheOnDemand, &dec)) &&
+        SUCCEEDED(dec->GetFrame(0, &frame)) && SUCCEEDED(frame->GetSize(&w, &h)) && w > 0 && h > 0) {
+        if (jpgOut.empty()) {
+            ok = true;
+        } else {
+            IWICFormatConverter* conv = nullptr;
+            IWICStream* fs = nullptr;
+            IWICBitmapEncoder* enc = nullptr;
+            IWICBitmapFrameEncode* fe = nullptr;
+            IPropertyBag2* props = nullptr;
+            if (SUCCEEDED(fac->CreateFormatConverter(&conv)) &&
+                SUCCEEDED(conv->Initialize(frame, GUID_WICPixelFormat24bppBGR, WICBitmapDitherTypeNone, nullptr, 0.0, WICBitmapPaletteTypeCustom)) &&
+                SUCCEEDED(fac->CreateStream(&fs)) &&
+                SUCCEEDED(fs->InitializeFromFilename(jpgOut.c_str(), GENERIC_WRITE)) &&
+                SUCCEEDED(fac->CreateEncoder(GUID_ContainerFormatJpeg, nullptr, &enc)) &&
+                SUCCEEDED(enc->Initialize(fs, WICBitmapEncoderNoCache)) &&
+                SUCCEEDED(enc->CreateNewFrame(&fe, &props))) {
+                PROPBAG2 opt{};
+                opt.pstrName = (LPOLESTR)L"ImageQuality";
+                VARIANT v;
+                VariantInit(&v);
+                v.vt = VT_R4;
+                v.fltVal = 0.95f;
+                props->Write(1, &opt, &v);
+                WICPixelFormatGUID pf = GUID_WICPixelFormat24bppBGR;
+                if (SUCCEEDED(fe->Initialize(props)) && SUCCEEDED(fe->SetSize(w, h)) &&
+                    SUCCEEDED(fe->SetPixelFormat(&pf)) && SUCCEEDED(fe->WriteSource(conv, nullptr)) &&
+                    SUCCEEDED(fe->Commit()) && SUCCEEDED(enc->Commit()))
+                    ok = true;
+            }
+            WpRelease(props);
+            WpRelease(fe);
+            WpRelease(enc);
+            WpRelease(fs);
+            WpRelease(conv);
+            if (!ok) DeleteFileW(jpgOut.c_str());
+        }
+    }
+    WpRelease(frame);
+    WpRelease(dec);
+    WpRelease(ms);
+    WpRelease(fac);
+    return ok;
+}
+
+static std::wstring WpDir() {
+    wchar_t la[MAX_PATH]{};
+    GetEnvironmentVariableW(L"LOCALAPPDATA", la, MAX_PATH);
+    return std::wstring(la) + L"\\CursorUsageWidget\\wallpaper";
+}
+
+static void WpPrune(const std::wstring& dir, size_t keep) {
+    struct F { std::wstring name; ULONGLONG t; };
+    std::vector<F> files;
+    WIN32_FIND_DATAW fd{};
+    HANDLE hf = FindFirstFileW((dir + L"\\wp_*").c_str(), &fd);
+    if (hf == INVALID_HANDLE_VALUE) return;
+    do {
+        if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) continue;
+        ULONGLONG t = ((ULONGLONG)fd.ftLastWriteTime.dwHighDateTime << 32) | fd.ftLastWriteTime.dwLowDateTime;
+        files.push_back({ fd.cFileName, t });
+    } while (FindNextFileW(hf, &fd));
+    FindClose(hf);
+    std::sort(files.begin(), files.end(), [](const F& a, const F& b) {
+        if (a.t != b.t) return a.t > b.t;
+        return a.name > b.name;
+    });
+    for (size_t i = keep; i < files.size(); ++i)
+        DeleteFileW((dir + L"\\" + files[i].name).c_str());
+}
+
+static bool WpApply(const std::wstring& path) {
+    HKEY k = nullptr;
+    wchar_t oldStyle[32]{}, oldTile[32]{};
+    bool hadStyle = false, hadTile = false;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, L"Control Panel\\Desktop", 0, KEY_QUERY_VALUE | KEY_SET_VALUE, &k) == ERROR_SUCCESS) {
+        DWORD sz = sizeof(oldStyle) - sizeof(wchar_t), t = 0;
+        hadStyle = RegQueryValueExW(k, L"WallpaperStyle", nullptr, &t, (LPBYTE)oldStyle, &sz) == ERROR_SUCCESS && t == REG_SZ;
+        sz = sizeof(oldTile) - sizeof(wchar_t);
+        hadTile = RegQueryValueExW(k, L"TileWallpaper", nullptr, &t, (LPBYTE)oldTile, &sz) == ERROR_SUCCESS && t == REG_SZ;
+        RegSetValueExW(k, L"WallpaperStyle", 0, REG_SZ, (const BYTE*)L"10", 3 * sizeof(wchar_t));
+        RegSetValueExW(k, L"TileWallpaper", 0, REG_SZ, (const BYTE*)L"0", 2 * sizeof(wchar_t));
+    } else {
+        k = nullptr;
+    }
+    BOOL ok = SystemParametersInfoW(SPI_SETDESKWALLPAPER, 0, (PVOID)path.c_str(), SPIF_UPDATEINIFILE | SPIF_SENDCHANGE);
+    if (!ok && k) {
+        if (hadStyle) RegSetValueExW(k, L"WallpaperStyle", 0, REG_SZ, (const BYTE*)oldStyle, (DWORD)((wcslen(oldStyle) + 1) * sizeof(wchar_t)));
+        if (hadTile) RegSetValueExW(k, L"TileWallpaper", 0, REG_SZ, (const BYTE*)oldTile, (DWORD)((wcslen(oldTile) + 1) * sizeof(wchar_t)));
+    }
+    if (k) RegCloseKey(k);
+    return ok != FALSE;
+}
+
+struct WpResult {
+    bool ok = false;
+    std::string status;
+    long long at = 0;
+};
+
+static WpResult WpDownloadAndSet(const std::wstring& rawUrl) {
+    WpResult r;
+    r.at = (long long)time(nullptr);
+    WpUrl u = WpParse(rawUrl);
+    if (!u.ok) { r.status = "badurl"; return r; }
+    HINTERNET ses = WinHttpOpen(L"CursorUsage/1.0", WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,
+                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!ses) ses = WinHttpOpen(L"CursorUsage/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!ses) { r.status = "net"; return r; }
+    WinHttpSetTimeouts(ses, 15000, 15000, 15000, 15000);
+    HINTERNET con = WinHttpConnect(ses, u.host.c_str(), u.port, 0);
+    HINTERNET req = con ? WinHttpOpenRequest(con, L"GET", u.pathQuery.c_str(), nullptr, WINHTTP_NO_REFERER,
+                                             WINHTTP_DEFAULT_ACCEPT_TYPES, u.secure ? WINHTTP_FLAG_SECURE : 0) : nullptr;
+    auto closeAll = [&]() {
+        if (req) WinHttpCloseHandle(req);
+        if (con) WinHttpCloseHandle(con);
+        WinHttpCloseHandle(ses);
+    };
+    // Redirects (302 with relative or absolute Location) are followed by WinHTTP automatically.
+    if (!req || !WinHttpSendRequest(req, L"Accept: image/*,*/*;q=0.8\r\n", (DWORD)-1L, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) ||
+        !WinHttpReceiveResponse(req, nullptr)) {
+        closeAll();
+        r.status = "net";
+        return r;
+    }
+    DWORD code = 0, sz = sizeof(code);
+    WinHttpQueryHeaders(req, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
+                        &code, &sz, WINHTTP_NO_HEADER_INDEX);
+    if (code != 200) {
+        closeAll();
+        r.status = "http:" + std::to_string(code);
+        return r;
+    }
+    std::string ct;
+    {
+        DWORD need = 0;
+        WinHttpQueryHeaders(req, WINHTTP_QUERY_CONTENT_TYPE, WINHTTP_HEADER_NAME_BY_INDEX, WINHTTP_NO_OUTPUT_BUFFER, &need, WINHTTP_NO_HEADER_INDEX);
+        if (need) {
+            std::wstring buf(need / sizeof(wchar_t) + 1, 0);
+            DWORD len = (DWORD)(buf.size() * sizeof(wchar_t));
+            if (WinHttpQueryHeaders(req, WINHTTP_QUERY_CONTENT_TYPE, WINHTTP_HEADER_NAME_BY_INDEX, &buf[0], &len, WINHTTP_NO_HEADER_INDEX))
+                ct = WideToUtf8(std::wstring(buf.c_str()));
+        }
+    }
+    if (WpLower(ct).compare(0, 6, "image/") != 0) {
+        closeAll();
+        r.status = "notimg";
+        return r;
+    }
+    DWORD clen = 0;
+    sz = sizeof(clen);
+    if (WinHttpQueryHeaders(req, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX,
+                            &clen, &sz, WINHTTP_NO_HEADER_INDEX) && clen > kWpMaxBytes) {
+        closeAll();
+        r.status = "big";
+        return r;
+    }
+    std::string body;
+    DWORD t0 = GetTickCount();
+    for (;;) {
+        DWORD avail = 0;
+        if (!WinHttpQueryDataAvailable(req, &avail)) { r.status = "net"; break; }
+        if (!avail) break;
+        if (body.size() + avail > kWpMaxBytes) { r.status = "big"; break; }
+        size_t old = body.size();
+        body.resize(old + avail);
+        DWORD rd = 0;
+        if (!WinHttpReadData(req, &body[old], avail, &rd)) { r.status = "net"; break; }
+        body.resize(old + rd);
+        if (GetTickCount() - t0 > 120000) { r.status = "net"; break; }
+    }
+    closeAll();
+    if (!r.status.empty()) return r;
+    const char* sniff = WpSniff(body);
+    if (!sniff) { r.status = "notimg"; return r; }
+    const char* ext = WpExtFromType(ct);
+    if (!ext || strcmp(ext, sniff) != 0) ext = sniff; // bytes win over a wrong header
+    bool webp = strcmp(ext, "webp") == 0;
+    if (!WpDecode(body, L"")) { r.status = webp ? "decode" : "notimg"; return r; }
+
+    std::wstring dir = WpDir();
+    SHCreateDirectoryExW(nullptr, dir.c_str(), nullptr);
+    time_t now = time(nullptr);
+    tm lt{};
+    localtime_s(&lt, &now);
+    wchar_t stamp[64];
+    swprintf(stamp, 64, L"wp_%04d%02d%02d_%02d%02d%02d", lt.tm_year + 1900, lt.tm_mon + 1, lt.tm_mday, lt.tm_hour, lt.tm_min, lt.tm_sec);
+    // webp is re-encoded as JPG so every Windows version can use it as wallpaper
+    std::wstring wext = webp ? L"jpg" : Utf8ToWide(ext);
+    std::wstring path = dir + L"\\" + stamp + L"." + wext;
+    for (int i = 2; GetFileAttributesW(path.c_str()) != INVALID_FILE_ATTRIBUTES && i < 100; ++i)
+        path = dir + L"\\" + stamp + L"_" + std::to_wstring(i) + L"." + wext;
+    if (webp) {
+        if (!WpDecode(body, path)) { r.status = "decode"; return r; }
+    } else {
+        HANDLE fh = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (fh == INVALID_HANDLE_VALUE) { r.status = "save"; return r; }
+        DWORD wr = 0;
+        BOOL okw = WriteFile(fh, body.data(), (DWORD)body.size(), &wr, nullptr) && wr == (DWORD)body.size();
+        CloseHandle(fh);
+        if (!okw) { DeleteFileW(path.c_str()); r.status = "save"; return r; }
+    }
+    if (!WpApply(path)) {
+        DeleteFileW(path.c_str());
+        r.status = "set";
+        return r;
+    }
+    WpPrune(dir, 5);
+    r.ok = true;
+    r.status = "ok";
+    r.at = (long long)time(nullptr);
+    return r;
+}
+
+static DWORD WINAPI WpThread(LPVOID p) {
+    std::wstring* url = (std::wstring*)p;
+    HRESULT hr = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    WpResult* r = new WpResult(WpDownloadAndSet(*url));
+    delete url;
+    if (SUCCEEDED(hr)) CoUninitialize();
+    if (!g.hwnd || !PostMessageW(g.hwnd, WM_WALLPAPER_DONE, 0, (LPARAM)r)) delete r;
+    return 0;
+}
+
+static void WpStart() {
+    if (g_wp.busy || !WpUrlOk()) return;
+    g_wp.busy = true;
+    g_wp.sessTried = true;
+    g_wp.sessTryTick = GetTickCount();
+    HANDLE th = CreateThread(nullptr, 0, WpThread, new std::wstring(WpTrim(g_wp.url)), 0, nullptr);
+    if (th) CloseHandle(th);
+    else g_wp.busy = false;
+    WpRefreshSettings();
+}
+
+static long long WpIntervalSec(int iv) {
+    switch (iv) {
+    case 0: return 30LL * 60;
+    case 1: return 60LL * 60;
+    case 2: return 3LL * 60 * 60;
+    case 3: return 24LL * 60 * 60;
+    }
+    return 0;
+}
+
+// Called every minute, at startup, and after settings changes.
+static void WpTick() {
+    if (!g_wp.enabled || g_wp.busy || !WpUrlOk()) return;
+    long long now = (long long)time(nullptr);
+    bool due;
+    if (g_wp.lastChange <= 0) due = true;                       // never changed: change once
+    else if (g_wp.interval == 4) due = g_wp.startupPending;     // once per widget start
+    else due = now - g_wp.lastChange >= WpIntervalSec(g_wp.interval) || g_wp.lastChange > now + 3600;
+    if (!due) return;
+    if (g_wp.sessTried && GetTickCount() - g_wp.sessTryTick < kWpRetryMs) return; // back off after a failure
+    WpStart();
+}
+
+static void WpOnDone(WpResult* r) {
+    g_wp.busy = false;
+    if (r) {
+        g_wp.status = r->status;
+        g_wp.statusAt = r->at;
+        if (r->ok) {
+            g_wp.lastChange = r->at;
+            g_wp.startupPending = false;
+        }
+        delete r;
+    }
+    SaveConfig();
+    WpRefreshSettings();
+}
+
+static std::wstring WpWhen(long long t, bool bareToday) {
+    time_t tt = (time_t)t, nn = time(nullptr);
+    tm a{}, b{};
+    localtime_s(&a, &tt);
+    localtime_s(&b, &nn);
+    wchar_t hm[16];
+    swprintf(hm, 16, L"%02d:%02d", a.tm_hour, a.tm_min);
+    tm da = a, db = b;
+    da.tm_hour = db.tm_hour = 12;
+    da.tm_min = db.tm_min = da.tm_sec = db.tm_sec = 0;
+    da.tm_isdst = db.tm_isdst = -1;
+    long long days = (long long)floor(difftime(mktime(&db), mktime(&da)) / 86400.0 + 0.5);
+    if (days == 0) return bareToday ? std::wstring(hm) : std::wstring(L"\u4eca\u5929 ") + hm;
+    if (days == 1) return std::wstring(L"\u6628\u5929 ") + hm;
+    wchar_t buf[48];
+    if (a.tm_year == b.tm_year) swprintf(buf, 48, L"%d\u6708%d\u65e5 %s", a.tm_mon + 1, a.tm_mday, hm);
+    else swprintf(buf, 48, L"%d\u5e74%d\u6708%d\u65e5 %s", a.tm_year + 1900, a.tm_mon + 1, a.tm_mday, hm);
+    return buf;
+}
+
+// red = failure prefix (or empty), gray = rest of the line
+static void WpStatusParts(std::wstring& red, std::wstring& gray) {
+    red.clear();
+    gray.clear();
+    const std::string& st = g_wp.status;
+    if (st.empty() || st == "ok") {
+        gray = g_wp.lastChange > 0 ? L"\u4e0a\u6b21\u66f4\u6362\uff1a" + WpWhen(g_wp.lastChange, false) : std::wstring(L"\u5c1a\u672a\u66f4\u6362");
+        return;
+    }
+    std::wstring why;
+    if (st == "net") why = L"\u7f51\u7edc\u4e0d\u53ef\u7528";
+    else if (st == "http:403") why = L"\u5bc6\u94a5\u65e0\u6548\uff08403\uff09";
+    else if (st == "http:404") why = L"\u7ec4\u4e0d\u5b58\u5728\u6216\u6ca1\u6709\u56fe\u7247\uff08404\uff09";
+    else if (st.compare(0, 5, "http:") == 0) why = L"HTTP " + Utf8ToWide(st.substr(5));
+    else if (st == "notimg") why = L"\u8fd4\u56de\u7684\u4e0d\u662f\u56fe\u7247";
+    else if (st == "decode") why = L"\u65e0\u6cd5\u89e3\u7801\u56fe\u7247";
+    else if (st == "big") why = L"\u56fe\u7247\u8d85\u8fc7 30MB";
+    else if (st == "save") why = L"\u65e0\u6cd5\u4fdd\u5b58\u56fe\u7247";
+    else if (st == "set") why = L"\u65e0\u6cd5\u8bbe\u7f6e\u58c1\u7eb8";
+    else if (st == "badurl") why = L"\u5730\u5740\u65e0\u6548";
+    else why = L"\u672a\u77e5\u9519\u8bef";
+    red = L"\u66f4\u6362\u5931\u8d25";
+    gray = L"\uff1a" + why + L" \u00b7 " + WpWhen(g_wp.statusAt, true);
+}
+
+static void WpSyncControls() {
+    HWND h = g_settings.hwnd;
+    if (!h || !IsWindow(h)) return;
+    int sy = g_settings.scrollY;
+    if (g_settings.wpEdit) {
+        RECT ub = g_settings.wpUrlBox;
+        int top = ub.top - sy, bottom = ub.bottom - sy;
+        bool vis = g_wp.enabled && ub.bottom > ub.top && top >= kSettingsHdrH && bottom <= g_settings.winH - 1;
+        if (vis) {
+            const int eh = 18;
+            SetWindowPos(g_settings.wpEdit, nullptr, ub.left + 9, top + (ub.bottom - ub.top - eh) / 2,
+                         ub.right - ub.left - 18, eh, SWP_NOZORDER | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        } else {
+            if (GetFocus() == g_settings.wpEdit) SetFocus(h);
+            ShowWindow(g_settings.wpEdit, SW_HIDE);
+        }
+    }
+    if (g_settings.wpTip) {
+        TOOLINFOW ti{};
+        ti.cbSize = sizeof(ti);
+        ti.hwnd = h;
+        ti.uId = 1;
+        ti.rect = g_settings.wpStatus;
+        if (g_wp.enabled) OffsetRect(&ti.rect, 0, -sy);
+        else SetRectEmpty(&ti.rect);
+        SendMessageW(g_settings.wpTip, TTM_NEWTOOLRECTW, 0, (LPARAM)&ti);
+        std::wstring red, gray;
+        WpStatusParts(red, gray);
+        static std::wstring tipText;
+        tipText = red + gray;
+        ti.lpszText = (LPWSTR)tipText.c_str();
+        ti.hinst = nullptr;
+        SendMessageW(g_settings.wpTip, TTM_UPDATETIPTEXTW, 0, (LPARAM)&ti);
+    }
+}
+
+static void WpRefreshSettings() {
+    if (!g_settings.hwnd || !IsWindow(g_settings.hwnd)) return;
+    WpSyncControls();
+    InvalidateRect(g_settings.hwnd, nullptr, FALSE);
+}
+
+static void WpReadEdit() {
+    if (!g_settings.wpEdit) return;
+    int n = GetWindowTextLengthW(g_settings.wpEdit);
+    std::wstring t(n, 0);
+    if (n) GetWindowTextW(g_settings.wpEdit, &t[0], n + 1);
+    g_wp.url = t;
+}
+
+static void WpCommitUrl() {
+    SaveConfig();
+    WpTick();
+}
+
+static void WpSetEnabled(bool on) {
+    g_wp.enabled = on;
+    g_wp.sessTried = false;
+    SaveConfig();
+    if (g_settings.hwnd && IsWindow(g_settings.hwnd)) SettingsResize(g_settings.hwnd);
+    if (on) WpTick();
+    WpRefreshSettings();
+}
+
+static void WpShowIntervalMenu(HWND h) {
+    HMENU menu = CreatePopupMenu();
+    for (int i = 0; i < 5; ++i)
+        AppendMenuW(menu, MF_STRING | (g_wp.interval == i ? MF_CHECKED : 0), 1 + i, kWpIntervals[i]);
+    RECT dr = g_settings.wpDrop;
+    OffsetRect(&dr, 0, -g_settings.scrollY);
+    POINT pt{ dr.left, dr.bottom + 2 };
+    ClientToScreen(h, &pt);
+    int cmd = TrackPopupMenuEx(menu, TPM_RETURNCMD | TPM_LEFTALIGN | TPM_TOPALIGN | TPM_NONOTIFY, pt.x, pt.y, h, nullptr);
+    DestroyMenu(menu);
+    if (cmd >= 1 && cmd <= 5 && g_wp.interval != cmd - 1) {
+        g_wp.interval = cmd - 1;
+        SaveConfig();
+        WpTick();
+    }
+    WpRefreshSettings();
+}
+
+static LRESULT CALLBACK WpEditSubclass(HWND e, UINT m, WPARAM w, LPARAM l, UINT_PTR, DWORD_PTR) {
+    if (m == WM_CHAR && (w == VK_RETURN || w == VK_ESCAPE || w == 1 /* Ctrl+A */)) return 0;
+    if (m == WM_KEYDOWN && (w == VK_RETURN || w == VK_ESCAPE)) { SetFocus(GetParent(e)); return 0; }
+    if (m == WM_KEYDOWN && w == 'A' && (GetKeyState(VK_CONTROL) & 0x8000)) { SendMessageW(e, EM_SETSEL, 0, -1); return 0; }
+    return DefSubclassProc(e, m, w, l);
+}
+
+static int SettingsContentY(int y) { return y >= kSettingsHdrH ? y + g_settings.scrollY : y; }
 
 static int LayoutSettings() {
     const int pad = 16;
@@ -2494,8 +3073,40 @@ static int LayoutSettings() {
         g_settings.shortcutRows = n;
     }
 
+    // Bottom: wallpaper, full width under both columns
+    {
+        int top = leftEnd;
+        if (g_settings.scCard.bottom > top) top = g_settings.scCard.bottom;
+        int wpTop = top + cardGap + secLabelH + secGap;
+        int fullW = kSettingsW - pad * 2;
+        int lx = leftX + cardPad, rx = leftX + fullW - cardPad;
+        int cy = wpTop + cardPad;
+        g_settings.wpRow = { lx, cy, rx, cy + 26 };
+        g_settings.wpSwitch = { rx - 44, cy + 2, rx, cy + 24 };
+        cy += 26;
+        if (g_wp.enabled) {
+            cy += 10;
+            g_settings.wpUrlBox = { lx, cy, rx, cy + 28 };
+            cy += 28;
+            g_settings.wpHint = { lx, cy + 3, rx, cy + 18 };
+            cy += 20;
+            g_settings.wpIntervalRow = { lx, cy, rx, cy + 28 };
+            g_settings.wpDrop = { rx - 120, cy, rx, cy + 28 };
+            cy += 28 + 10;
+            g_settings.wpBtn = { rx - 84, cy, rx, cy + 28 };
+            g_settings.wpStatus = { lx, cy, rx - 84 - 12, cy + 28 };
+            cy += 28;
+        } else {
+            g_settings.wpUrlBox = g_settings.wpHint = g_settings.wpIntervalRow = RECT{};
+            g_settings.wpDrop = g_settings.wpStatus = g_settings.wpBtn = RECT{};
+        }
+        cy += cardPad;
+        g_settings.wpCard = { leftX, wpTop, leftX + fullW, cy };
+    }
+
     int bottom = leftEnd;
     if (g_settings.scCard.bottom > bottom) bottom = g_settings.scCard.bottom;
+    if (g_settings.wpCard.bottom > bottom) bottom = g_settings.wpCard.bottom;
     bottom += pad;
     g_settings.contentH = bottom;
     return bottom;
@@ -2503,11 +3114,27 @@ static int LayoutSettings() {
 
 static int SettingsContentH() { return LayoutSettings(); }
 
+static int SettingsWorkH() {
+    RECT wa{};
+    MONITORINFO mi{};
+    mi.cbSize = sizeof(mi);
+    if (g_settings.hwnd && IsWindow(g_settings.hwnd) &&
+        GetMonitorInfoW(MonitorFromWindow(g_settings.hwnd, MONITOR_DEFAULTTONEAREST), &mi))
+        wa = mi.rcWork;
+    else
+        SystemParametersInfo(SPI_GETWORKAREA, 0, &wa, 0);
+    return wa.bottom - wa.top;
+}
+
 static int SettingsWinH() {
     int ch = SettingsContentH();
-    g_settings.winH = ch;
-    g_settings.scrollY = 0;
-    return ch;
+    int hgt = ch;
+    int maxH = SettingsWorkH();
+    if (maxH > 200 && hgt > maxH) hgt = maxH; // only then does the content scroll
+    g_settings.winH = hgt;
+    g_settings.scrollable = ch > hgt;
+    g_settings.scrollY = ClampI(g_settings.scrollY, 0, ch - hgt);
+    return hgt;
 }
 
 static void SettingsLayout(int /*cw*/, int /*ch*/) { LayoutSettings(); }
@@ -2623,6 +3250,11 @@ static void PaintSettings(HWND h) {
             gph.DrawLine(&xp, cx + 5.f, cy - 5.f, cx - 5.f, cy + 5.f);
         }
 
+        Gdiplus::GraphicsState wpScrollState = gph.Save();
+        if (g_settings.scrollable) {
+            gph.SetClip(RectF(1.f, (float)kSettingsHdrH, (float)cw - 2.f, (float)(ch - kSettingsHdrH) - 1.f));
+            gph.TranslateTransform(0.f, (float)-g_settings.scrollY);
+        }
         {
             labelOf(L"\u8d34\u8fb9", g_settings.dockCard);
             cardOf(g_settings.dockCard);
@@ -2734,6 +3366,127 @@ static void PaintSettings(HWND h) {
             }
         }
 
+        {
+            labelOf(L"\u58c1\u7eb8", g_settings.wpCard);
+            cardOf(g_settings.wpCard);
+            auto drawSwitch = [&](const RECT& row, const RECT& sw, const wchar_t* text, bool on) {
+                gph.DrawString(text, -1, &ui, PointF((float)row.left, (float)row.top + 3.f), &titleBr);
+                float tx = (float)sw.left, ty = (float)sw.top, tw = 44.f, th = 22.f;
+                GraphicsPath tpath;
+                RoundRectPath(tpath, tx, ty, tw, th, th / 2.f);
+                SolidBrush tfill(on ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0xD0, 0xD4, 0xDA));
+                gph.FillPath(&tfill, &tpath);
+                float knob = th - 4.f;
+                float kx = on ? (tx + tw - knob - 2.f) : (tx + 2.f);
+                SolidBrush knobBr(Color(255, 255, 255, 255));
+                gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
+            };
+            drawSwitch(g_settings.wpRow, g_settings.wpSwitch, L"\u5b9a\u65f6\u66f4\u6362\u684c\u9762\u58c1\u7eb8", g_wp.enabled);
+            if (g_wp.enabled) {
+                SolidBrush redBr(Color(255, 0xD1, 0x43, 0x43));
+                auto boxPath = [&](GraphicsPath& p, const RECT& rc) {
+                    RoundRectPath(p, (float)rc.left + 0.5f, (float)rc.top + 0.5f,
+                        (float)(rc.right - rc.left) - 1.f, (float)(rc.bottom - rc.top) - 1.f, 6.f);
+                };
+                // URL input (the EDIT child sits inside this box)
+                {
+                    GraphicsPath up;
+                    boxPath(up, g_settings.wpUrlBox);
+                    SolidBrush uf(Color(255, 255, 255, 255));
+                    gph.FillPath(&uf, &up);
+                    Pen ub(g_settings.wpEditFocus ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0xD8, 0xDC, 0xE1), 1.f);
+                    gph.DrawPath(&ub, &up);
+                    std::wstring hint = WpUrlHint();
+                    if (!hint.empty()) {
+                        RECT hr = g_settings.wpHint;
+                        StringFormat hf;
+                        hf.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+                        hf.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+                        gph.DrawString(hint.c_str(), -1, &uiSm,
+                            RectF((float)hr.left, (float)hr.top, (float)(hr.right - hr.left), (float)(hr.bottom - hr.top)), &hf, &redBr);
+                    }
+                }
+                // interval row
+                {
+                    RECT ir = g_settings.wpIntervalRow;
+                    StringFormat lf;
+                    lf.SetLineAlignment(StringAlignmentCenter);
+                    gph.DrawString(L"\u66f4\u6362\u95f4\u9694", -1, &ui,
+                        RectF((float)ir.left, (float)ir.top, 160.f, (float)(ir.bottom - ir.top)), &lf, &titleBr);
+                    RECT dr = g_settings.wpDrop;
+                    GraphicsPath dp;
+                    boxPath(dp, dr);
+                    SolidBrush df(Color(255, 255, 255, 255));
+                    gph.FillPath(&df, &dp);
+                    Pen db(Color(255, 0xD8, 0xDC, 0xE1), 1.f);
+                    gph.DrawPath(&db, &dp);
+                    StringFormat vf;
+                    vf.SetLineAlignment(StringAlignmentCenter);
+                    vf.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap);
+                    vf.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+                    int iv = (g_wp.interval >= 0 && g_wp.interval <= 4) ? g_wp.interval : 3;
+                    gph.DrawString(kWpIntervals[iv], -1, &ui,
+                        RectF((float)dr.left + 10.f, (float)dr.top, (float)(dr.right - dr.left) - 32.f, (float)(dr.bottom - dr.top)), &vf, &titleBr);
+                    float cx = (float)dr.right - 15.f, cy = (dr.top + dr.bottom) / 2.f;
+                    Pen cp(Color(255, 0x78, 0x7D, 0x85), 1.4f);
+                    cp.SetStartCap(Gdiplus::LineCapRound);
+                    cp.SetEndCap(Gdiplus::LineCapRound);
+                    gph.DrawLine(&cp, cx - 4.f, cy - 2.f, cx, cy + 2.f);
+                    gph.DrawLine(&cp, cx, cy + 2.f, cx + 4.f, cy - 2.f);
+                }
+                // status line: failure prefix red, rest gray, one line with ellipsis
+                {
+                    RECT sr = g_settings.wpStatus;
+                    std::wstring red, gray;
+                    WpStatusParts(red, gray);
+                    StringFormat sf(StringFormat::GenericTypographic());
+                    sf.SetLineAlignment(StringAlignmentCenter);
+                    sf.SetFormatFlags(Gdiplus::StringFormatFlagsNoWrap | Gdiplus::StringFormatFlagsMeasureTrailingSpaces);
+                    sf.SetTrimming(Gdiplus::StringTrimmingEllipsisCharacter);
+                    float sx = (float)sr.left, sw = (float)(sr.right - sr.left);
+                    float sy = (float)sr.top, sh = (float)(sr.bottom - sr.top);
+                    if (!red.empty()) {
+                        RectF bb;
+                        gph.MeasureString(red.c_str(), -1, &uiSm, PointF(0.f, 0.f), &sf, &bb);
+                        gph.DrawString(red.c_str(), -1, &uiSm, RectF(sx, sy, sw, sh), &sf, &redBr);
+                        sx += bb.Width;
+                        sw -= bb.Width;
+                    }
+                    if (sw > 4.f)
+                        gph.DrawString(gray.c_str(), -1, &uiSm, RectF(sx, sy, sw, sh), &sf, &muted);
+                }
+                // change-now button: outlined secondary style (same look as the add button)
+                {
+                    RECT br = g_settings.wpBtn;
+                    bool disabled = g_wp.busy || !WpUrlOk();
+                    float x = (float)br.left, yy = (float)br.top, ww = (float)(br.right - br.left), hh = (float)(br.bottom - br.top);
+                    GraphicsPath bp;
+                    RoundRectPath(bp, x + 0.5f, yy + 0.5f, ww - 1.f, hh - 1.f, 6.f);
+                    SolidBrush bf(disabled ? Color(255, 0xF3, 0xF4, 0xF6) : Color(255, 0xF8, 0xF8, 0xFA));
+                    gph.FillPath(&bf, &bp);
+                    Pen bb(Color(255, 0xD8, 0xDC, 0xE1), 1.f);
+                    gph.DrawPath(&bb, &bp);
+                    StringFormat fmt;
+                    fmt.SetAlignment(StringAlignmentCenter);
+                    fmt.SetLineAlignment(StringAlignmentCenter);
+                    SolidBrush ink(disabled ? Color(255, 0xA8, 0xAD, 0xB5) : Color(255, 0x20, 0x20, 0x22));
+                    gph.DrawString(g_wp.busy ? L"\u66f4\u6362\u4e2d\u2026" : L"\u7acb\u5373\u66f4\u6362", -1, &uiSm, RectF(x, yy, ww, hh), &fmt, &ink);
+                }
+            }
+        }
+        gph.Restore(wpScrollState);
+        if (g_settings.scrollable && g_settings.contentH > 0) {
+            float trackTop = (float)kSettingsHdrH + 4.f, trackH = (float)ch - trackTop - 10.f;
+            float thumbH = trackH * (float)ch / (float)g_settings.contentH;
+            if (thumbH < 24.f) thumbH = 24.f;
+            int maxS = g_settings.contentH - ch;
+            float thumbY = trackTop + (maxS > 0 ? (trackH - thumbH) * (float)g_settings.scrollY / (float)maxS : 0.f);
+            GraphicsPath tp;
+            RoundRectPath(tp, (float)cw - 8.f, thumbY, 4.f, thumbH, 2.f);
+            SolidBrush tb(Color(110, 0x78, 0x7D, 0x85));
+            gph.FillPath(&tb, &tp);
+        }
+
     }
     BitBlt(hdc, 0, 0, cw, ch, mem, 0, 0, SRCCOPY);
     SelectObject(mem, old);
@@ -2756,10 +3509,20 @@ static void SettingsResize(HWND h) {
     if (!h || !IsWindow(h)) return;
     int hgt = SettingsWinH();
     RECT rc; GetWindowRect(h, &rc);
-    SetWindowPos(h, nullptr, rc.left, rc.top, kSettingsW, hgt, SWP_NOZORDER | SWP_NOACTIVATE);
+    int top = rc.top;
+    {
+        MONITORINFO mi{};
+        mi.cbSize = sizeof(mi);
+        if (GetMonitorInfoW(MonitorFromWindow(h, MONITOR_DEFAULTTONEAREST), &mi)) {
+            if (top + hgt > mi.rcWork.bottom) top = mi.rcWork.bottom - hgt;
+            if (top < mi.rcWork.top) top = mi.rcWork.top;
+        }
+    }
+    SetWindowPos(h, nullptr, rc.left, top, kSettingsW, hgt, SWP_NOZORDER | SWP_NOACTIVATE);
     HRGN rgn = CreateRoundRectRgn(0, 0, kSettingsW + 1, hgt + 1, 24, 24);
     SetWindowRgn(h, rgn, TRUE);
     SettingsLayout(kSettingsW, g_settings.contentH);
+    WpSyncControls();
     InvalidateRect(h, nullptr, FALSE);
 }
 
@@ -2795,6 +3558,36 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             HRGN rgn = CreateRoundRectRgn(0, 0, kSettingsW + 1, hgt + 1, 24, 24);
             SetWindowRgn(h, rgn, TRUE);
         }
+        {
+            g_settings.wpEditFocus = false;
+            g_settings.wpFont = CreateFontW(-12, 0, 0, 0, FW_NORMAL, FALSE, FALSE, FALSE, DEFAULT_CHARSET,
+                OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY, DEFAULT_PITCH | FF_DONTCARE, L"Microsoft YaHei UI");
+            g_settings.wpEdit = CreateWindowExW(0, L"EDIT", g_wp.url.c_str(),
+                WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL, 0, 0, 10, 10, h, (HMENU)301, GetModuleHandleW(nullptr), nullptr);
+            if (g_settings.wpEdit) {
+                SendMessageW(g_settings.wpEdit, WM_SETFONT, (WPARAM)g_settings.wpFont, FALSE);
+                SendMessageW(g_settings.wpEdit, EM_LIMITTEXT, 2048, 0);
+                SendMessageW(g_settings.wpEdit, EM_SETMARGINS, EC_LEFTMARGIN | EC_RIGHTMARGIN, 0);
+                SendMessageW(g_settings.wpEdit, EM_SETCUEBANNER, TRUE, (LPARAM)L"\u7c98\u8d34\u7ba1\u7406\u7aef\u590d\u5236\u7684\u63a5\u53e3\u5730\u5740");
+                SetWindowSubclass(g_settings.wpEdit, WpEditSubclass, 1, 0);
+            }
+            INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_WIN95_CLASSES };
+            InitCommonControlsEx(&icc);
+            g_settings.wpTip = CreateWindowExW(WS_EX_TOPMOST, TOOLTIPS_CLASSW, nullptr,
+                WS_POPUP | TTS_NOPREFIX | TTS_ALWAYSTIP, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT,
+                h, nullptr, GetModuleHandleW(nullptr), nullptr);
+            if (g_settings.wpTip) {
+                TOOLINFOW ti{};
+                ti.cbSize = sizeof(ti);
+                ti.uFlags = TTF_SUBCLASS;
+                ti.hwnd = h;
+                ti.uId = 1;
+                ti.lpszText = (LPWSTR)L"";
+                SendMessageW(g_settings.wpTip, TTM_ADDTOOLW, 0, (LPARAM)&ti);
+                SendMessageW(g_settings.wpTip, TTM_SETMAXTIPWIDTH, 0, 420);
+            }
+            WpSyncControls();
+        }
         return 0;
     case WM_ERASEBKGND:
         return 1;
@@ -2802,7 +3595,13 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         PaintSettings(h);
         return 0;
     case WM_LBUTTONDOWN: {
-        int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        int x = GET_X_LPARAM(l), y = SettingsContentY(GET_Y_LPARAM(l));
+        if (g_settings.wpEdit && GetFocus() == g_settings.wpEdit) SetFocus(h);
+        if (g_wp.enabled && g_settings.wpEdit && PtIn(g_settings.wpUrlBox, x, y)) {
+            SetFocus(g_settings.wpEdit);
+            SendMessageW(g_settings.wpEdit, EM_SETSEL, 0, -1);
+            return 0;
+        }
         if (PtIn(g_settings.closeBtn, x, y)) {
             g_settings.closeDown = true;
             g_settings.closeHot = true;
@@ -2828,7 +3627,7 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_MOUSEMOVE: {
-        int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        int x = GET_X_LPARAM(l), y = SettingsContentY(GET_Y_LPARAM(l));
         if (g_settings.dragFrom < 0) {
             bool hot = PtIn(g_settings.closeBtn, x, y);
             if (hot != g_settings.closeHot) {
@@ -2858,7 +3657,7 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         return 0;
     case WM_LBUTTONUP: {
-        int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
+        int x = GET_X_LPARAM(l), y = SettingsContentY(GET_Y_LPARAM(l));
         if (g_settings.closeDown) {
             bool hit = PtIn(g_settings.closeBtn, x, y);
             g_settings.closeDown = false;
@@ -2900,8 +3699,71 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             OpenManageShortcuts();
             return 0;
         }
+        if (PtIn(g_settings.wpRow, x, y) || PtIn(g_settings.wpSwitch, x, y)) {
+            WpSetEnabled(!g_wp.enabled);
+            return 0;
+        }
+        if (g_wp.enabled && PtIn(g_settings.wpDrop, x, y)) {
+            WpShowIntervalMenu(h);
+            return 0;
+        }
+        if (g_wp.enabled && PtIn(g_settings.wpBtn, x, y)) {
+            if (!g_wp.busy && WpUrlOk()) {
+                KillTimer(h, 11);
+                SaveConfig();
+                WpStart();
+            }
+            return 0;
+        }
         return 0;
     }
+    case WM_MOUSEWHEEL:
+        if (g_settings.scrollable) {
+            int maxS = g_settings.contentH - g_settings.winH;
+            int ns = ClampI(g_settings.scrollY - GET_WHEEL_DELTA_WPARAM(w) * 48 / WHEEL_DELTA, 0, maxS > 0 ? maxS : 0);
+            if (ns != g_settings.scrollY) {
+                g_settings.scrollY = ns;
+                WpSyncControls();
+                InvalidateRect(h, nullptr, FALSE);
+            }
+        }
+        return 0;
+    case WM_COMMAND:
+        if (LOWORD(w) == 301) {
+            int code = HIWORD(w);
+            if (code == EN_CHANGE) {
+                WpReadEdit();
+                g_wp.sessTried = false;
+                SetTimer(h, 11, 1200, nullptr);
+                WpRefreshSettings();
+            } else if (code == EN_SETFOCUS || code == EN_KILLFOCUS) {
+                g_settings.wpEditFocus = code == EN_SETFOCUS;
+                if (code == EN_KILLFOCUS) {
+                    KillTimer(h, 11);
+                    WpReadEdit();
+                    WpCommitUrl();
+                }
+                InvalidateRect(h, nullptr, FALSE);
+            }
+            return 0;
+        }
+        break;
+    case WM_TIMER:
+        if (w == 11) {
+            KillTimer(h, 11);
+            WpCommitUrl();
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        break;
+    case WM_CTLCOLOREDIT:
+        if ((HWND)l == g_settings.wpEdit) {
+            HDC dc = (HDC)w;
+            SetBkColor(dc, RGB(255, 255, 255));
+            SetTextColor(dc, RGB(0x20, 0x20, 0x22));
+            return (LRESULT)GetStockObject(WHITE_BRUSH);
+        }
+        break;
     case WM_CLOSE:
         DestroyWindow(h);
         return 0;
@@ -2911,6 +3773,16 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         g_settings.dragMoved = false;
         g_settings.closeHot = false;
         g_settings.closeDown = false;
+        KillTimer(h, 11);
+        if (g_settings.wpEdit) {
+            WpReadEdit();
+            SaveConfig();
+            RemoveWindowSubclass(g_settings.wpEdit, WpEditSubclass, 1);
+        }
+        g_settings.wpEdit = nullptr;
+        g_settings.wpTip = nullptr;
+        g_settings.wpEditFocus = false;
+        if (g_settings.wpFont) { DeleteObject(g_settings.wpFont); g_settings.wpFont = nullptr; }
         if (g_settings.hwnd == h) g_settings.hwnd = nullptr;
         return 0;
     }
@@ -3365,6 +4237,8 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         SetTimer(h, 1, 45000, nullptr);
         SetTimer(h, 2, 2000, nullptr); // theme poll
         SetTimer(h, 4, 500, nullptr); // stay above other windows
+        SetTimer(h, 7, 60000, nullptr); // wallpaper schedule check
+        SetTimer(h, 8, 8000, nullptr);  // wallpaper first check after start
         return 0;
     case WM_WINDOWPOSCHANGING: {
         auto* wp = (WINDOWPOS*)l;
@@ -3389,6 +4263,8 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             return 0;
         }
         if (w == 4) { KeepTopMost(h); return 0; }
+        if (w == 7) { WpTick(); return 0; }
+        if (w == 8) { KillTimer(h, 8); WpTick(); return 0; }
         if (w == 2) { RefreshTheme(h); KeepTopMost(h); return 0; }
         Refresh();
         return 0;
@@ -3404,6 +4280,9 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         Repaint(h);
         return 0;
     }
+    case WM_WALLPAPER_DONE:
+        WpOnDone((WpResult*)l);
+        return 0;
     case WM_WAKE_PAINT:
         KeepTopMost(h);
         Repaint(h);
@@ -3567,6 +4446,8 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         KillTimer(h, 2);
         KillTimer(h, 3);
         KillTimer(h, 4);
+        KillTimer(h, 7);
+        KillTimer(h, 8);
         PostQuitMessage(0);
         return 0;
     }
@@ -3586,6 +4467,7 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_LISTVIEW_CLASSES };
     InitCommonControlsEx(&icc);
     LoadConfig();
+    g_wp.startupPending = g_wp.enabled && g_wp.interval == 4;
     LoadShortcuts();
     g.dark = ReadAppsDark();
     Gdiplus::GdiplusStartupInput in;

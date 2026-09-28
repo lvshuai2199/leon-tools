@@ -19,6 +19,9 @@ services:
       MYSQL_HOST: 127.0.0.1
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-Root@123456}
       REDIS_HOST: 127.0.0.1
+    volumes:
+      # 壁纸等上传文件持久化（容器工作目录 /app，对应 app.wallpaper.storage-dir=./uploads/wallpaper）
+      - ./uploads:/app/uploads
     depends_on:
       - redis
     restart: unless-stopped

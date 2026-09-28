@@ -54,8 +54,9 @@ export default {
     go(path) {
       this.$router.push(path);
     },
-    handleLogout() {
+    async handleLogout() {
       if (!confirmAction("退出登录", "确定退出当前账号？")) return;
+      await this.$api.logout();
       clearUserInfo();
       this.$router.replace("/pages/login/login");
     },

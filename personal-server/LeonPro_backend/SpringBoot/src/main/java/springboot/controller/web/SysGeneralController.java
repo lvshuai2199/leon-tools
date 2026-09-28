@@ -4,6 +4,7 @@ import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.beans.factory.annotation.Autowired;
 import springboot.DTO.RegCode;
+import springboot.config.AuthInterceptor;
 import springboot.domain.*;
 import springboot.enums.RegCodeType;
 import springboot.service.*;
@@ -59,6 +60,9 @@ public class SysGeneralController {
     @Autowired
     private RegCodeAccessService regCodeAccessService;
 
+    @Autowired
+    private AuthTokenService authTokenService;
+
     @PostMapping("captcha")
     public ApiResponse getCaptcha() {
         // 生成验证码文本
@@ -110,6 +114,9 @@ public class SysGeneralController {
 //        String token = jwtUtil.generateToken(username);
 //        return ApiResponse.success("登录成功", token);
         fillRoleName(user);
+        if (user != null) {
+            user.setToken(authTokenService.issue(user.getId()));
+        }
         return ApiResponse.success(user);
     }
 
@@ -125,7 +132,7 @@ public class SysGeneralController {
         SysUsers user = this.regCodeAccessService.pickPreferredUser(this.sysUsersService.list(lambdaQueryWrapper));
         // 校验用户名和密码
         if (user == null) {
-            return ApiResponse.failure("用户不存在");
+            return ApiResponse.failure("用户名或密码错误");
         }
         if (user.getRoleId() != null && !user.getRoleId().isBlank()) {
             SysRoles role = sysRolesService.getById(user.getRoleId());
@@ -144,25 +151,36 @@ public class SysGeneralController {
         }
         fillRoleName(user);
         user.setMenuIds(this.regCodeAccessService.menuIdsOf(user));
+        user.setToken(authTokenService.issue(user.getId()));
         return ApiResponse.success(user);
+    }
+
+    /**
+     * 登出：吊销当前请求携带的 token（该接口本身需登录，拦截器已校验 token）。
+     */
+    @PostMapping("/logout")
+    public ApiResponse logout(HttpServletRequest request) {
+        String token = RequestUserUtils.currentToken(request);
+        if (token == null) {
+            token = AuthTokenService.bearerToken(request);
+        }
+        authTokenService.revoke(token);
+        return ApiResponse.success(null);
     }
     /**
      * 获取菜单路由列表
      *
-     * 根据当前用户角色过滤：用户名非空时，按「用户 → 角色 → sys_role_menu」返回其可访问的菜单
-     * （并补全被分配菜单的祖先目录，保证树结构完整）；超级管理员（root）与未携带用户名时返回全部菜单。
+     * 根据登录 token 对应的用户过滤：按「用户 → 角色 → sys_role_menu」返回其可访问的菜单
+     * （并补全被分配菜单的祖先目录，保证树结构完整）；超级管理员（root）返回全部菜单。
      *
-     * @param username 当前登录用户名（可选）
+     * @param username 已废弃，仅为兼容旧前端保留参数，不参与身份判断
      * */
     @GetMapping("getMenuList")
     public ApiResponse getMenuList(@RequestParam(value = "username", required = false) String username,
                                    HttpServletRequest request) {
         SysUsers user = this.regCodeAccessService.currentUser(request);
-        if (user == null && username != null && !username.isEmpty()) {
-            user = this.regCodeAccessService.findUser(null, username);
-        }
         if (user == null) {
-            return ApiResponse.success(listAllMenus());
+            return ApiResponse.withStatus(AuthInterceptor.UNAUTHORIZED_STATUS, AuthInterceptor.UNAUTHORIZED_MESSAGE, null);
         }
         if (user.getRoleId() == null || user.getRoleId().isEmpty()) {
             return ApiResponse.success(Collections.emptyList());
@@ -300,7 +318,7 @@ public class SysGeneralController {
         RegCode one = regCode;
         String operatorId = RequestUserUtils.currentUserId(request);
         if (operatorId == null || operatorId.isBlank()) {
-            operatorId = one.getApplyId();
+            return ApiResponse.withStatus(AuthInterceptor.UNAUTHORIZED_STATUS, AuthInterceptor.UNAUTHORIZED_MESSAGE, null);
         }
         one.setApplyId(operatorId);
 

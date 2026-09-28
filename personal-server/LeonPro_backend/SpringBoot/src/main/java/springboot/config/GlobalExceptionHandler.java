@@ -2,8 +2,12 @@ package springboot.config;
 
 import jakarta.servlet.http.HttpServletRequest;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 import springboot.utils.ApiResponse;
 
 /**
@@ -12,6 +16,22 @@ import springboot.utils.ApiResponse;
 @Slf4j
 @RestControllerAdvice
 public class GlobalExceptionHandler {
+
+    /**
+     * 静态资源不存在（如已删除 / 已移动的壁纸文件）返回真实的 HTTP 404，
+     * 避免被下面的兜底处理成 200 + JSON，也不记 ERROR 堆栈。
+     */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ApiResponse> handleNoResource(NoResourceFoundException e) {
+        return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                .body(ApiResponse.withStatus(404, "资源不存在", null));
+    }
+
+    /** 上传超过 spring.servlet.multipart 限制：返回业务提示（status 413），不当作 500 */
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ApiResponse handleMaxUpload(MaxUploadSizeExceededException e) {
+        return ApiResponse.withStatus(413, "单张图片不能超过 20MB", null);
+    }
 
     @ExceptionHandler(Exception.class)
     public ApiResponse handle(Exception e, HttpServletRequest request) {

@@ -1,73 +1,40 @@
 package springboot.utils;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.stereotype.Component;
-import springboot.domain.SysUsers;
-import springboot.service.SysUsersService;
 
-import java.net.URLDecoder;
-import java.nio.charset.StandardCharsets;
+/**
+ * 当前登录用户：只读取 AuthInterceptor 校验 token 后写入的 request attribute。
+ * 不再读取客户端传来的 X-User-Id / X-Username 请求头（可被伪造）。
+ */
+public final class RequestUserUtils {
 
-@Component
-public class RequestUserUtils {
+    public static final String ATTR_USER_ID = "leon.auth.userId";
+    public static final String ATTR_USERNAME = "leon.auth.username";
+    public static final String ATTR_TOKEN = "leon.auth.token";
 
-    private static RequestUserUtils instance;
-
-    private final SysUsersService sysUsersService;
-
-    public RequestUserUtils(SysUsersService sysUsersService) {
-        this.sysUsersService = sysUsersService;
-        instance = this;
+    private RequestUserUtils() {
     }
 
     public static String currentUserId(HttpServletRequest request) {
-        if (instance != null) {
-            return instance.resolve(request);
-        }
-        return headerValue(request, "X-User-Id");
+        return attribute(request, ATTR_USER_ID);
     }
 
     public static String currentUsername(HttpServletRequest request) {
-        return decode(headerValue(request, "X-Username"));
+        return attribute(request, ATTR_USERNAME);
     }
 
-    private String resolve(HttpServletRequest request) {
+    public static String currentToken(HttpServletRequest request) {
+        return attribute(request, ATTR_TOKEN);
+    }
+
+    private static String attribute(HttpServletRequest request, String name) {
         if (request == null) {
             return null;
         }
-        String userId = headerValue(request, "X-User-Id");
-        if (userId != null && this.sysUsersService.getById(userId) != null) {
-            return userId;
+        Object value = request.getAttribute(name);
+        if (value instanceof String s && !s.isBlank()) {
+            return s.trim();
         }
-        String username = currentUsername(request);
-        if (username != null) {
-            LambdaQueryWrapper<SysUsers> wrapper = new LambdaQueryWrapper<>();
-            wrapper.eq(SysUsers::getUsername, username);
-            SysUsers user = this.sysUsersService.getOne(wrapper, false);
-            if (user != null) {
-                return user.getId();
-            }
-        }
-        return userId;
-    }
-
-    private static String headerValue(HttpServletRequest request, String name) {
-        if (request == null) {
-            return null;
-        }
-        String value = request.getHeader(name);
-        return value == null || value.isBlank() ? null : value.trim();
-    }
-
-    private static String decode(String value) {
-        if (value == null) {
-            return null;
-        }
-        try {
-            return URLDecoder.decode(value, StandardCharsets.UTF_8);
-        } catch (Exception ignored) {
-            return value;
-        }
+        return null;
     }
 }

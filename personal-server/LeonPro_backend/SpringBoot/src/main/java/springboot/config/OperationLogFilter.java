@@ -16,9 +16,10 @@ import tools.jackson.databind.json.JsonMapper;
 import springboot.domain.SysOperationLog;
 import springboot.service.SysOperationLogService;
 import springboot.utils.OperatorUtils;
+import springboot.utils.RequestUserUtils;
 
 import java.io.IOException;
-import java.net.URLDecoder;
+
 import java.nio.charset.StandardCharsets;
 import java.util.Date;
 import java.util.LinkedHashMap;
@@ -77,7 +78,7 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
 
     private boolean shouldNotFilterInner(HttpServletRequest request) {
         String uri = path(request);
-        if (uri.startsWith("/public/") || uri.startsWith("/error")) {
+        if (uri.startsWith("/public/") || uri.startsWith("/uploads/") || uri.startsWith("/error")) {
             return true;
         }
         if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
@@ -105,7 +106,7 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
             }
 
             SysOperationLog record = new SysOperationLog();
-            record.setOperatorId(header(req, "X-User-Id"));
+            record.setOperatorId(RequestUserUtils.currentUserId(req));
             record.setOperatorName(resolveOperator(req));
             record.setModule(resolveModule(uri));
             record.setAction(method + " " + uri);
@@ -179,24 +180,31 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
         return trim(SECRET.matcher(sb.toString()).replaceAll("$1***"), MAX_TEXT);
     }
 
+    /**
+     * 操作人只取拦截器校验 token 后写入的 attribute（不信任 X-User-Id / X-Username 请求头）；
+     * 登录请求尚无 token，才回退到请求体里的 username。
+     */
     private String resolveOperator(HttpServletRequest req) {
-        String name = decodeHeader(req.getHeader("X-Username"));
-        if (name != null && !name.isBlank()) {
-            return name.trim();
+        String name = RequestUserUtils.currentUsername(req);
+        if (name != null) {
+            return name;
         }
-        String userId = header(req, "X-User-Id");
-        if (userId != null && !userId.isBlank()) {
+        String userId = RequestUserUtils.currentUserId(req);
+        if (userId != null) {
             return userId;
         }
-        String fromQuery = req.getParameter("username");
-        if (fromQuery != null && !fromQuery.isBlank()) {
-            return fromQuery.trim();
-        }
-        String bodyUser = usernameFromBody(req);
-        if (bodyUser != null) {
-            return bodyUser;
+        if (isLoginRequest(req)) {
+            String bodyUser = usernameFromBody(req);
+            if (bodyUser != null) {
+                return bodyUser;
+            }
         }
         return OperatorUtils.UNKNOWN;
+    }
+
+    private static boolean isLoginRequest(HttpServletRequest req) {
+        String uri = path(req);
+        return "/auth/login".equals(uri) || "/auth/login2".equals(uri);
     }
 
     private String usernameFromBody(HttpServletRequest req) {
@@ -236,6 +244,7 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
         map.put("/sysTasks", "任务管理");
         map.put("/systemData", "系统数据");
         map.put("/extern", "外部接口");
+        map.put("/wallpaper", "壁纸管理");
         for (Map.Entry<String, String> e : map.entrySet()) {
             if (uri.startsWith(e.getKey()) || uri.contains(e.getKey())) {
                 return e.getValue();
@@ -268,21 +277,6 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
         return request.getRemoteAddr();
     }
 
-    private static String header(HttpServletRequest request, String name) {
-        String v = request.getHeader(name);
-        return v == null || v.isBlank() ? null : v.trim();
-    }
-
-    private static String decodeHeader(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        try {
-            return URLDecoder.decode(raw, StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            return raw;
-        }
-    }
 
     private static String trim(String s, int max) {
         if (s == null) {
