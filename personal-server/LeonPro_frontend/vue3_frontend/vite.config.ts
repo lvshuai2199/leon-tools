@@ -8,7 +8,13 @@ import { ElementPlusResolver } from "unplugin-vue-components/resolvers";
 import UnoCSS from "unocss/vite";
 import { resolve } from "path";
 import { copyFileSync, cpSync, existsSync, mkdirSync } from "fs";
-import { name, version, engines, dependencies, devDependencies } from "./package.json" with { type: "json" };
+import {
+  name,
+  version,
+  engines,
+  dependencies,
+  devDependencies,
+} from "./package.json" with { type: "json" };
 
 const __APP_INFO__ = {
   pkg: { name, version, engines, dependencies, devDependencies },
@@ -20,6 +26,8 @@ const pathSrc = resolve(import.meta.dirname, "src");
 export default defineConfig(({ mode }: ConfigEnv) => {
   const env = loadEnv(mode, process.cwd());
   return {
+    // 管理端部署在 /admin/ 下，用户端占站点根目录
+    base: "/admin/",
     resolve: {
       alias: {
         "@": pathSrc,
@@ -47,7 +55,8 @@ export default defineConfig(({ mode }: ConfigEnv) => {
           configure: (proxy) => {
             proxy.on("proxyRes", (proxyRes, req) => {
               if (req.url?.includes("/public/mindmap/")) {
-                proxyRes.headers["cache-control"] = "no-store, no-cache, max-age=0, must-revalidate";
+                proxyRes.headers["cache-control"] =
+                  "no-store, no-cache, max-age=0, must-revalidate";
                 proxyRes.headers["pragma"] = "no-cache";
                 proxyRes.headers["expires"] = "0";
               }

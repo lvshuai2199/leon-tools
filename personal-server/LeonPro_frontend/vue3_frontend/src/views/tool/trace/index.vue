@@ -8,7 +8,9 @@
         </el-button>
         <span class="header-title">轨迹分析</span>
         <el-tag size="small" type="info">独立页面 · 无需权限</el-tag>
-        <el-tag v-if="resolvedPluginLabel" size="small" type="success">{{ resolvedPluginLabel }}</el-tag>
+        <el-tag v-if="resolvedPluginLabel" size="small" type="success">
+          {{ resolvedPluginLabel }}
+        </el-tag>
       </div>
       <div class="header-right">
         <el-select v-model="workspace.plugin" class="plugin-select" @change="reparseAndDraw">
@@ -24,9 +26,15 @@
           <template #dropdown>
             <el-dropdown-menu>
               <el-dropdown-item command="welding-liner">WeldingTools · 直线焊接</el-dropdown-item>
-              <el-dropdown-item command="welding-multipass">WeldingTools · 多层多道</el-dropdown-item>
-              <el-dropdown-item command="full-liner">FullFunctionWelding · 直线+圆弧</el-dropdown-item>
-              <el-dropdown-item command="full-multi">FullFunctionWelding · 多层多道</el-dropdown-item>
+              <el-dropdown-item command="welding-multipass">
+                WeldingTools · 多层多道
+              </el-dropdown-item>
+              <el-dropdown-item command="full-liner">
+                FullFunctionWelding · 直线+圆弧
+              </el-dropdown-item>
+              <el-dropdown-item command="full-multi">
+                FullFunctionWelding · 多层多道
+              </el-dropdown-item>
             </el-dropdown-menu>
           </template>
         </el-dropdown>
@@ -52,19 +60,24 @@
       </div>
       <div class="controls">
         <label class="checkbox-item">
-          <input v-model="workspace.showLine" type="checkbox" @change="drawCharts" /> 显示轨迹连线
+          <input v-model="workspace.showLine" type="checkbox" @change="drawCharts" />
+          显示轨迹连线
         </label>
         <label class="checkbox-item">
-          <input v-model="workspace.showPoints" type="checkbox" @change="drawCharts" /> 显示轨迹点位
+          <input v-model="workspace.showPoints" type="checkbox" @change="drawCharts" />
+          显示轨迹点位
         </label>
         <label class="checkbox-item checkbox-divider">
-          <input v-model="workspace.showMarkers" type="checkbox" @change="drawCharts" /> 显示参考点
+          <input v-model="workspace.showMarkers" type="checkbox" @change="drawCharts" />
+          显示参考点
         </label>
         <label class="checkbox-item">
-          <input v-model="workspace.showTreePoses" type="checkbox" @change="drawCharts" /> 显示任务树点位
+          <input v-model="workspace.showTreePoses" type="checkbox" @change="drawCharts" />
+          显示任务树点位
         </label>
         <label class="checkbox-item checkbox-divider checkbox-warn">
-          <input v-model="workspace.showArrows" type="checkbox" @change="drawCharts" /> 显示姿态箭头
+          <input v-model="workspace.showArrows" type="checkbox" @change="drawCharts" />
+          显示姿态箭头
         </label>
         <div v-if="statusMsg" class="status-msg">{{ statusMsg }}</div>
       </div>
@@ -128,12 +141,19 @@
         <el-button type="warning" class="mt-3 w-full" @click="copyData">复制坐标</el-button>
 
         <div class="tips">
-          <strong>说明：</strong><br />
-          • WeldingTools 脚本多为直接 pose 数组；FullFunctionWelding 使用 full_apply_touch_offset。<br />
-          • 红色菱形为参考点 / 跟踪坐标系，可通过「显示参考点」开关。<br />
-          • 紫色空心圆为任务树节点点位（带名称），可通过「显示任务树点位」开关。<br />
-          • 橙色虚线按程序顺序连接 movej 接近/离开段，不跨焊道。<br />
-          • 青色曲线为 movec 圆弧。经过点/结束点标记仅在打开「显示轨迹点位」时出现，摆动密集时会自动缩小。<br />
+          <strong>说明：</strong>
+          <br />
+          • WeldingTools 脚本多为直接 pose 数组；FullFunctionWelding 使用 full_apply_touch_offset。
+          <br />
+          • 红色菱形为参考点 / 跟踪坐标系，可通过「显示参考点」开关。
+          <br />
+          • 紫色空心圆为任务树节点点位（带名称），可通过「显示任务树点位」开关。
+          <br />
+          • 橙色虚线按程序顺序连接 movej 接近/离开段，不跨焊道。
+          <br />
+          • 青色曲线为 movec
+          圆弧。经过点/结束点标记仅在打开「显示轨迹点位」时出现，摆动密集时会自动缩小。
+          <br />
           • 数据缓存在本机，刷新不会丢失，点「清空数据」后才消失。
         </div>
       </aside>
@@ -154,7 +174,13 @@ import {
   type TrajData,
   type TrajPoint,
 } from "./parse";
-import { clearWorkspace, emptyWorkspace, hasWorkspaceContent, loadWorkspace, saveWorkspace } from "./persist";
+import {
+  clearWorkspace,
+  emptyWorkspace,
+  hasWorkspaceContent,
+  loadWorkspace,
+  saveWorkspace,
+} from "./persist";
 
 defineOptions({
   name: "TraceAnalysis",
@@ -174,33 +200,33 @@ const EXAMPLES: Record<string, { plugin: PluginKind; files: string[] }> = {
   "welding-liner": {
     plugin: "welding-tools",
     files: [
-      "/elite-task/WeldingTools/weldingtools-liner.task",
-      "/elite-task/WeldingTools/weldingtools-liner.task.script",
-      "/elite-task/WeldingTools/weldingtools-liner.txt",
+      `${import.meta.env.BASE_URL}elite-task/WeldingTools/weldingtools-liner.task`,
+      `${import.meta.env.BASE_URL}elite-task/WeldingTools/weldingtools-liner.task.script`,
+      `${import.meta.env.BASE_URL}elite-task/WeldingTools/weldingtools-liner.txt`,
     ],
   },
   "welding-multipass": {
     plugin: "welding-tools",
     files: [
-      "/elite-task/WeldingTools/weldingtools-multipass.task",
-      "/elite-task/WeldingTools/weldingtools-multipass.task.script",
-      "/elite-task/WeldingTools/weldingtools-multipass.txt",
+      `${import.meta.env.BASE_URL}elite-task/WeldingTools/weldingtools-multipass.task`,
+      `${import.meta.env.BASE_URL}elite-task/WeldingTools/weldingtools-multipass.task.script`,
+      `${import.meta.env.BASE_URL}elite-task/WeldingTools/weldingtools-multipass.txt`,
     ],
   },
   "full-liner": {
     plugin: "full-function",
     files: [
-      "/elite-task/FullFunctionWelding/fullFunctionweld-liner.task",
-      "/elite-task/FullFunctionWelding/fullFunctionweld-liner.task.script",
-      "/elite-task/FullFunctionWelding/fullFunctionweld-liner.txt",
+      `${import.meta.env.BASE_URL}elite-task/FullFunctionWelding/fullFunctionweld-liner.task`,
+      `${import.meta.env.BASE_URL}elite-task/FullFunctionWelding/fullFunctionweld-liner.task.script`,
+      `${import.meta.env.BASE_URL}elite-task/FullFunctionWelding/fullFunctionweld-liner.txt`,
     ],
   },
   "full-multi": {
     plugin: "full-function",
     files: [
-      "/elite-task/FullFunctionWelding/fullFunctionweld-multi.task",
-      "/elite-task/FullFunctionWelding/fullFunctionweld-multi.task.script",
-      "/elite-task/FullFunctionWelding/fullFunctionweld-multi.txt",
+      `${import.meta.env.BASE_URL}elite-task/FullFunctionWelding/fullFunctionweld-multi.task`,
+      `${import.meta.env.BASE_URL}elite-task/FullFunctionWelding/fullFunctionweld-multi.task.script`,
+      `${import.meta.env.BASE_URL}elite-task/FullFunctionWelding/fullFunctionweld-multi.txt`,
     ],
   },
 };
@@ -248,7 +274,7 @@ async function getPlotly(): Promise<PlotlyApi> {
   if (w.Plotly) return w.Plotly;
   await new Promise<void>((resolve, reject) => {
     const script = document.createElement("script");
-    script.src = "/lib/plotly.min.js";
+    script.src = `${import.meta.env.BASE_URL}lib/plotly.min.js`;
     script.onload = () => resolve();
     script.onerror = () => reject(new Error("Plotly 加载失败"));
     document.head.appendChild(script);
@@ -298,7 +324,10 @@ async function ingestFiles(files: File[]) {
     } else if (kind === "tree") {
       workspace.treeText = content;
       workspace.treeName = file.name;
-    } else if (/\.(csv|eli|py|jbi)$/i.test(file.name) || /\b(movej|movel|movep|movec)\s*\(/.test(content)) {
+    } else if (
+      /\.(csv|eli|py|jbi)$/i.test(file.name) ||
+      /\b(movej|movel|movep|movec)\s*\(/.test(content)
+    ) {
       workspace.scriptText = content;
       workspace.scriptName = file.name;
     }
@@ -463,9 +492,14 @@ function forwardDirectionAt(idx: number): number[] | null {
   let prevIdx: number, nextIdx: number;
   if (isWeld) {
     prevIdx = idx - 1;
-    while (prevIdx >= 0 && (pts[prevIdx].type !== kind || pts[prevIdx].beadId !== pts[idx].beadId)) prevIdx--;
+    while (prevIdx >= 0 && (pts[prevIdx].type !== kind || pts[prevIdx].beadId !== pts[idx].beadId))
+      prevIdx--;
     nextIdx = idx + 1;
-    while (nextIdx < pts.length && (pts[nextIdx].type !== kind || pts[nextIdx].beadId !== pts[idx].beadId)) nextIdx++;
+    while (
+      nextIdx < pts.length &&
+      (pts[nextIdx].type !== kind || pts[nextIdx].beadId !== pts[idx].beadId)
+    )
+      nextIdx++;
   } else {
     prevIdx = idx - 1;
     nextIdx = idx + 1;
@@ -593,7 +627,9 @@ async function drawCharts() {
       const name = typeof path.idx[i] === "number" ? data.main[path.idx[i] as number]?.name : "";
       return [t ? `Type: ${t}` : "", name ? `Node: ${name}` : ""].filter(Boolean).join(" · ");
     });
-    const weldCount = data.main.filter((p) => ["movep", "movel", "movec", "movec_end"].includes(p.type)).length;
+    const weldCount = data.main.filter((p) =>
+      ["movep", "movel", "movec", "movec_end"].includes(p.type)
+    ).length;
     const denseWeld = weldCount > 24 || data.main.filter((p) => p.type === "movec").length > 6;
 
     traces3D.push({
@@ -607,7 +643,8 @@ async function drawCharts() {
       marker: { size: denseWeld ? 1.5 : 2, color: "#2980b9" },
       customdata: path.idx,
       text: hoverText,
-      hovertemplate: "Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<br>%{text}<extra></extra>",
+      hovertemplate:
+        "Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<br>%{text}<extra></extra>",
     });
     traces2D.push({
       x: path.x,
@@ -634,7 +671,8 @@ async function drawCharts() {
         type: "scatter3d",
         marker: { size: 4, color: "#e67e22", symbol: "circle-open" },
         customdata: movejIdx,
-        hovertemplate: "Idx: %{customdata}<br>movej<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
+        hovertemplate:
+          "Idx: %{customdata}<br>movej<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
       });
       traces2D.push({
         x: movejPts.map((p) => p.x),
@@ -720,7 +758,8 @@ async function drawCharts() {
         marker: { size: size3d, color, symbol },
         customdata: list.map(({ i }) => i),
         text: list.map(({ p }) => p.type),
-        hovertemplate: "Idx: %{customdata}<br>%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
+        hovertemplate:
+          "Idx: %{customdata}<br>%{text}<br>X: %{x:.6f}<br>Y: %{y:.6f}<br>Z: %{z:.6f}<extra></extra>",
       });
       traces2D.push({
         x: list.map(({ p }) => p.x),
@@ -728,7 +767,11 @@ async function drawCharts() {
         name,
         mode: "markers",
         type: "scatter",
-        marker: { size: size2d, color, symbol: symbol === "diamond" ? "diamond" : symbol === "square" ? "square" : "circle" },
+        marker: {
+          size: size2d,
+          color,
+          symbol: symbol === "diamond" ? "diamond" : symbol === "square" ? "square" : "circle",
+        },
         customdata: list.map(({ i }) => i),
         hovertemplate: "Idx: %{customdata}<br>X: %{x:.6f}<br>Y: %{y:.6f}<extra></extra>",
       });
@@ -873,7 +916,12 @@ async function drawCharts() {
   }
 
   const layout3D = {
-    scene: { aspectmode: "data", xaxis: { title: "X (m)" }, yaxis: { title: "Y (m)" }, zaxis: { title: "Z (m)" } },
+    scene: {
+      aspectmode: "data",
+      xaxis: { title: "X (m)" },
+      yaxis: { title: "Y (m)" },
+      zaxis: { title: "Z (m)" },
+    },
     margin: { l: 0, r: 0, b: 0, t: 30 },
     hovermode: "closest",
     legend: { x: 0.01, y: 1, font: { size: 10 } },

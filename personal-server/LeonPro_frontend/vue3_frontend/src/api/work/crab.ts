@@ -10,7 +10,10 @@ const CrabShipmentAPI = {
       params: {
         current: queryParams.current ?? 1,
         size: queryParams.size ?? 10,
-        shipDate: queryParams.shipDateStart || queryParams.shipDateEnd ? undefined : queryParams.shipDate || undefined,
+        shipDate:
+          queryParams.shipDateStart || queryParams.shipDateEnd
+            ? undefined
+            : queryParams.shipDate || undefined,
         shipDateStart: queryParams.shipDateStart || undefined,
         shipDateEnd: queryParams.shipDateEnd || undefined,
         customerName: queryParams.customerName || undefined,
@@ -80,7 +83,8 @@ const CrabShipmentAPI = {
 export default CrabShipmentAPI;
 
 export function crabShareUrl(item: Pick<CrabShipmentVO, "publicId" | "sharePath">) {
-  const path = item.sharePath || (item.publicId ? `/h5/#/pages/crab/share?id=${item.publicId}` : "");
+  // 分享页在用户端：/s/crab/{publicId}
+  const path = item.publicId ? `/s/crab/${item.publicId}` : item.sharePath || "";
   if (!path) return "";
   if (typeof window === "undefined") return path;
   return `${window.location.origin}${path}`;
