@@ -3,13 +3,15 @@
  *
  * - 接口前缀取环境变量 VITE_API_PREFIX（开发 /dev-api，线上 /prod-api）
  * - 非公开接口带 `Authorization: Bearer <token>`；公开接口（免登录）只剩 /auth/login 和 /public/**
- * - 401（HTTP 状态或响应体 status）= 登录失效：清登录状态、只提示一次、跳 /login
- * - 403 = 只提示「没有权限」，不清 token，不跳登录
- * - 404 / 5xx / 其他错误：优先读后端 JSON 里的 message
+ * - 判定规则见 response-rules.js（和管理端一致）：
+ *   响应体 status（或 code）不是 200 一律算错误，用 ElMessage 提示后端 message；
+ *   只有 401（HTTP 或响应体）= 登录失效：清登录状态、只提示一次、跳 /login；
+ *   403 / 404 等不清 token；403 没有 message 提示「没有权限」，其他没有 message 提示「请求失败」
  * - 开发模式可按 VITE_USE_MOCK 用示例数据（走同一套解包和 401/403 处理）
  */
 import { API_PREFIX, useMockFor } from '@/config'
 import { showToast } from '@/utils/ui'
+import { interpretResponse } from './response-rules.js'
 
 /** 后端统一返回包装 `{ status, message, data }` */
 export interface ApiResult<T = unknown> {
@@ -76,15 +78,10 @@ export interface RequestOptions {
   signal?: AbortSignal
 }
 
-const AUTH_EXPIRED_MESSAGE = '登录已失效，请重新登录'
-const FORBIDDEN_MESSAGE = '没有权限'
 const NETWORK_MESSAGE = '网络连接失败，请稍后重试'
 
 /** 免登录接口：不带 token，401 也不当作登录失效（与后端白名单一致，/uploads/** 只是静态资源） */
 const PUBLIC_PATH_RE = /^\/(?:auth\/login(?:[/?#]|$)|public(?:[/?#]|$)|uploads(?:[/?#]|$))/
-
-/** 视为成功的业务码 */
-const SUCCESS_CODES = new Set(['200', '0'])
 
 export function isPublicPath(path: string): boolean {
   return PUBLIC_PATH_RE.test(String(path || ''))
@@ -157,17 +154,6 @@ export function errorMessage(e: unknown): string {
   return '加载失败，请稍后重试'
 }
 
-function bodyMessage(body: unknown): string {
-  if (body && typeof body === 'object' && typeof (body as ApiResult).message === 'string') {
-    return (body as ApiResult).message || ''
-  }
-  return ''
-}
-
-function bodyStatus(body: unknown): string {
-  return body && typeof body === 'object' && 'status' in body ? String((body as ApiResult).status) : ''
-}
-
 /* ------------------------------------ 主流程 ------------------------------------ */
 
 async function doFetch(path: string, url: string, init: RequestInit): Promise<Response> {
@@ -214,7 +200,7 @@ export async function request<T = unknown>(path: string, opts: RequestOptions = 
     if ((e as Error)?.name === 'AbortError' && opts.signal?.aborted) throw e
     const err = new ApiError(NETWORK_MESSAGE, { network: true })
     if (!silent) {
-      showToast(err.message)
+      showToast(err.message, 'error')
       err.handled = true
     }
     throw err
@@ -222,46 +208,25 @@ export async function request<T = unknown>(path: string, opts: RequestOptions = 
   if (timer) clearTimeout(timer)
 
   const body: unknown = await resp.json().catch(() => null)
-  const status = bodyStatus(body)
-  const message = bodyMessage(body)
+  const r = interpretResponse(resp.status, body, { authCheck: !isPublicPath(path) && !opts.skipAuthExpired })
 
-  // 401：登录失效（白名单接口如登录本身返回 401 时只当普通错误）
-  if (resp.status === 401 || status === '401') {
-    if (!isPublicPath(path) && !opts.skipAuthExpired) {
-      const msg = message || AUTH_EXPIRED_MESSAGE
-      if (!authExpiredHandling) {
-        authExpiredHandling = true
-        hooks.onAuthExpired(msg, { silent })
-      }
-      throw new ApiError(msg, { code: 401, status: resp.status, fromServer: !!message, handled: true, authExpired: true })
+  if (r.kind === 'ok') return r.data as T
+  if (r.kind === 'empty') return undefined as T
+  if (r.kind === 'authExpired') {
+    // 多个并发请求同时 401 时只处理一次
+    if (!authExpiredHandling) {
+      authExpiredHandling = true
+      hooks.onAuthExpired(r.message, { silent })
     }
-    throw fail(message || AUTH_EXPIRED_MESSAGE, { code: 401, status: resp.status, fromServer: !!message }, silent)
+    throw new ApiError(r.message, { code: 401, status: resp.status, fromServer: r.fromServer, handled: true, authExpired: true })
   }
-
-  // 403：没有权限。只提示，不清 token、不跳登录
-  if (resp.status === 403 || status === '403') {
-    throw fail(FORBIDDEN_MESSAGE, { code: 403, status: resp.status, fromServer: !!message }, silent)
-  }
-
-  // 其他 HTTP 错误：后端错误响应通常也带统一包装，优先展示 message
-  if (!resp.ok) {
-    throw fail(message || `服务暂时不可用（HTTP ${resp.status}）`, { code: status || undefined, status: resp.status, fromServer: !!message }, silent)
-  }
-
-  if (body === null) {
-    // 204 / 空响应
-    if (resp.status === 204) return undefined as T
-    throw fail('响应格式错误', { status: resp.status }, silent)
-  }
-  if (!status) return body as T
-  if (SUCCESS_CODES.has(status)) return (body as ApiResult<T>).data
-  throw fail(message || `请求失败（status: ${status}）`, { code: status, status: resp.status, fromServer: !!message }, silent)
+  throw fail(r.message, { code: r.code, status: resp.status, fromServer: r.fromServer }, silent)
 }
 
 function fail(message: string, opts: ConstructorParameters<typeof ApiError>[1], silent: boolean): ApiError {
   const err = new ApiError(message, opts)
   if (!silent) {
-    showToast(message)
+    showToast(message, 'error')
     err.handled = true
   }
   return err

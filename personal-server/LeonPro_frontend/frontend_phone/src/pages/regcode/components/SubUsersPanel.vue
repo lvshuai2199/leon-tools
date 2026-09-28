@@ -40,7 +40,16 @@ const pwd = ref({ username: '', password: '' })
 const busyId = ref('')
 
 const nameOf = (u: SubUser) => (u.nickname ? `${u.nickname}（${u.username}）` : u.username)
-const dateOf = (t: string) => (t ? String(t).slice(0, 16).replace('T', ' ') : '—')
+/** 创建时间：后端返回 UTC（ISO，带 Z），按浏览器本地时区显示 YYYY-MM-DD HH:mm；不带时区的按原样截取 */
+function dateOf(t: string) {
+  if (!t) return '—'
+  const s = String(t)
+  if (!/[zZ]|[+-]\d{2}:?\d{2}$/.test(s)) return s.slice(0, 16).replace('T', ' ')
+  const d = new Date(s)
+  if (Number.isNaN(d.getTime())) return s.slice(0, 16).replace('T', ' ')
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
+}
 
 async function afterChange() {
   emit('reload')
