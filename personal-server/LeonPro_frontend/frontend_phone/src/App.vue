@@ -7,6 +7,8 @@ import DesktopLayout from '@/layouts/DesktopLayout.vue'
 import MobileLayout from '@/layouts/MobileLayout.vue'
 import BlankLayout from '@/layouts/BlankLayout.vue'
 
+const BUTTON_CONFIG = { autoInsertSpace: false }
+
 const route = useRoute()
 const { isMobile } = useBreakpoint()
 
@@ -17,8 +19,8 @@ const layout = computed(() => {
 </script>
 
 <template>
-  <!-- 手机布局用 large 尺寸（配合 lp.mobile-vars 变成 44px） -->
-  <el-config-provider :locale="zhCn" :size="isMobile ? 'large' : 'default'">
+  <!-- 手机布局用 large 尺寸（配合 lp.mobile-vars 变成 44px）；两个字的按钮不自动插空格 -->
+  <el-config-provider :locale="zhCn" :size="isMobile ? 'large' : 'default'" :button="BUTTON_CONFIG">
     <component :is="layout" />
   </el-config-provider>
 </template>

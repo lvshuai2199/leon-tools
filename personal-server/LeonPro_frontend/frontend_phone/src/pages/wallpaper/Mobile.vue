@@ -14,7 +14,6 @@ const {
   groupsLoading,
   groupsError,
   loadGroups,
-  routeKey,
   activeGroup,
   selectGroup,
   images,
@@ -50,7 +49,7 @@ const {
 
       <div class="mb__body">
         <header v-if="notFound" class="info">
-          <h2 class="info__name">{{ activeGroup?.name || routeKey }}</h2>
+          <h2 class="info__name">分组不存在</h2>
         </header>
         <header v-else-if="activeGroup" class="info">
           <div class="info__row">
@@ -64,7 +63,7 @@ const {
 
         <StateBlock v-if="isEmpty" type="empty" title="这个分组还没有壁纸" desc="去看看其他分组吧" />
 
-        <StateBlock v-if="notFound" type="notfound" :title="notFoundTitle">
+        <StateBlock v-if="notFound" type="notfound" :desc="notFoundTitle">
           <el-button type="primary" size="large" @click="goOtherGroup">查看其他分组</el-button>
         </StateBlock>
 

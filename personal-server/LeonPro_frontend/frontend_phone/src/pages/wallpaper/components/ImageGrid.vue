@@ -3,13 +3,17 @@
  * 壁纸缩略图格子（自写，不用组件库）
  * - mobile：两列，间距 8
  * - desktop：自适应列（最小 220px），间距 16
- * 竖图裁切焦点 50% 20%（人物头部通常靠上），横图居中
+ * 竖图防止头顶被裁：
+ * - 分组里竖图超过一半：格子改 3:4（grid--portrait）
+ * - 混排分组：竖图裁切焦点 50% 10%（人物头部通常靠上），横图居中
+ * 竖图判定优先用接口返回的宽高，没有时用加载后的 naturalWidth/naturalHeight
+ * 格子标题：电脑悬停显示；手机不显示（没有悬停，标题在大图里看）
  */
-import { reactive } from 'vue'
+import { computed, reactive } from 'vue'
 import type { WallpaperImage } from '@/api/types'
 import { vLazy } from '@/directives/lazy'
 
-withDefaults(defineProps<{ images: WallpaperImage[]; skeleton?: number; variant?: 'mobile' | 'desktop' }>(), {
+const props = withDefaults(defineProps<{ images: WallpaperImage[]; skeleton?: number; variant?: 'mobile' | 'desktop' }>(), {
   skeleton: 0,
   variant: 'desktop',
 })
@@ -19,7 +23,7 @@ defineEmits<{ open: [index: number] }>()
  * 用行内 style 而不是 class：v-lazy 会给 img 追加 is-loaded 类，
  * 若 :class 在加载后变化，Vue 重写 className 会把 is-loaded 冲掉导致图片变透明。
  */
-const PORTRAIT_STYLE = { objectPosition: '50% 20%' }
+const PORTRAIT_STYLE = { objectPosition: '50% 10%' }
 
 /** 接口未返回宽高时，根据已加载图片的 naturalWidth/naturalHeight 判定竖图 */
 const detectedPortrait = reactive(new Set<string>())
@@ -29,6 +33,13 @@ function isPortrait(img: WallpaperImage): boolean {
   return detectedPortrait.has(img.id)
 }
 
+/** 竖图超过一半的分组，格子改成 3:4 */
+const mostlyPortrait = computed(() => {
+  const list = props.images
+  if (!list.length) return false
+  return list.filter(isPortrait).length * 2 > list.length
+})
+
 function onThumbLoad(img: WallpaperImage, e: Event) {
   if (img.width > 0 && img.height > 0) return
   const el = e.target as HTMLImageElement
@@ -37,7 +48,7 @@ function onThumbLoad(img: WallpaperImage, e: Event) {
 </script>
 
 <template>
-  <ul class="grid" :class="`grid--${variant}`">
+  <ul class="grid" :class="[`grid--${variant}`, { 'grid--portrait': mostlyPortrait }]">
     <li v-for="(img, i) in images" :key="img.id" class="cell">
       <button type="button" class="tile" :aria-label="`查看 ${img.title || '壁纸'}`" @click="$emit('open', i)">
         <img
@@ -73,6 +84,9 @@ function onThumbLoad(img: WallpaperImage, e: Event) {
   gap: lp.$thumb-gap-desktop;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
 }
+.grid--desktop.grid--portrait {
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+}
 .cell {
   min-width: 0;
 }
@@ -103,6 +117,9 @@ function onThumbLoad(img: WallpaperImage, e: Event) {
 .grid--desktop .tile:hover img {
   transform: scale(1.03);
 }
+.grid--portrait .tile {
+  aspect-ratio: 3 / 4;
+}
 div.tile {
   cursor: default;
 }
@@ -112,9 +129,9 @@ div.tile {
   right: 0;
   bottom: 0;
   padding: lp.$space-5 10px lp.$space-2;
-  // 标题压在图片上的渐变遮罩（写死颜色，见报告）
-  background: linear-gradient(to top, rgba(0, 0, 0, 0.6), transparent);
-  color: #fff;
+  // 标题压在图片上的渐变遮罩（shared 主题变量）
+  background: var(--lp-overlay-gradient);
+  color: var(--el-color-white);
   font-size: lp.$font-size-extra-small;
   text-align: left;
   white-space: nowrap;

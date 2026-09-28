@@ -46,13 +46,19 @@ watch(
   gap: lp.$space-2;
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 2px 0;
+  /* 上下各留 6px 给点击区（外观 32、可点 44）；手机上左右滑到屏幕边 */
+  padding: 6px 0;
+  @include lp.mobile {
+    margin: -6px (-(lp.$page-padding-mobile));
+    padding: 6px lp.$page-padding-mobile;
+  }
   -webkit-overflow-scrolling: touch;
   &::-webkit-scrollbar {
     display: none;
   }
 }
 .tab {
+  position: relative;
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -72,7 +78,20 @@ watch(
   &.is-active {
     border-color: var(--el-color-primary);
     background: var(--el-color-primary);
-    color: #fff;
+    color: var(--el-color-white);
+    .tab__count {
+      opacity: 1;
+      color: rgba(255, 255, 255, 0.9);
+    }
+  }
+  /* 点击区扩到 44px 高 */
+  &::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -6px;
+    bottom: -6px;
   }
   &:focus-visible {
     outline: 2px solid var(--el-color-primary);

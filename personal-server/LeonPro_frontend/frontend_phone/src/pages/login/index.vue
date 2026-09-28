@@ -74,7 +74,7 @@ function goHome() {
         <p class="brand__sub">登录后使用螃蟹出货、注册码生成等工具</p>
       </div>
 
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" size="large" @submit.prevent="onSubmit">
+      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" :size="isMobile ? 'large' : 'default'" @submit.prevent="onSubmit">
         <el-form-item label="用户名" prop="username">
           <el-input v-model="form.username" :prefix-icon="User" placeholder="请输入用户名" autocomplete="username" clearable />
         </el-form-item>
@@ -90,12 +90,12 @@ function goHome() {
           />
         </el-form-item>
         <el-button type="primary" native-type="submit" class="login__submit" :loading="loading">
-          {{ loading ? '登录中…' : '登 录' }}
+          {{ loading ? '登录中…' : '登录' }}
         </el-button>
       </el-form>
 
       <div class="login__foot">
-        <el-button link type="primary" @click="goHome">先随便看看</el-button>
+        <el-button link type="primary" class="login__guest" @click="goHome">先随便看看</el-button>
       </div>
     </div>
   </div>
@@ -121,6 +121,14 @@ function goHome() {
 }
 .login--mobile {
   @include lp.mobile-vars;
+  /* Element Plus 的 large 按钮写死 40px，手机上改 44 */
+  .login__submit {
+    height: lp.$component-size-mobile;
+  }
+  .login__guest {
+    min-height: lp.$component-size-mobile;
+    padding: 0 lp.$space-3;
+  }
   align-items: flex-start;
   padding: calc(48px + env(safe-area-inset-top)) lp.$page-padding-mobile lp.$space-6;
   background: var(--el-bg-color);

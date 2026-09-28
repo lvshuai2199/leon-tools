@@ -20,7 +20,6 @@ const {
   groupsLoading,
   groupsError,
   loadGroups,
-  routeKey,
   activeGroup,
   selectGroup,
   images,
@@ -62,7 +61,7 @@ const {
 
         <!-- 不存在状态：标题行只显示分组名（未知分组则显示 URL 中的 key），隐藏描述与数量 -->
         <header v-if="notFound" class="info">
-          <h1 class="info__name">{{ activeGroup?.name || routeKey }}</h1>
+          <h1 class="info__name">分组不存在</h1>
         </header>
         <header v-else-if="activeGroup" class="info">
           <h1 class="info__name">{{ activeGroup.name }}</h1>
@@ -75,7 +74,7 @@ const {
         <StateBlock v-if="isEmpty" type="empty" title="这个分组还没有壁纸" desc="去看看其他分组吧" />
 
         <!-- 不存在或未公开：灰色提示，无重试 -->
-        <StateBlock v-if="notFound" type="notfound" :title="notFoundTitle">
+        <StateBlock v-if="notFound" type="notfound" :desc="notFoundTitle">
           <el-button type="primary" @click="goOtherGroup">查看其他分组</el-button>
         </StateBlock>
 

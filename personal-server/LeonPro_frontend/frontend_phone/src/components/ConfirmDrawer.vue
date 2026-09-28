@@ -1,5 +1,5 @@
 <script setup lang="ts">
-/** 手机上的确认框：从底部弹出的抽屉（由 utils/ui.ts 的 confirmAction 动态创建） */
+/** 手机上的确认框：从底部弹出的抽屉（由 utils/ui.ts 的 confirmAction 动态创建）。标题 18px/600 左对齐，按钮 44px */
 import { ref } from 'vue'
 
 const props = withDefaults(
@@ -48,8 +48,8 @@ function finish(ok: boolean) {
 
 <style scoped lang="scss">
 .cd {
-  padding: lp.$space-2 0 0;
-  text-align: center;
+  padding: lp.$space-1 0 0;
+  text-align: left;
 }
 .cd__title {
   margin: 0;
@@ -68,6 +68,9 @@ function finish(ok: boolean) {
   grid-template-columns: 1fr 1fr;
   gap: lp.$space-3;
   margin-top: lp.$space-5;
+  .el-button {
+    height: lp.$component-size-mobile;
+  }
   .el-button + .el-button {
     margin-left: 0;
   }

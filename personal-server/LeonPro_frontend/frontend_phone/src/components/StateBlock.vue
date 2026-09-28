@@ -20,22 +20,23 @@ defineEmits<{ retry: [] }>()
 
 <template>
   <div class="state" :class="[`state--${type}`, { 'state--compact': compact }]" :role="type === 'error' ? 'alert' : undefined">
+    <!-- 图标统一 48×48、线宽 2 -->
     <div class="state__icon" aria-hidden="true">
       <span v-if="type === 'loading'" class="spinner" />
-      <svg v-else-if="type === 'notfound'" viewBox="0 0 48 48" width="44" height="44">
-        <circle cx="21" cy="21" r="13" fill="none" stroke="currentColor" stroke-width="2.5" />
-        <path d="M30.5 30.5L40 40" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
-        <path d="M16 21h10" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" />
+      <svg v-else-if="type === 'notfound'" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="21" cy="21" r="13" />
+        <path d="M30.5 30.5 40 40" />
+        <path d="M16 21h10" />
       </svg>
-      <svg v-else-if="type === 'error'" viewBox="0 0 48 48" width="44" height="44">
-        <circle cx="24" cy="24" r="20" fill="none" stroke="currentColor" stroke-width="2.5" />
-        <path d="M24 14v13" stroke="currentColor" stroke-width="3" stroke-linecap="round" />
-        <circle cx="24" cy="33.5" r="2" fill="currentColor" />
+      <svg v-else-if="type === 'error'" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+        <circle cx="24" cy="24" r="18" />
+        <path d="M24 15v11" />
+        <circle cx="24" cy="32.5" r="1.5" fill="currentColor" stroke="none" />
       </svg>
-      <svg v-else viewBox="0 0 64 48" width="60" height="45">
-        <rect x="4" y="6" width="56" height="36" rx="6" fill="none" stroke="currentColor" stroke-width="2.5" />
-        <path d="M12 36l12-13 9 9 6-5 13 9" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linejoin="round" />
-        <circle cx="44" cy="17" r="4" fill="none" stroke="currentColor" stroke-width="2.5" />
+      <svg v-else viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+        <rect x="6" y="9" width="36" height="30" rx="5" />
+        <path d="m11 34 9-10 7 7 4-4 7 7" />
+        <circle cx="32" cy="18" r="3" />
       </svg>
     </div>
     <p v-if="title" class="state__title">{{ title }}</p>
@@ -78,9 +79,24 @@ defineEmits<{ retry: [] }>()
   font-size: lp.$font-size-base;
   color: var(--el-text-color-secondary);
 }
+.state__icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+}
 .state__btn,
 .state__actions {
   margin-top: lp.$space-4;
+}
+// 手机上按钮不低于 44px
+@include lp.mobile {
+  .state__btn,
+  .state__actions :deep(.el-button) {
+    min-height: lp.$component-size-mobile;
+    min-width: 120px;
+  }
 }
 .spinner {
   display: inline-block;

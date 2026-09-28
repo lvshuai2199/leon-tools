@@ -92,23 +92,22 @@ onMounted(async () => {
   }
 }
 .home__heading {
+  // 两端统一：主题正文色、16px、600
   margin: 0 0 lp.$space-3;
   font-size: lp.$font-size-medium;
   font-weight: lp.$font-weight-semibold;
   color: var(--el-text-color-primary);
   @include lp.mobile {
     margin-bottom: lp.$space-2;
-    font-size: lp.$font-size-mobile-body;
-    color: var(--el-text-color-secondary);
-    font-weight: lp.$font-weight-medium;
   }
 }
 .home__grid {
   display: grid;
   gap: lp.$space-5;
+  // 电脑（含 768–1199 无侧栏）一行三张
   grid-template-columns: repeat(3, minmax(0, 1fr));
   @include lp.tablet {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: lp.$space-4;
   }
   @include lp.mobile {
     grid-template-columns: 1fr;

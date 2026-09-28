@@ -155,8 +155,8 @@ function toggleUi() {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: #000;
-  color: #fff;
+  background: var(--lp-viewer-bg);
+  color: var(--el-color-white);
   overflow: hidden;
   touch-action: none;
 }
@@ -204,7 +204,7 @@ function toggleUi() {
   width: 32px;
   height: 32px;
   border: 2.5px solid rgba(255, 255, 255, 0.2);
-  border-top-color: #fff;
+  border-top-color: var(--el-color-white);
   border-radius: 50%;
   animation: lp-spin 0.8s linear infinite;
 }
@@ -237,7 +237,7 @@ function toggleUi() {
   padding: 0;
   border: none;
   background: transparent;
-  color: #fff;
+  color: var(--el-color-white);
 }
 .mv__counter {
   font-size: lp.$font-size-mobile-body;
@@ -280,7 +280,7 @@ function toggleUi() {
   padding: 0 lp.$space-4;
   border-radius: lp.$radius-base;
   background: var(--el-color-primary);
-  color: #fff;
+  color: var(--el-color-white);
   font-size: lp.$font-size-mobile-body;
   font-weight: lp.$font-weight-medium;
 }

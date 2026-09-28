@@ -1,7 +1,7 @@
 /**
  * 壁纸浏览逻辑（电脑版、手机版共用）。从原展示端 portal 的 WallpaperBrowse.vue 抽出来，行为保持已验收的样子：
  * - 裸 /wallpaper 跳到第一个公开分组
- * - URL 里的分组不在公开列表里：不请求图片，显示灰色「分组不存在或未公开」+「查看其他分组」，标题只显示名称或 key，不高亮标签
+ * - URL 里的分组不在公开列表里：不请求图片，大标题「分组不存在」（不显示网址里的 key）+ 灰色说明 +「查看其他分组」，不高亮标签
  * - 图片接口 404 同样显示不存在状态；网络错误和 5xx 才显示红色「图片加载失败」+「重试」
  * - 图片分页 total 回写到分组计数（标签、侧栏、标题数量一致）
  * - 无限滚动（哨兵元素 + IntersectionObserver），快速切换分组时丢弃过期请求
@@ -72,9 +72,8 @@ export function useWallpaperBrowse(sentinel: Readonly<Ref<HTMLElement | null | u
   const isEmpty = computed(() => !loading.value && !pageError.value && page.value > 0 && images.value.length === 0)
   /** 不存在状态：URL 分组未知，或图片请求返回 404 / 其他非重试类错误 */
   const notFound = computed(() => unknownKey.value || (!!pageError.value && !pageError.value.retryable))
-  const notFoundTitle = computed(() =>
-    unknownKey.value ? '分组不存在或未公开' : pageError.value?.message || '分组不存在或未公开',
-  )
+  /** 「分组不存在」页的说明（大标题固定写「分组不存在」，不显示网址里的 key） */
+  const notFoundTitle = computed(() => '链接可能已失效，或分组还没有公开')
   /** 红色错误：只在网络错误和 5xx */
   const loadError = computed(() => (pageError.value?.retryable ? pageError.value : null))
   const reachedEnd = computed(() => !loading.value && page.value > 0 && !hasMore.value && images.value.length > 0)

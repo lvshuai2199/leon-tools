@@ -117,8 +117,8 @@ onBeforeUnmount(() => {
   z-index: 2000;
   display: flex;
   flex-direction: column;
-  background: #111;
-  color: #fff;
+  background: var(--lp-viewer-bg);
+  color: var(--el-color-white);
   outline: none;
   animation: viewer-in 0.2s ease;
 }
@@ -168,7 +168,7 @@ onBeforeUnmount(() => {
   padding: 0 lp.$space-4;
   border-radius: lp.$radius-base;
   background: var(--el-color-primary);
-  color: #fff;
+  color: var(--el-color-white);
   font-size: lp.$font-size-base;
   font-weight: lp.$font-weight-medium;
   transition: background-color 0.2s;
@@ -185,7 +185,7 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: 50%;
   background: transparent;
-  color: #fff;
+  color: var(--el-color-white);
   cursor: pointer;
   &:hover {
     background: rgba(255, 255, 255, 0.1);
@@ -224,7 +224,7 @@ onBeforeUnmount(() => {
   width: 32px;
   height: 32px;
   border: 2.5px solid rgba(255, 255, 255, 0.2);
-  border-top-color: #fff;
+  border-top-color: var(--el-color-white);
   border-radius: 50%;
   animation: lp-spin 0.8s linear infinite;
 }
@@ -248,7 +248,7 @@ onBeforeUnmount(() => {
   border: none;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.08);
-  color: #fff;
+  color: var(--el-color-white);
   cursor: pointer;
   transition: background-color 0.2s;
   &:hover {

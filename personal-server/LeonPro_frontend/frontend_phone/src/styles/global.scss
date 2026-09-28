@@ -7,6 +7,10 @@
 // 抽屉、消息框等挂到 body 下的组件也能拿到
 html.lp-mobile {
   @include lp.mobile-vars;
+  // Element Plus 的 large 按钮把高度写死成 40px，手机上统一改成 44（登录、404、确认抽屉等）
+  .el-button--large {
+    --el-button-size: #{lp.$component-size-mobile};
+  }
 }
 
 *,
@@ -85,15 +89,46 @@ textarea {
   }
 }
 
-// 底部抽屉：顶部两角 12px 圆角，留出 iPhone 底部安全区
+// 底部抽屉（所有底部弹层：工具、我的、确认、选择、日期、更多、手机上的表单弹窗）
+// - 顶部两角 12px 圆角
+// - 标题 18px / 600 / 左对齐，左右 16（和列表图标对齐），标题到第一项 16
+// - 底部留出 iPhone 安全区：没有 footer 时加在 body 底部，有 footer 时加在 footer 底部
 .el-drawer.btt {
   border-radius: lp.$radius-card lp.$radius-card 0 0;
+  .el-drawer__header {
+    margin: 0;
+    padding: lp.$space-4 lp.$space-4 0;
+    color: var(--el-text-color-primary);
+  }
+  .el-drawer__title {
+    font-size: lp.$font-size-large;
+    font-weight: lp.$font-weight-semibold;
+    line-height: 26px;
+    text-align: left;
+  }
   .el-drawer__body {
     padding: lp.$space-4 lp.$space-4 calc(#{lp.$space-4} + env(safe-area-inset-bottom));
   }
+  .el-drawer__footer {
+    padding: lp.$space-3 lp.$space-4 calc(#{lp.$space-3} + env(safe-area-inset-bottom));
+  }
+  &:has(.el-drawer__footer) .el-drawer__body {
+    padding-bottom: lp.$space-2;
+  }
 }
 
-// 电脑确认框统一 480 宽
+// 电脑确认框（退出、删除等 ElMessageBox）：480 宽、圆角 12、内边距 24
 .el-message-box {
   --el-messagebox-width: #{lp.$dialog-width-desktop};
+  --el-messagebox-border-radius: #{lp.$radius-card};
+  --el-messagebox-padding-primary: 24px;
+  padding: 24px;
+  border-radius: lp.$radius-card;
+  .el-message-box__title {
+    font-size: lp.$font-size-large;
+    font-weight: lp.$font-weight-semibold;
+  }
+  .el-message-box__btns {
+    padding-top: lp.$space-5;
+  }
 }

@@ -23,7 +23,7 @@ const tone = computed(() => (props.icon === 'crab' ? 'crab' : 'primary'))
   align-items: center;
   justify-content: center;
   border-radius: lp.$radius-base;
-  color: #fff;
+  color: var(--el-color-white);
 }
 .ti--crab {
   background: var(--lp-color-crab);
