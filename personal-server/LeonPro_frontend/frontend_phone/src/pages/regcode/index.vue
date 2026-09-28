@@ -1,418 +1,117 @@
+<script setup lang="ts">
+/**
+ * 注册码生成（/regcode）：标题「注册码生成」+ 返回；标签页「生成」「子用户」，默认「生成」。
+ * 子用户登录、不能管理子用户、上限 0 且一个都没建过（含停用的）时不显示标签页，只有生成。
+ */
+import { computed, onMounted, ref, watch } from 'vue'
+import { useRoute, useRouter } from 'vue-router'
+import regCodeApi from '@/api/regcode'
+import type { RegCodeSubUserList } from '@/api/types'
+import PageBar from '@/components/PageBar.vue'
+import { useBreakpoint } from '@/composables/useBreakpoint'
+import { userStore } from '@/stores/user'
+import { needsSubUserListCheck, showSubUserTab } from './regcode-quota.js'
+import { useRegcodeData } from './useRegcodeData'
+import GeneratePanel from './components/GeneratePanel.vue'
+import SubUsersPanel from './components/SubUsersPanel.vue'
+
+type Tab = 'generate' | 'subusers'
+
+const route = useRoute()
+const router = useRouter()
+const { isMobile } = useBreakpoint()
+const data = useRegcodeData()
+
+const tab = ref<Tab>(route.query.tab === 'subusers' ? 'subusers' : 'generate')
+const subList = ref<RegCodeSubUserList | null>(null)
+const subLoading = ref(false)
+const subError = ref('')
+/** 上限 0 时要看列表才知道显不显示；查完之前先不显示 */
+const listChecked = ref(false)
+
+const regCode = computed(() => userStore.regCode.value)
+const showTabs = computed(() => showSubUserTab(regCode.value, listChecked.value ? (subList.value?.items.length ?? 0) : null))
+
+async function loadSubUsers(silent = false) {
+  subLoading.value = true
+  subError.value = ''
+  try {
+    subList.value = await regCodeApi.listSubUsers({ silent })
+  } catch (e) {
+    subError.value = (e as Error)?.message || '加载失败'
+  } finally {
+    subLoading.value = false
+    listChecked.value = true
+  }
+}
+
+function setTab(v: Tab) {
+  tab.value = v
+  router.replace({ query: { ...route.query, tab: v === 'generate' ? undefined : v } })
+}
+
+watch(tab, (v) => {
+  if (v === 'subusers' && !subList.value && !subLoading.value) loadSubUsers()
+})
+watch(showTabs, (v) => {
+  if (!v && tab.value !== 'generate') tab.value = 'generate'
+})
+
+onMounted(async () => {
+  data.loadConfigs()
+  data.loadQuota()
+  await userStore.loadMe({ silent: true }).catch(() => false)
+  if (tab.value === 'subusers' || needsSubUserListCheck(regCode.value)) loadSubUsers(true)
+})
+</script>
+
 <template>
-  <div class="page">
-    <div class="hero">
-      <button v-if="showHome" class="logout" type="button" @click="goHome">工作台</button>
-      <div :class="{ grow: !showHome }">
-        <div class="hello">你好，{{ displayName }}</div>
-        <div class="desc">为客户生成对应注册码</div>
-      </div>
-      <button class="logout" type="button" @click="handleLogout">退出</button>
+  <div class="regcode">
+    <PageBar title="注册码生成" back="/" />
+    <div v-if="showTabs" class="regcode__tabs" :class="{ 'is-mobile': isMobile }">
+      <el-tabs :model-value="tab" @update:model-value="(v: string | number) => setTab(v as Tab)">
+        <el-tab-pane label="生成" name="generate" />
+        <el-tab-pane label="子用户" name="subusers" />
+      </el-tabs>
     </div>
-
-    <div class="card">
-      <div v-if="quota" class="quota">
-        <span class="quota-label">当前配置</span>
-        <span class="quota-value">{{ quotaText }}</span>
-      </div>
-
-      <div v-if="loadingConfigs" class="empty">正在加载可用配置...</div>
-      <div v-else-if="companies.length === 0" class="empty">暂无可用注册码，请联系管理员分配</div>
-      <div v-else class="form">
-        <label class="field">
-          <span class="label">公司</span>
-          <select class="picker" :value="companyName" @change="onCompanyChange">
-            <option v-for="name in companies" :key="name" :value="name">{{ name }}</option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="label">组件名称</span>
-          <select class="picker" :value="configId" @change="onConfigChange">
-            <option v-for="item in currentConfigs" :key="item.id" :value="item.id">
-              {{ item.name || item.componentName || item.id }}
-            </option>
-          </select>
-        </label>
-        <label class="field">
-          <span class="label">注册码</span>
-          <input
-            v-model="regCode"
-            class="input"
-            maxlength="6"
-            placeholder="输入 6 位注册码"
-            @keyup.enter="handleGenerate"
-          />
-        </label>
-
-        <div v-for="field in allFields" :key="field" class="result-row">
-          <div>
-            <div class="result-label">{{ validityLabels[field] }}</div>
-            <div class="result-value">{{ result[field] || "-" }}</div>
-          </div>
-          <button v-if="isGenerated && result[field]" class="copy" type="button" @click="copyResult(result[field])">
-            复制
-          </button>
-        </div>
-
-        <div class="actions">
-          <button class="btn ghost" type="button" @click="resetAll">重置</button>
-          <button class="btn primary" type="button" :disabled="generating" @click="handleGenerate">
-            {{ generating ? "生成中..." : "生成" }}
-          </button>
-        </div>
-      </div>
-    </div>
+    <GeneratePanel v-show="tab === 'generate'" :data="data" />
+    <SubUsersPanel
+      v-if="showTabs && tab === 'subusers'"
+      :data="data"
+      :list="subList"
+      :loading="subLoading"
+      :error="subError"
+      @reload="loadSubUsers(true)"
+    />
   </div>
 </template>
 
-<script>
-// 第一块：界面未重做，只换了接口和路由。准入交给路由守卫（appMenus）+ 后端 403，不再写死角色规则
-import api from "@/api/regcode";
-import { userStore } from "@/stores/user";
-import { confirmAction, copyText, showToast } from "@/utils/ui";
-
-const ALL_FIELDS = [
-  "oneMonthValid",
-  "twoMonthValid",
-  "fourMonthValid",
-  "sixMonthValid",
-  "thirteenMonthValid",
-  "longTimeValid",
-];
-const VALIDITY_LABELS = {
-  oneMonthValid: "一个月",
-  twoMonthValid: "两个月",
-  fourMonthValid: "四个月",
-  sixMonthValid: "六个月",
-  thirteenMonthValid: "十三个月",
-  longTimeValid: "永久",
-};
-
-function emptyResult() {
-  return {
-    oneMonthValid: "OneMonth",
-    twoMonthValid: "TwoMonth",
-    fourMonthValid: "FourMonth",
-    sixMonthValid: "SixMonth",
-    thirteenMonthValid: "ThirteenMonth",
-    longTimeValid: "Forever",
-  };
+<style scoped lang="scss">
+.regcode {
+  @include lp.mobile {
+    padding: lp.$page-padding-mobile;
+  }
 }
-
-export default {
-  data() {
-    return {
-      user: null,
-      quota: null,
-      showHome: false,
-      validityLabels: VALIDITY_LABELS,
-      configs: [],
-      loadingConfigs: false,
-      companyName: "",
-      configId: "",
-      regCode: "",
-      generating: false,
-      isGenerated: false,
-      result: emptyResult(),
-    };
-  },
-  computed: {
-    api() {
-      return api;
-    },
-    displayName() {
-      return this.user?.nickname || this.user?.username || "用户";
-    },
-    // 次数按配置分别计算：显示当前所选配置的剩余（items 为空的旧返回退回合计）
-    currentRemaining() {
-      if (!this.quota || this.quota.unlimited) return null;
-      const items = Array.isArray(this.quota.items) ? this.quota.items : [];
-      if (!items.length) return this.quota.remaining ?? 0;
-      const hit = items.find((item) => String(item.configId) === String(this.currentConfig?.id));
-      return hit ? hit.remaining ?? 0 : 0;
-    },
-    quotaText() {
-      if (!this.quota) return "-";
-      if (this.quota.unlimited) return "不限";
-      return `剩余 ${this.currentRemaining} 次`;
-    },
-    companies() {
-      const names = [];
-      this.configs.forEach((item) => {
-        const company = item.company || "未分组";
-        if (!names.includes(company)) names.push(company);
-      });
-      return names;
-    },
-    currentConfigs() {
-      return this.configs.filter((item) => (item.company || "未分组") === this.companyName);
-    },
-    currentConfig() {
-      return this.currentConfigs.find((item) => item.id === this.configId) || this.currentConfigs[0] || null;
-    },
-    allFields() {
-      return ALL_FIELDS;
-    },
-  },
-  mounted() {
-    this.ensureLogin();
-  },
-  methods: {
-    ensureLogin() {
-      this.user = userStore.state.user;
-      // 「工作台」按钮：有螃蟹出货菜单时显示（原来按角色判断）
-      this.showHome = userStore.canAccess("/crab");
-      this.loadConfigs();
-      this.loadQuota();
-    },
-    applyDefaultSelection() {
-      const list = Array.isArray(this.configs) ? this.configs : [];
-      const company = this.companies[0] || list[0]?.company || "";
-      this.companyName = company;
-      const first = list.find((item) => item.company === company) || list[0];
-      this.configId = first?.id || "";
-    },
-    normalizeConfigs(data) {
-      if (Array.isArray(data)) return data;
-      if (data && Array.isArray(data.records)) return data.records;
-      return [];
-    },
-    onCompanyChange(event) {
-      this.companyName = event.target.value || "";
-      this.configId = this.currentConfigs[0]?.id || "";
-      this.resetResult();
-    },
-    onConfigChange(event) {
-      this.configId = event.target.value || "";
-      this.resetResult();
-    },
-    resetResult() {
-      this.isGenerated = false;
-      this.result = emptyResult();
-    },
-    resetAll() {
-      this.regCode = "";
-      this.resetResult();
-    },
-    async loadQuota() {
-      try {
-        this.quota = (await this.api.myQuota()) || null;
-      } catch (error) {
-        console.error(error);
-      }
-    },
-    async loadConfigs() {
-      this.loadingConfigs = true;
-      try {
-        this.configs = this.normalizeConfigs(await this.api.listRegCodeConfig());
-        this.applyDefaultSelection();
-      } catch (error) {
-        console.error(error);
-        this.configs = [];
-      } finally {
-        this.loadingConfigs = false;
-      }
-    },
-    async handleGenerate() {
-      if (!this.currentConfig?.id) {
-        showToast("请选择名称");
-        return;
-      }
-      if (!this.regCode || this.regCode.length !== 6) {
-        showToast("注册码长度必须为 6 位");
-        return;
-      }
-      if (this.quota && !this.quota.unlimited && (this.currentRemaining || 0) <= 0) {
-        showToast("生成次数已用完");
-        return;
-      }
-      this.generating = true;
-      try {
-        const data = await this.api.genTempRegCode({
-          regCode: this.regCode,
-          configId: this.currentConfig.id,
-          company: this.currentConfig.company,
-          applyName: this.currentConfig.name,
-        });
-        this.result = { ...emptyResult(), ...(data || {}) };
-        this.isGenerated = true;
-        showToast("生成成功");
-        this.loadQuota();
-      } catch (error) {
-        console.error(error);
-      } finally {
-        this.generating = false;
-      }
-    },
-    async copyResult(text) {
-      try {
-        await copyText(text);
-      } catch {
-        showToast("复制失败");
-      }
-    },
-    goHome() {
-      this.$router.replace("/");
-    },
-    async handleLogout() {
-      if (!(await confirmAction("退出登录", "确定退出当前账号？", { confirmText: "退出", danger: true }))) return;
-      await userStore.logout();
-      this.leaveToLogin();
-    },
-    leaveToLogin() {
-      this.user = null;
-      userStore.clearSession();
-      this.$router.replace("/login");
-    },
-  },
-};
-</script>
-
-<style scoped>
-.page {
-  min-height: 100vh;
-  padding: 12px 12px 24px;
-  background: #f4f6fb;
-}
-
-.hero {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 4px 4px 12px;
-}
-
-.hello {
-  font-size: 18px;
-  font-weight: 700;
-}
-
-.desc {
-  margin-top: 4px;
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.grow {
-  flex: 1;
-}
-
-.logout {
-  padding: 6px 11px;
-  font-size: 12px;
-  color: #4080ff;
-  background: #e8f0ff;
-  border: none;
-  border-radius: 999px;
-}
-
-.card {
-  padding: 14px;
-  background: #fff;
-  border-radius: 10px;
-}
-
-.quota {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-  background: #fff7ed;
-  border-radius: 8px;
-}
-
-.quota-label {
-  font-size: 12px;
-  color: #9a3412;
-}
-
-.quota-value {
-  font-size: 15px;
-  font-weight: 600;
-  color: #c2410c;
-}
-
-.field {
-  display: block;
-  margin-bottom: 12px;
-}
-
-.label {
-  display: block;
-  margin-bottom: 5px;
-  font-size: 12px;
-  color: #6b7280;
-}
-
-.input,
-.picker {
-  width: 100%;
-  height: 42px;
-  padding: 0 12px;
-  font-size: 14px;
-  background: #f5f7fb;
-  border: 1px solid #e5e7eb;
-  border-radius: 8px;
-}
-
-.result-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 9px 0;
-  border-bottom: 1px solid #f3f4f6;
-}
-
-.result-label {
-  font-size: 11px;
-  color: #9ca3af;
-}
-
-.result-value {
-  margin-top: 3px;
-  font-size: 14px;
-  color: #4080ff;
-  word-break: break-all;
-}
-
-.copy {
-  font-size: 13px;
-  color: #4080ff;
-  background: none;
-  border: none;
-}
-
-.actions {
-  display: flex;
-  gap: 8px;
-  margin-top: 12px;
-}
-
-.btn {
-  flex: 1;
-  height: 42px;
-  font-size: 14px;
-  border: none;
-  border-radius: 8px;
-}
-
-.btn.primary {
-  color: #fff;
-  background: #4080ff;
-}
-
-.btn.ghost {
-  color: #374151;
-  background: #f3f4f6;
-}
-
-.btn:disabled {
-  opacity: 0.7;
-}
-
-.empty {
-  text-align: center;
-  color: #9ca3af;
-  font-size: 13px;
+.regcode__tabs {
+  margin-bottom: lp.$space-3;
+  :deep(.el-tabs__header) {
+    margin: 0;
+  }
+  &.is-mobile {
+    position: sticky;
+    top: var(--topbar-h, 44px);
+    z-index: 5;
+    margin: calc(-1 * #{lp.$page-padding-mobile}) calc(-1 * #{lp.$page-padding-mobile}) lp.$space-3;
+    padding: 0 lp.$page-padding-mobile;
+    background: var(--el-bg-color);
+    :deep(.el-tabs__nav) {
+      width: 100%;
+    }
+    :deep(.el-tabs__item) {
+      flex: 1;
+      height: 44px;
+      font-size: lp.$font-size-mobile-body;
+    }
+  }
 }
 </style>

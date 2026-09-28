@@ -2,15 +2,15 @@
  * 注册码（/common/...，接口表 #6–#14）。准入由后端 403（注册码访问规则）+ 菜单授权决定，前端不写角色规则。
  * 业务错误（次数不足、用户名已存在、人数已满等）是 HTTP 200 + status 500，请求层直接提示 message。
  */
-import { http } from './request'
+import { http, type RequestOptions } from './request'
 import type { RegCodeQuota, RegCodeSubUserList, RegCodeSubUserQuota } from './types'
 
 const enc = encodeURIComponent
 
 export const regCodeApi = {
   /** #6 当前用户可用的注册码配置（GET，不带参数，身份只看 token；一个都没有时是空数组） */
-  listRegCodeConfig() {
-    return http.get<any>('/common/regCodeConfig/list')
+  listRegCodeConfig(opts: Pick<RequestOptions, 'silent'> = {}) {
+    return http.get<any>('/common/regCodeConfig/list', undefined, opts)
   },
   /** #7 当前用户的次数（按配置分别计算，见 RegCodeQuota.items） */
   myQuota() {
@@ -21,11 +21,11 @@ export const regCodeApi = {
     return http.post<Record<string, string>>('/common/regCode/genTempRegCode', params)
   },
 
-  /* ---------- 子用户（#9–#14，界面第二块做） ---------- */
+  /* ---------- 子用户（#9–#14） ---------- */
 
   /** #9 自己建的子用户列表 */
-  listSubUsers() {
-    return http.get<RegCodeSubUserList>('/common/regCode/subUsers')
+  listSubUsers(opts: Pick<RequestOptions, 'silent'> = {}) {
+    return http.get<RegCodeSubUserList>('/common/regCode/subUsers', undefined, opts)
   },
   /** #10 新建子用户：密码由创建人填（≥6 位），quotas 从自己的剩余里划拨 */
   createSubUser(data: { username: string; nickname?: string; password: string; quotas: Array<{ configId: string; count: number }> }) {
