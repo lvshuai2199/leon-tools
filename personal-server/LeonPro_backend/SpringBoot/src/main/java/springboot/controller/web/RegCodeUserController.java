@@ -11,6 +11,7 @@ import springboot.domain.RegCodeConfig;
 import springboot.domain.RegCodeUser;
 import springboot.domain.SysRoles;
 import springboot.domain.SysUsers;
+import springboot.service.AuthTokenService;
 import springboot.service.RegCodeAccessService;
 import springboot.service.RegCodeConfigService;
 import springboot.service.RegCodeQuotaService;
@@ -42,14 +43,17 @@ public class RegCodeUserController {
     private final SysUsersService sysUsersService;
     private final SysRolesService sysRolesService;
     private final RegCodeQuotaService regCodeQuotaService;
+    private final AuthTokenService authTokenService;
 
     public RegCodeUserController(RegCodeUserService regCodeUserService,
                                  RegCodeAccessService regCodeAccessService,
                                  RegCodeConfigService regCodeConfigService,
                                  SysUsersService sysUsersService,
                                  SysRolesService sysRolesService,
-                                 RegCodeQuotaService regCodeQuotaService) {
+                                 RegCodeQuotaService regCodeQuotaService,
+                                 AuthTokenService authTokenService) {
         this.regCodeQuotaService = regCodeQuotaService;
+        this.authTokenService = authTokenService;
         this.regCodeUserService = regCodeUserService;
         this.regCodeAccessService = regCodeAccessService;
         this.regCodeConfigService = regCodeConfigService;
@@ -157,9 +161,9 @@ public class RegCodeUserController {
             return ApiResponse.failure(err);
         }
 
-        RegCodeUser entity = this.regCodeUserService.getById(form.getId());
+        RegCodeUser entity = resolveRow(form.getId());
         if (entity == null) {
-            return ApiResponse.failure("注册码用户不存在");
+            return notFound();
         }
         form.setUserId(entity.getUserId());
         SysUsers existing = this.sysUsersService.getById(entity.getUserId());
@@ -183,6 +187,12 @@ public class RegCodeUserController {
         return ApiResponse.success("保存成功");
     }
 
+    /**
+     * 删除客户（id 可以是列表里的 id（reg_code_user.id），也可以是 userId）：删除客户的次数记录和注册码账号；
+     * 客户本身是子账号或注册码客户角色时一并删除其登录账号。
+     * 客户在注册码页创建的子用户<b>不删除</b>：保留账号（以后可转给别的客户），自动停用、未用次数作废（不退给任何人），
+     * 并吊销它们已登录的 token。返回 {removed, retiredSubUsers, voidedTotal}。
+     */
     @PostMapping("del")
     public ApiResponse delete(@RequestBody List<String> idList, HttpServletRequest request) {
         String err = regCodeAccessService.requireManager(request);
@@ -192,48 +202,67 @@ public class RegCodeUserController {
         if (idList == null || idList.isEmpty()) {
             return ApiResponse.failure("请选择要删除的记录");
         }
-        List<RegCodeUser> rows = this.regCodeUserService.listByIds(idList);
-        List<String> childUserIds = new ArrayList<>();
-        for (RegCodeUser row : rows) {
-            SysUsers user = this.sysUsersService.getById(row.getUserId());
-            if (user == null) {
-                this.regCodeQuotaService.removeAll(row.getUserId());
-                continue;
+        List<RegCodeUser> rows = new ArrayList<>();
+        for (String id : idList) {
+            RegCodeUser row = resolveRow(id);
+            if (row == null) {
+                return notFound();
             }
-            String ownErr = denyIfNotOwnChild(request, user);
+            if (rows.stream().noneMatch(r -> r.getId().equals(row.getId()))) {
+                rows.add(row);
+            }
+        }
+        // 先整体做权限检查，避免删到一半才发现某条无权操作
+        for (RegCodeUser row : rows) {
+            String ownErr = denyIfNotOwnChild(request, this.sysUsersService.getById(row.getUserId()));
             if (ownErr != null) {
                 return ApiResponse.failure(ownErr);
             }
+        }
+        List<String> accountUserIds = new ArrayList<>();
+        List<String> retired = new ArrayList<>();
+        int voided = 0;
+        for (RegCodeUser row : rows) {
+            SysUsers user = this.sysUsersService.getById(row.getUserId());
             this.regCodeQuotaService.removeAll(row.getUserId());
-            // 客户在注册码页创建的子用户（角色为注册码客户、parent_id = 该客户）一并删除
-            List<SysUsers> subUsers = this.sysUsersService.list(new LambdaQueryWrapper<SysUsers>()
-                    .eq(SysUsers::getParentId, user.getId())
-                    .eq(SysUsers::getRoleId, RegCodeAccessService.ROLE_REGCODE_CLIENT_ID));
-            for (SysUsers sub : subUsers) {
-                this.regCodeQuotaService.removeAll(sub.getId());
-                this.regCodeUserService.remove(new LambdaQueryWrapper<RegCodeUser>().eq(RegCodeUser::getUserId, sub.getId()));
-                childUserIds.add(sub.getId());
+            if (user == null) {
+                continue;
+            }
+            if (!this.regCodeAccessService.isAdminAccount(user)) {
+                RegCodeQuotaService.RetireResult r = this.regCodeQuotaService.retireSubUsers(user.getId());
+                retired.addAll(r.getUserIds());
+                voided += r.getVoidedTotal();
             }
             boolean isChild = (user.getParentId() != null && !user.getParentId().isBlank())
                     || RegCodeAccessService.ROLE_REGCODE_CLIENT_ID.equals(user.getRoleId());
             if (isChild) {
-                childUserIds.add(user.getId());
+                accountUserIds.add(user.getId());
             }
         }
-        boolean removed = this.regCodeUserService.removeByIds(idList);
-        if (!childUserIds.isEmpty()) {
-            this.sysUsersService.removeByIds(childUserIds);
+        boolean removed = this.regCodeUserService.removeByIds(rows.stream().map(RegCodeUser::getId).toList());
+        if (!accountUserIds.isEmpty()) {
+            this.sysUsersService.removeByIds(accountUserIds);
         }
-        return ApiResponse.success(removed);
+        for (String id : accountUserIds) {
+            this.authTokenService.revokeAllForUser(id);
+        }
+        for (String id : retired) {
+            this.authTokenService.revokeAllForUser(id);
+        }
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("removed", removed);
+        result.put("retiredSubUsers", retired.size());
+        result.put("voidedTotal", voided);
+        return ApiResponse.success(result);
     }
 
     /** 某客户在注册码页创建的子用户，返回结构与 GET /common/regCode/subUsers 相同 */
     @GetMapping("{customerId}/subUsers")
     public ApiResponse listSubUsers(@PathVariable("customerId") String customerId, HttpServletRequest request) {
         requireManagerOrThrow(request);
-        SysUsers customer = customerId == null ? null : this.sysUsersService.getById(customerId);
+        SysUsers customer = resolveUser(customerId);
         if (customer == null) {
-            return ApiResponse.failure("注册码用户不存在");
+            return notFound();
         }
         requireManages(request, customer);
         return ApiResponse.success(this.regCodeQuotaService.subUserList(customer));
@@ -261,6 +290,38 @@ public class RegCodeUserController {
         return ApiResponse.success(this.regCodeQuotaService.subUserQuota(sub, this.sysUsersService.getById(sub.getParentId())));
     }
 
+    /**
+     * 客户 / 子用户 id 两种都认：先按 sys_users.id 找，找不到再按 reg_code_user.id 找到对应账号。
+     * 管理端列表（getAll）每条同时有 id（reg_code_user.id）和 userId。
+     */
+    private SysUsers resolveUser(String id) {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        String key = id.trim();
+        SysUsers user = this.sysUsersService.getById(key);
+        if (user != null) {
+            return user;
+        }
+        RegCodeUser row = this.regCodeUserService.getById(key);
+        return row == null || row.getUserId() == null ? null : this.sysUsersService.getById(row.getUserId());
+    }
+
+    /** reg_code_user 行：先按行 id 找，找不到再按 user_id 找 */
+    private RegCodeUser resolveRow(String id) {
+        if (id == null || id.isBlank()) {
+            return null;
+        }
+        String key = id.trim();
+        RegCodeUser row = this.regCodeUserService.getById(key);
+        return row != null ? row : this.regCodeAccessService.getAssignment(key);
+    }
+
+    /** 找不到客户：业务错误 {status: 404}（HTTP 200），不是 500 */
+    private static ApiResponse notFound() {
+        return ApiResponse.withStatus(404, "注册码用户不存在", null);
+    }
+
     private void requireManagerOrThrow(HttpServletRequest request) {
         String err = regCodeAccessService.requireManager(request);
         if (err != null) {
@@ -278,7 +339,7 @@ public class RegCodeUserController {
 
     /** subId 必须是某个客户在注册码页创建的子用户，且该客户归当前管理员管理；否则 403 */
     private SysUsers requireSubUser(HttpServletRequest request, String subId) {
-        SysUsers sub = subId == null ? null : this.sysUsersService.getById(subId);
+        SysUsers sub = resolveUser(subId);
         if (sub == null || !this.regCodeAccessService.isBottomSubUser(sub)) {
             throw new ForbiddenException("不是注册码页创建的子用户");
         }

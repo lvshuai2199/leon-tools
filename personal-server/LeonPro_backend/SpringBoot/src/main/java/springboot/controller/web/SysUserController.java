@@ -10,7 +10,9 @@ import springboot.DTO.UserDto;
 import springboot.domain.SysRoles;
 import springboot.domain.SysUsers;
 import jakarta.servlet.http.HttpServletRequest;
+import springboot.service.AuthTokenService;
 import springboot.service.RegCodeAccessService;
+import springboot.service.RegCodeQuotaService;
 import springboot.service.SysRoleMenuService;
 import springboot.service.SysRolesService;
 import springboot.service.SysUsersService;
@@ -50,6 +52,12 @@ public class SysUserController {
 
     @Autowired
     private RegCodeAccessService regCodeAccessService;
+
+    @Autowired
+    private RegCodeQuotaService regCodeQuotaService;
+
+    @Autowired
+    private AuthTokenService authTokenService;
 
     /**
      * 分页查询所有数据
@@ -116,6 +124,10 @@ public class SysUserController {
                 sysUsers.setPassword(userDto.getPassword());
             }
             boolean updated = this.sysUsersService.updateById(sysUsers);
+            if (updated && sysUsers.getPassword() != null) {
+                // 管理员改了密码：该用户已登录的 token 全部作废
+                this.authTokenService.revokeAllForUser(sysUsers.getId());
+            }
             return ApiResponse.success(updated ? "User updated successfully." : "User update failed.");
         }
 
@@ -150,15 +162,34 @@ public class SysUserController {
         }
         checkDeletePrivilege(userIds, httpRequest);
 
-        LambdaQueryWrapper<SysUsers> children = new LambdaQueryWrapper<>();
-        children.in(SysUsers::getParentId, userIds);
-        List<String> childIds = this.sysUsersService.list(children).stream()
-                .map(SysUsers::getId)
-                .filter(id -> id != null && !id.isBlank())
-                .toList();
+        // 子账号的处理：
+        //  · 被删的是注册码客户（或其它不能登录管理端的账号）时，它在注册码页创建的子用户不删除：
+        //    保留账号（以后可转给别的客户），自动停用、未用次数作废、吊销 token；
+        //  · 被删的是管理端账号时，挂在它下面的子账号照旧一并删除。
         java.util.LinkedHashSet<String> allIds = new java.util.LinkedHashSet<>(userIds);
-        allIds.addAll(childIds);
+        List<String> retired = new java.util.ArrayList<>();
+        for (String id : userIds) {
+            SysUsers parent = this.sysUsersService.getById(id);
+            if (parent != null && !this.regCodeAccessService.isAdminAccount(parent)) {
+                retired.addAll(this.regCodeQuotaService.retireSubUsers(parent.getId()).getUserIds());
+                continue;
+            }
+            LambdaQueryWrapper<SysUsers> children = new LambdaQueryWrapper<>();
+            children.eq(SysUsers::getParentId, id);
+            this.sysUsersService.list(children).stream()
+                    .map(SysUsers::getId)
+                    .filter(cid -> cid != null && !cid.isBlank())
+                    .forEach(allIds::add);
+        }
+        // 同时被勾选删除的子用户按删除处理
+        retired.removeIf(userIds::contains);
         boolean result = sysUsersService.removeByIds(allIds);
+        for (String id : allIds) {
+            this.authTokenService.revokeAllForUser(id);
+        }
+        for (String id : retired) {
+            this.authTokenService.revokeAllForUser(id);
+        }
 
         if (result) {
             return ApiResponse.success("Users deleted successfully");

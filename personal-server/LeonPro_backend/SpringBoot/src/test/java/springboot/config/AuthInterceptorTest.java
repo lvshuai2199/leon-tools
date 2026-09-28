@@ -152,6 +152,23 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void disabledAccountTokenIs401EverywhereAndIsDropped() throws Exception {
+        when(users.getById("u-dis")).thenReturn(user("u-dis", "dis", "role_sub"));
+        when(access.isRegCodeDisabled(any())).thenAnswer(inv -> {
+            SysUsers u = inv.getArgument(0);
+            return u != null && "u-dis".equals(u.getId());
+        });
+        String t = tokens.issue("u-dis");
+        expect401(mvc.perform(get("/auth/me").header("Authorization", "Bearer " + t)));
+        org.junit.jupiter.api.Assertions.assertNull(tokens.resolve(t), "停用账号的 token 被删除");
+        String t2 = tokens.issue("u-dis");
+        expect401(mvc.perform(get("/common/regCodeUser/myQuota").header("Authorization", "Bearer " + t2)));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer " + tokens.issue("u-dis"))));
+        // 其他账号不受影响
+        mvc.perform(get("/auth/me").header("Authorization", "Bearer " + tokens.issue("u-sub"))).andExpect(status().isOk());
+    }
+
+    @Test
     void adminAppCommonAndRemovedLegacyPathsRequireToken() throws Exception {
         expect401(mvc.perform(get("/admin/sysUsers/getUsers")));
         expect401(mvc.perform(get("/admin/wallpaper/group/list").header("X-Username", "admin")));

@@ -9,7 +9,9 @@ import springboot.DTO.UsersDelDto;
 import springboot.controller.web.SysUserController;
 import springboot.domain.SysRoles;
 import springboot.domain.SysUsers;
+import springboot.service.AuthTokenService;
 import springboot.service.RegCodeAccessService;
+import springboot.service.RegCodeQuotaService;
 import springboot.service.SysRoleMenuService;
 import springboot.service.SysRolesService;
 import springboot.service.SysUsersService;
@@ -21,7 +23,10 @@ import static org.junit.jupiter.api.Assertions.assertDoesNotThrow;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class SysUserControllerPrivilegeTest {
@@ -30,6 +35,8 @@ class SysUserControllerPrivilegeTest {
     SysRolesService roles;
     SysRoleMenuService roleMenus;
     RegCodeAccessService access;
+    RegCodeQuotaService quota;
+    AuthTokenService tokens;
     SysUserController controller;
     SysUsers operator;
     MockHttpServletRequest req = new MockHttpServletRequest();
@@ -69,6 +76,11 @@ class SysUserControllerPrivilegeTest {
         ReflectionTestUtils.setField(controller, "sysRolesService", roles);
         ReflectionTestUtils.setField(controller, "sysRoleMenuService", roleMenus);
         ReflectionTestUtils.setField(controller, "regCodeAccessService", access);
+        quota = mock(RegCodeQuotaService.class);
+        tokens = mock(AuthTokenService.class);
+        ReflectionTestUtils.setField(controller, "regCodeQuotaService", quota);
+        ReflectionTestUtils.setField(controller, "authTokenService", tokens);
+        when(quota.retireSubUsers(anyString())).thenAnswer(inv -> new RegCodeQuotaService.RetireResult());
 
         operator = u("mgr", "role_mgr");
         SysUsers root = u("root", "role_root");
@@ -117,5 +129,43 @@ class SysUserControllerPrivilegeTest {
         operator = u("root", "role_root");
         assertDoesNotThrow(() -> controller.sysUserRegister(dto("u1", "role_root"), req));
         assertEquals(200, controller.sysUserRegister(dto("u1", "role_big"), req).getStatus());
+    }
+
+    @Test
+    void passwordChangeRevokesTokens() {
+        operator = u("root", "role_root");
+        controller.sysUserRegister(dto("u1", "role_small"), req);
+        verify(tokens).revokeAllForUser("u1");
+        UserDto noPwd = dto("u1", "role_small");
+        noPwd.setPassword("");
+        tokens = mock(AuthTokenService.class);
+        ReflectionTestUtils.setField(controller, "authTokenService", tokens);
+        controller.sysUserRegister(noPwd, req);
+        verify(tokens, never()).revokeAllForUser(anyString());
+    }
+
+    @Test
+    void deletingCustomerKeepsItsSubUsersButDeletingAdminCascades() {
+        operator = u("root", "role_root");
+        SysUsers cust = u("cust", "role_regcode_client");
+        SysUsers adm = u("adm", "role_small");
+        when(users.getById("cust")).thenReturn(cust);
+        when(users.getById("adm")).thenReturn(adm);
+        when(users.listByIds(any())).thenReturn(List.of(cust, adm));
+        when(access.isAdminAccount(any())).thenAnswer(inv -> inv.getArgument(0) == adm);
+        RegCodeQuotaService.RetireResult rr = new RegCodeQuotaService.RetireResult();
+        rr.getUserIds().add("custSub");
+        when(quota.retireSubUsers("cust")).thenReturn(rr);
+        when(users.list(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(List.of(u("admChild", "role_x")));
+        when(users.removeByIds(any(java.util.Collection.class))).thenReturn(true);
+        UsersDelDto d = new UsersDelDto();
+        d.setUserIds(List.of("cust", "adm"));
+        controller.delUsers(d, req);
+        verify(quota).retireSubUsers("cust");
+        verify(quota, never()).retireSubUsers("adm");
+        verify(users).removeByIds(org.mockito.ArgumentMatchers.<java.util.Collection<String>>argThat(ids ->
+                ids.containsAll(List.of("cust", "adm", "admChild")) && !ids.contains("custSub")));
+        verify(tokens).revokeAllForUser("custSub");
+        verify(tokens).revokeAllForUser("admChild");
     }
 }

@@ -288,6 +288,58 @@ public class RegCodeQuotaService {
         }
     }
 
+    /**
+     * 创建人（客户）被删除时处理它的子用户（产品规则：不删除子用户，留待以后转给别的客户）：
+     * 子用户保留（sys_users 行和 parent_id 都不动），注册码账号设为停用（没有 reg_code_user 行的补一条停用行），
+     * 各配置未用的次数作废（generate_limit 设为 generate_used，不退给任何人）。登录 token 由调用方在事务提交后吊销。
+     *
+     * @return 被处理的子用户 id 和作废的次数合计
+     */
+    @Transactional(rollbackFor = Exception.class)
+    public RetireResult retireSubUsers(String creatorId) {
+        RetireResult result = new RetireResult();
+        if (creatorId == null || creatorId.isBlank()) {
+            return result;
+        }
+        List<SysUsers> subs = sysUsersService.list(new LambdaQueryWrapper<SysUsers>().eq(SysUsers::getParentId, creatorId));
+        Date now = DateUtils.getNow();
+        for (SysUsers sub : subs) {
+            if (sub == null || sub.getId() == null || sub.getId().isBlank()) {
+                continue;
+            }
+            int changed = jdbc.update("UPDATE reg_code_user SET status = ?, update_time = ? WHERE user_id = ?",
+                    RegCodeAccessService.STATUS_DISABLED, now, sub.getId());
+            if (changed == 0) {
+                RegCodeUser row = new RegCodeUser();
+                row.setUserId(sub.getId());
+                row.setGenerateLimit(0);
+                row.setGenerateUsed(0);
+                row.setMaxSubUsers(0);
+                row.setStatus(RegCodeAccessService.STATUS_DISABLED);
+                row.setRemark("创建人已删除，自动停用");
+                row.setCreateTime(now);
+                row.setUpdateTime(now);
+                regCodeUserService.save(row);
+            }
+            Integer unused = jdbc.queryForObject(
+                    "SELECT COALESCE(SUM(generate_limit - generate_used), 0) FROM reg_code_user_config "
+                            + "WHERE user_id = ? AND generate_limit > generate_used FOR UPDATE",
+                    Integer.class, sub.getId());
+            jdbc.update("UPDATE reg_code_user_config SET generate_limit = generate_used "
+                    + "WHERE user_id = ? AND generate_limit > generate_used", sub.getId());
+            result.getUserIds().add(sub.getId());
+            result.setVoidedTotal(result.getVoidedTotal() + (unused == null ? 0 : unused));
+        }
+        return result;
+    }
+
+    /** {@link #retireSubUsers} 的结果 */
+    @lombok.Data
+    public static class RetireResult {
+        private List<String> userIds = new ArrayList<>();
+        private int voidedTotal;
+    }
+
     /** 删除某账号全部次数行 */
     @Transactional(rollbackFor = Exception.class)
     public void removeAll(String userId) {

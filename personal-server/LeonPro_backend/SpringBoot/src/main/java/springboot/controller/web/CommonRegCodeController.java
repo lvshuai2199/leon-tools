@@ -15,6 +15,7 @@ import springboot.domain.ComRegistration;
 import springboot.domain.RegCodeConfig;
 import springboot.domain.SysUsers;
 import springboot.enums.RegCodeType;
+import springboot.service.AuthTokenService;
 import springboot.service.RegCodeAccessService;
 import springboot.service.RegCodeConfigService;
 import springboot.service.RegCodeQuotaService;
@@ -42,11 +43,14 @@ public class CommonRegCodeController {
     private final RegCodeConfigService regCodeConfigService;
     private final RegCodeQuotaService regCodeQuotaService;
     private final SysUsersService sysUsersService;
+    private final AuthTokenService authTokenService;
 
     public CommonRegCodeController(RegCodeAccessService regCodeAccessService,
                                    RegCodeConfigService regCodeConfigService,
                                    RegCodeQuotaService regCodeQuotaService,
-                                   SysUsersService sysUsersService) {
+                                   SysUsersService sysUsersService,
+                                   AuthTokenService authTokenService) {
+        this.authTokenService = authTokenService;
         this.regCodeAccessService = regCodeAccessService;
         this.regCodeConfigService = regCodeConfigService;
         this.regCodeQuotaService = regCodeQuotaService;
@@ -133,7 +137,12 @@ public class CommonRegCodeController {
         if (form == null || form.getStatus() == null) {
             return ApiResponse.failure("请指定状态");
         }
-        return ApiResponse.success(this.regCodeQuotaService.setStatus(me, sub, form.getStatus()));
+        RegCodeSubUser.StatusResult result = this.regCodeQuotaService.setStatus(me, sub, form.getStatus());
+        if (form.getStatus() == RegCodeAccessService.STATUS_DISABLED) {
+            // 停用后该子用户已登录的 token 全部作废，之后任何请求都是 401
+            this.authTokenService.revokeAllForUser(sub.getId());
+        }
+        return ApiResponse.success(result);
     }
 
     /** 重置子用户密码：返回 {password}，新密码只在这一次返回 */
@@ -141,7 +150,10 @@ public class CommonRegCodeController {
     public ApiResponse resetSubUserPassword(@PathVariable("id") String id, HttpServletRequest request) {
         SysUsers me = requireSubUserManager(request);
         SysUsers sub = ownSubUser(me, id);
-        return ApiResponse.success(java.util.Map.of("password", this.regCodeQuotaService.resetPassword(sub)));
+        String password = this.regCodeQuotaService.resetPassword(sub);
+        // 重置密码后旧 token 全部作废
+        this.authTokenService.revokeAllForUser(sub.getId());
+        return ApiResponse.success(java.util.Map.of("password", password));
     }
 
     private SysUsers requireSubUserManager(HttpServletRequest request) {

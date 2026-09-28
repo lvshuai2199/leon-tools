@@ -29,6 +29,7 @@ class RegCodeQuotaServiceTest {
     ComRegistrationService records;
     RegCodeAccessService access;
     SysUsersService users;
+    RegCodeUserService regUsers;
     RegCodeQuotaService svc;
 
     @BeforeEach
@@ -37,7 +38,8 @@ class RegCodeQuotaServiceTest {
         records = mock(ComRegistrationService.class);
         access = mock(RegCodeAccessService.class);
         users = mock(SysUsersService.class);
-        svc = new RegCodeQuotaService(jdbc, users, mock(RegCodeUserService.class), mock(RegCodeUserConfigService.class),
+        regUsers = mock(RegCodeUserService.class);
+        svc = new RegCodeQuotaService(jdbc, users, regUsers, mock(RegCodeUserConfigService.class),
                 mock(RegCodeConfigService.class), records, access);
     }
 
@@ -112,5 +114,26 @@ class RegCodeQuotaServiceTest {
         assertEquals(3, r.getRefundedTotal());
         assertEquals("cfg", r.getRefunded().get(0).getConfigId());
         verify(jdbc).update(startsWith("UPDATE reg_code_user_config SET generate_limit = generate_limit + ?"), eq(3), eq("creatorRow"));
+    }
+
+    @Test
+    void retireSubUsersDisablesAndVoidsButKeepsAccounts() {
+        when(users.list(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(List.of(u("s1"), u("s2")));
+        when(jdbc.update(startsWith("UPDATE reg_code_user SET status"), eq(0), any(), eq("s1"))).thenReturn(1);
+        when(jdbc.update(startsWith("UPDATE reg_code_user SET status"), eq(0), any(), eq("s2"))).thenReturn(0);
+        when(jdbc.queryForObject(startsWith("SELECT COALESCE(SUM(generate_limit - generate_used)"), eq(Integer.class), eq("s1"))).thenReturn(7);
+        when(jdbc.queryForObject(startsWith("SELECT COALESCE(SUM(generate_limit - generate_used)"), eq(Integer.class), eq("s2"))).thenReturn(0);
+        RegCodeQuotaService.RetireResult r = svc.retireSubUsers("cust");
+        assertEquals(List.of("s1", "s2"), r.getUserIds());
+        assertEquals(7, r.getVoidedTotal());
+        verify(jdbc).update(startsWith("UPDATE reg_code_user_config SET generate_limit = generate_used"), eq("s1"));
+        verify(jdbc).update(startsWith("UPDATE reg_code_user_config SET generate_limit = generate_used"), eq("s2"));
+        // s2 没有 reg_code_user 行：补一条停用行，保证登录被拒
+        verify(regUsers).save(org.mockito.ArgumentMatchers.argThat(row -> "s2".equals(row.getUserId()) && row.getStatus() == 0));
+        verify(users, never()).removeByIds(any(java.util.Collection.class));
+        verify(users, never()).removeById(anyString());
+        // 不退回任何人
+        verify(jdbc, never()).update(startsWith("UPDATE reg_code_user_config SET generate_limit = generate_limit +"), any(Object[].class));
+        assertTrue(svc.retireSubUsers(null).getUserIds().isEmpty());
     }
 }
