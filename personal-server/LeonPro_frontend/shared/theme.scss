@@ -1,0 +1,195 @@
+// LeonPro 共用主题：管理端 vue3_frontend 和用户端共用，取值来自美工的主题清单（2026-09-28）。
+//
+// 用法：
+//   1. 在 scss 里取值：        @use "<相对路径>/shared/theme" as lp;   color: lp.$primary;
+//   2. 全局样式里输出 CSS 变量（整个项目只 include 一次）：  @include lp.css-vars;
+//   3. 用户端手机布局额外输出 44px 尺寸：  .your-mobile-root { @include lp.mobile-vars; }
+//
+// 本文件本身不输出任何 CSS，可以放心在 additionalData 里 @use。
+// 主色、危险、成功、警告的 hover / 按下 / 浅底色由基础色按 Element Plus 的规则混色生成，不单独取色。
+// 深色模式只单独配主色 #3B82F6，其余颜色沿用 Element Plus 自带的深色值。
+
+@use "sass:color";
+@use "sass:math";
+
+// 需要 sass 1.79 及以上（用到 color.channel）
+
+// ---------- 颜色 ----------
+$primary: #2563eb;
+$primary-dark-mode: #3b82f6;
+$danger: #dc2626;
+$success: #15803d;
+$success-bg: #dcfce7;
+$warning: #b45309;
+$warning-bg: #fef3c7;
+$crab: #ea580c; // 只做蟹单图标底色、分享页顶部渐变，不做按钮
+$crab-text: #c2410c; // 规格数量等橙色文字
+
+$text-primary: #1f2329;
+$text-regular: #4b5563;
+$text-secondary: #6b7280; // 说明文字、空状态图标和文字
+$text-placeholder: #a8abb2;
+$border: #dcdfe6;
+$border-lighter: #ebeef5; // 分割线
+$bg-page: #f5f7fa;
+$bg: #ffffff; // 卡片、弹窗
+$overlay: rgba(0, 0, 0, 0.5);
+
+// Element Plus 混色用的底色（与 Element Plus 自身一致）
+$_mix-white: #ffffff;
+$_mix-black: #000000;
+$_mix-dark-bg: #141414;
+
+// ---------- 圆角 ----------
+$radius-small: 4px; // 标签
+$radius-base: 8px; // 按钮、输入框、下拉框
+$radius-card: 12px; // 卡片、弹窗、底部抽屉顶部两角
+
+// ---------- 字体 ----------
+$font-family:
+  -apple-system, BlinkMacSystemFont, "PingFang SC", "Microsoft YaHei", "Helvetica Neue", Arial,
+  sans-serif;
+$font-size-extra-small: 12px; // 辅助说明
+$font-size-base: 14px; // 电脑正文
+$font-size-mobile-body: 15px; // 手机正文
+$font-size-medium: 16px; // 手机输入框、电脑小标题
+$font-size-large: 18px; // 页面标题、卡片标题
+$font-size-extra-large: 20px; // 电脑页面大标题
+$line-height: 1.5;
+$font-weight-regular: 400;
+$font-weight-medium: 500;
+$font-weight-semibold: 600;
+
+// ---------- 间距 ----------
+$space-1: 4px; // 只用于紧凑处
+$space-2: 8px;
+$space-3: 12px;
+$space-4: 16px;
+$space-5: 24px;
+$space-6: 32px;
+$page-padding-mobile: 12px;
+$page-padding-desktop: 24px;
+$card-padding: 16px;
+$thumb-gap-mobile: 8px;
+$thumb-gap-desktop: 16px;
+
+// ---------- 尺寸 ----------
+$component-size-desktop: 32px; // Element Plus 默认
+$component-size-mobile: 44px; // 手机按钮、输入框、可点的行
+$mobile-topbar-height: 44px;
+$mobile-tabbar-height: 50px; // 另加 env(safe-area-inset-bottom)
+$dialog-width-desktop: 480px;
+
+// ---------- 阴影 ----------
+$shadow-card: 0 2px 8px rgba(0, 0, 0, 0.06);
+
+// ---------- 断点 ----------
+$breakpoint-tablet: 768px; // 小于它是手机布局
+$breakpoint-desktop: 1200px; // 大于等于它是完整电脑布局
+
+// 手机布局：@include lp.mobile { ... }
+@mixin mobile {
+  @media (max-width: #{$breakpoint-tablet - 1px}) {
+    @content;
+  }
+}
+
+// 768–1199：电脑布局但去掉侧边栏
+@mixin tablet {
+  @media (min-width: $breakpoint-tablet) and (max-width: #{$breakpoint-desktop - 1px}) {
+    @content;
+  }
+}
+
+@mixin desktop {
+  @media (min-width: $breakpoint-desktop) {
+    @content;
+  }
+}
+
+// 混色后各通道取整，输出成十六进制
+@function _mix($with, $base, $weight) {
+  $c: color.mix($with, $base, $weight);
+  @return rgb(
+    math.round(color.channel($c, "red", $space: rgb)),
+    math.round(color.channel($c, "green", $space: rgb)),
+    math.round(color.channel($c, "blue", $space: rgb))
+  );
+}
+
+// 按 Element Plus 的规则生成一种颜色的整组变量
+@mixin _el-color($name, $base, $light-with, $dark-with) {
+  --el-color-#{$name}: #{$base};
+  @each $i in 1, 2, 3, 4, 5, 6, 7, 8, 9 {
+    --el-color-#{$name}-light-#{$i}: #{_mix($light-with, $base, $i * 10%)};
+  }
+  --el-color-#{$name}-dark-2: #{_mix($dark-with, $base, 20%)};
+}
+
+// 输出全局 CSS 变量。选择器权重高于 Element Plus 自带的 :root 和 html.dark，所以和引入顺序无关。
+@mixin css-vars {
+  :root {
+    --el-font-family: #{$font-family};
+    --el-font-size-extra-small: #{$font-size-extra-small};
+    --el-font-size-base: #{$font-size-base};
+    --el-font-size-medium: #{$font-size-medium};
+    --el-font-size-large: #{$font-size-large};
+    --el-font-size-extra-large: #{$font-size-extra-large};
+    --el-border-radius-small: #{$radius-small};
+    --el-border-radius-base: #{$radius-base};
+
+    --lp-color-crab: #{$crab};
+    --lp-color-crab-text: #{$crab-text};
+    --lp-color-success-bg: #{$success-bg};
+    --lp-color-warning-bg: #{$warning-bg};
+    --lp-radius-card: #{$radius-card};
+    --lp-shadow-card: #{$shadow-card};
+    --lp-line-height: #{$line-height};
+    --lp-font-size-mobile-body: #{$font-size-mobile-body};
+    --lp-space-1: #{$space-1};
+    --lp-space-2: #{$space-2};
+    --lp-space-3: #{$space-3};
+    --lp-space-4: #{$space-4};
+    --lp-space-5: #{$space-5};
+    --lp-space-6: #{$space-6};
+    --lp-page-padding-mobile: #{$page-padding-mobile};
+    --lp-page-padding-desktop: #{$page-padding-desktop};
+    --lp-card-padding: #{$card-padding};
+    --lp-thumb-gap-mobile: #{$thumb-gap-mobile};
+    --lp-thumb-gap-desktop: #{$thumb-gap-desktop};
+    --lp-mobile-topbar-height: #{$mobile-topbar-height};
+    --lp-mobile-tabbar-height: #{$mobile-tabbar-height};
+    --lp-dialog-width-desktop: #{$dialog-width-desktop};
+  }
+
+  // 浅色模式
+  html:root:not(.dark) {
+    @include _el-color("primary", $primary, $_mix-white, $_mix-black);
+    @include _el-color("danger", $danger, $_mix-white, $_mix-black);
+    @include _el-color("error", $danger, $_mix-white, $_mix-black);
+    @include _el-color("success", $success, $_mix-white, $_mix-black);
+    @include _el-color("warning", $warning, $_mix-white, $_mix-black);
+
+    --el-text-color-primary: #{$text-primary};
+    --el-text-color-regular: #{$text-regular};
+    --el-text-color-secondary: #{$text-secondary};
+    --el-text-color-placeholder: #{$text-placeholder};
+    --el-border-color: #{$border};
+    --el-border-color-lighter: #{$border-lighter};
+    --el-bg-color-page: #{$bg-page};
+    --el-bg-color: #{$bg};
+    --el-bg-color-overlay: #{$bg};
+    --el-overlay-color-lighter: #{$overlay};
+  }
+
+  // 深色模式：只换主色，其余用 Element Plus 自带的深色值
+  html.dark:root {
+    @include _el-color("primary", $primary-dark-mode, $_mix-dark-bg, $_mix-white);
+  }
+}
+
+// 用户端手机布局：按钮、输入框、可点的行 44px，配合 ElConfigProvider size="large"
+@mixin mobile-vars {
+  --el-component-size-large: #{$component-size-mobile};
+  --el-font-size-base: #{$font-size-mobile-body};
+}
