@@ -7,7 +7,7 @@ import { computed, reactive } from 'vue'
 import { fetchMe, logout as apiLogout, type MeRaw } from '@/api/auth'
 import { ApiError, resetAuthExpired } from '@/api/request'
 import type { AppMenu, UserInfo } from '@/api/types'
-import { canAccessMenu, homeToolMenus, menusFromLegacyFlags, normalizeAppMenus } from '@/utils/app-menus.js'
+import { canAccessMenu, homeToolMenus, normalizeAppMenus } from '@/utils/app-menus.js'
 import manifest from '@/router/menus.json'
 
 const STORAGE_KEY = 'lp_user'
@@ -68,10 +68,8 @@ function applyMe(raw: MeRaw) {
   const src = raw?.user && typeof raw.user === 'object' ? { ...raw.user, appMenus: raw.appMenus } : raw
   const { appMenus, token: _token, ...user } = (src || {}) as Record<string, unknown>
   state.user = { ...(state.user || {}), ...(user as UserInfo) }
-  let menus = normalizeAppMenus(appMenus as unknown[])
-  // 过渡：一期后端 appMenus 固定为空，改用它返回的 canUseCrab / canUseRegCode（见 menusFromLegacyFlags）
-  if (!menus.length) menus = menusFromLegacyFlags(user, manifest)
-  state.appMenus = menus
+  // 入口和守卫只看 appMenus；为空就是没有任何工具
+  state.appMenus = normalizeAppMenus(appMenus as unknown[])
   state.meLoaded = true
   persist()
 }
@@ -83,7 +81,7 @@ export const userStore = {
 
   isLoggedIn: computed(() => !!state.token),
   displayName: computed(() => state.user?.nickname || state.user?.username || '用户'),
-  /** GET /auth/me 的 regCode（子用户入口等，第二块用）；没取到时为 null */
+  /** GET /auth/me 的 regCode（注册码页的子用户入口）；没取到时为 null */
   regCode: computed(() => state.user?.regCode ?? null),
   /** 首页 / 工具标签里显示的工具（非 hidden 页面，按 sort） */
   tools: computed(() => homeToolMenus(state.appMenus)),

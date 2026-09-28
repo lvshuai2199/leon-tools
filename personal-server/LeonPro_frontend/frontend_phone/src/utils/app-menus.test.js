@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { canAccessMenu, homeToolMenus, menusFromLegacyFlags, normalizeAppMenus } from "./app-menus.js";
+import { canAccessMenu, homeToolMenus, normalizeAppMenus } from "./app-menus.js";
 
 const manifest = [
   { path: "/crab", parent: null, hidden: false },
@@ -64,21 +64,27 @@ test("首页工具卡只要非 hidden 的页面", () => {
   );
 });
 
-test("过渡兼容：appMenus 为空时按后端 canUseCrab / canUseRegCode 拼菜单", () => {
-  const full = [
-    { path: "/crab", name: "螃蟹出货", parent: null, type: "page", icon: "crab", sort: 1, hidden: false, component: "crab/list" },
-    { path: "/crab/new", name: "录入", parent: "/crab", type: "page", sort: 2, hidden: true, component: "crab/entry" },
-    { path: "/crab/:id", name: "详情", parent: "/crab", type: "page", sort: 3, hidden: true, component: "crab/edit" },
-    { path: "/regcode", name: "注册码生成", parent: null, type: "page", icon: "key", sort: 4, hidden: false, component: "regcode/index" },
+test("只看 appMenus：为空时没有任何工具和页面权限（canUseCrab / canUseRegCode 不再生效）", () => {
+  const menus = normalizeAppMenus([]);
+  assert.deepEqual(homeToolMenus(menus), []);
+  assert.equal(canAccessMenu(menus, "/crab"), false);
+  assert.equal(canAccessMenu(menus, "/regcode"), false);
+});
+
+test("后台菜单字段：按 menuUrl 对应清单 path，visible=0 的子页随父级授权", () => {
+  const manifest = [
+    { path: "/crab", parent: null, hidden: false },
+    { path: "/crab/new", parent: "/crab", hidden: true },
+    { path: "/crab/:id", parent: "/crab", hidden: true },
   ];
-  assert.deepEqual(
-    menusFromLegacyFlags({ canUseCrab: true, canUseRegCode: false }, full).map((m) => m.path),
-    ["/crab", "/crab/new", "/crab/:id"],
-  );
-  assert.deepEqual(
-    menusFromLegacyFlags({ canUseCrab: false, canUseRegCode: true }, full).map((m) => m.path),
-    ["/regcode"],
-  );
-  assert.deepEqual(menusFromLegacyFlags({}, full), []);
-  assert.deepEqual(menusFromLegacyFlags(null, full), []);
+  const menus = normalizeAppMenus([
+    { id: 11, menuName: "螃蟹出货", menuUrl: "/crab", parentId: 0, sortOrder: 1, icon: "crab", visible: 1, menuType: "C", permission: "", component: "crab/list", routeName: "crabList" },
+    { id: 12, menuName: "录入出货单", menuUrl: "/crab/new", parentId: 11, sortOrder: 2, icon: "", visible: 0, menuType: "C", permission: "", component: "crab/entry", routeName: "crabNew" },
+  ]);
+  assert.deepEqual(menus.map((m) => [m.path, m.hidden, m.parent]), [["/crab", false, null], ["/crab/new", true, "/crab"]]);
+  assert.deepEqual(homeToolMenus(menus).map((m) => m.path), ["/crab"]);
+  assert.equal(canAccessMenu(menus, "/crab/new", manifest), true);
+  // 清单里 hidden 的子页：父级已授权就可进
+  assert.equal(canAccessMenu(menus, "/crab/:id", manifest), true);
+  assert.equal(canAccessMenu(menus, "/regcode", manifest), false);
 });

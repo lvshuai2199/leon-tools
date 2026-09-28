@@ -1,12 +1,12 @@
 /**
  * 用户端菜单（GET /auth/me 的 appMenus）归一化与权限判断。纯函数，node --test 可直接测。
  *
- * 后端返回格式目前两份文档写法不同，这里两种都认：
- *  A. 设计文档 6.4：{ id, path, name, parent, type: "dir"|"page", icon, sort, hidden, component }
- *  B. 接口文档第 5 条（和后台菜单一样）：{ id, menuName, menuUrl, parentId, sortOrder, icon, visible, menuType,
- *     permission, component, routeName, routeKey? }
- *     完整路径优先用 routeKey；否则 menuUrl 以 / 开头就直接用，不以 / 开头时拼上父级路径。
- * 统一输出 A 格式，按 sort 升序。
+ * 入口和路由守卫只看 appMenus（不再有 canUseCrab / canUseRegCode 兜底）。
+ * 后端每项字段和后台菜单一致：{ id, menuName, menuUrl, parentId, sortOrder, icon, visible, menuType,
+ *   permission, component, routeName }，按 menuUrl 和 src/router/menus.json 的 path 对应：
+ *   menuUrl 以 / 开头就直接用；不以 / 开头时拼上父级路径。
+ * （也认设计文档 6.4 的 { id, path, name, parent, type, icon, sort, hidden, component } 写法。）
+ * 统一输出 AppMenu，按 sort 升序。
  */
 
 const DIR_TYPES = new Set(["dir", "directory", "m", "catalog"]);
@@ -104,35 +104,6 @@ export function canAccessMenu(menus, menuPath, manifest = []) {
     path = item.parent;
   }
   return false;
-}
-
-/**
- * 过渡兼容（一期后端）：现在的 GET /auth/me 因 sys_menus 还没有 client 字段，appMenus 固定返回空数组，
- * 另给了 canUseCrab / canUseRegCode 两个布尔值。appMenus 为空且有这两个字段时，按本地清单拼出等价菜单：
- * canUseCrab → /crab 及其 hidden 子页；canUseRegCode → /regcode。
- * 判断依据完全来自后端返回，前端不写角色规则；后端按清单返回 appMenus 后这段自动不再生效（可删）。
- * @param {Record<string, unknown>} me GET /auth/me 返回（已去掉 appMenus 之外的包装）
- * @param {Array<{path:string,name:string,parent?:string|null,type:string,icon?:string,sort?:number,hidden?:boolean,component?:string}>} manifest
- */
-export function menusFromLegacyFlags(me, manifest) {
-  if (!me || typeof me !== "object") return [];
-  const roots = [];
-  if (me.canUseCrab === true) roots.push("/crab");
-  if (me.canUseRegCode === true) roots.push("/regcode");
-  if (!roots.length) return [];
-  const under = (path) => {
-    let p = path;
-    for (let i = 0; i < 10 && p; i++) {
-      if (roots.includes(p)) return true;
-      p = (manifest.find((m) => m.path === p) || {}).parent || null;
-    }
-    return false;
-  };
-  return normalizeAppMenus(
-    manifest
-      .filter((m) => under(m.path))
-      .map((m) => ({ id: `local:${m.path}`, path: m.path, name: m.name, parent: m.parent ?? null, type: m.type, icon: m.icon || "", sort: m.sort || 0, hidden: !!m.hidden, component: m.component || "" })),
-  );
 }
 
 /** 首页工具卡：非 hidden 的页面，按 sort 排序 */
