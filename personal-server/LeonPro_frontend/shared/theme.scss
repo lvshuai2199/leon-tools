@@ -127,6 +127,10 @@ $breakpoint-desktop: 1200px; // 大于等于它是完整电脑布局
 }
 
 // 输出全局 CSS 变量。选择器权重高于 Element Plus 自带的 :root 和 html.dark，所以和引入顺序无关。
+// 大图查看背景（深浅色都是黑色），和图片上压白字用的渐变
+$viewer-bg: #000 !default;
+$overlay-gradient: linear-gradient(to top, rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0)) !default;
+
 @mixin css-vars {
   :root {
     --el-font-family: #{$font-family};
@@ -160,6 +164,8 @@ $breakpoint-desktop: 1200px; // 大于等于它是完整电脑布局
     --lp-mobile-topbar-height: #{$mobile-topbar-height};
     --lp-mobile-tabbar-height: #{$mobile-tabbar-height};
     --lp-dialog-width-desktop: #{$dialog-width-desktop};
+    --lp-viewer-bg: #{$viewer-bg};
+    --lp-overlay-gradient: #{$overlay-gradient};
   }
 
   // 浅色模式
