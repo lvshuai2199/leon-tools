@@ -488,7 +488,8 @@ export function shiftDay(dateStr, delta) {
 
 export function shareUrl(publicId) {
   if (!publicId) return "";
-  const path = `/h5/#/pages/crab/share?id=${encodeURIComponent(publicId)}`;
+  // 与后端 sharePath 一致：/s/crab/{publicId}（用户端部署在根路径，history 路由）
+  const path = `/s/crab/${encodeURIComponent(publicId)}`;
   if (typeof window === "undefined") return path;
   return `${window.location.origin}${path}`;
 }

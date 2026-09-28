@@ -24,7 +24,8 @@
 </template>
 
 <script>
-import api from "@/apiUtils/index.js";
+// 公开分享页 /s/crab/:publicId（第一块：界面未重做）
+import api from "@/api/crab";
 
 export default {
   data() {
@@ -35,7 +36,7 @@ export default {
   },
   methods: {
     async load() {
-      const id = this.$route.query.id;
+      const id = this.$route.params.publicId;
       if (!id) {
         this.loading = false;
         this.error = "链接无效";

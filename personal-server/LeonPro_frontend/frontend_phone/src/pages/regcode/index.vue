@@ -11,7 +11,7 @@
 
     <div class="card">
       <div v-if="quota" class="quota">
-        <span class="quota-label">剩余次数</span>
+        <span class="quota-label">当前配置</span>
         <span class="quota-value">{{ quotaText }}</span>
       </div>
 
@@ -65,9 +65,10 @@
 </template>
 
 <script>
-import { canEnterApp, canUseCrab, canUseRegCode, getUserInfo, clearUserInfo } from "@/utils/auth.js";
-import api from "@/apiUtils/index.js";
-import { confirmAction, copyText, showToast } from "@/utils/ui.js";
+// 第一块：界面未重做，只换了接口和路由。准入交给路由守卫（appMenus）+ 后端 403，不再写死角色规则
+import api from "@/api/regcode";
+import { userStore } from "@/stores/user";
+import { confirmAction, copyText, showToast } from "@/utils/ui";
 
 const ALL_FIELDS = [
   "oneMonthValid",
@@ -116,15 +117,23 @@ export default {
   },
   computed: {
     api() {
-      return this.$api || api;
+      return api;
     },
     displayName() {
       return this.user?.nickname || this.user?.username || "用户";
     },
+    // 次数按配置分别计算：显示当前所选配置的剩余（items 为空的旧返回退回合计）
+    currentRemaining() {
+      if (!this.quota || this.quota.unlimited) return null;
+      const items = Array.isArray(this.quota.items) ? this.quota.items : [];
+      if (!items.length) return this.quota.remaining ?? 0;
+      const hit = items.find((item) => String(item.configId) === String(this.currentConfig?.id));
+      return hit ? hit.remaining ?? 0 : 0;
+    },
     quotaText() {
       if (!this.quota) return "-";
       if (this.quota.unlimited) return "不限";
-      return `${this.quota.remaining ?? 0} / ${this.quota.generateLimit ?? 0}`;
+      return `剩余 ${this.currentRemaining} 次`;
     },
     companies() {
       const names = [];
@@ -149,13 +158,9 @@ export default {
   },
   methods: {
     ensureLogin() {
-      const user = getUserInfo();
-      if (!user || !canEnterApp(user) || !canUseRegCode(user)) {
-        this.leaveToLogin();
-        return;
-      }
-      this.user = user;
-      this.showHome = canUseCrab(user);
+      this.user = userStore.state.user;
+      // 「工作台」按钮：有螃蟹出货菜单时显示（原来按角色判断）
+      this.showHome = userStore.canAccess("/crab");
       this.loadConfigs();
       this.loadQuota();
     },
@@ -216,7 +221,7 @@ export default {
         showToast("注册码长度必须为 6 位");
         return;
       }
-      if (this.quota && !this.quota.unlimited && (this.quota.remaining || 0) <= 0) {
+      if (this.quota && !this.quota.unlimited && (this.currentRemaining || 0) <= 0) {
         showToast("生成次数已用完");
         return;
       }
@@ -227,7 +232,6 @@ export default {
           configId: this.currentConfig.id,
           company: this.currentConfig.company,
           applyName: this.currentConfig.name,
-          applyId: this.user?.id,
         });
         this.result = { ...emptyResult(), ...(data || {}) };
         this.isGenerated = true;
@@ -247,17 +251,17 @@ export default {
       }
     },
     goHome() {
-      this.$router.replace("/pages/home/home");
+      this.$router.replace("/");
     },
     async handleLogout() {
-      if (!confirmAction("退出登录", "确定退出当前账号？")) return;
-      await this.api.logout();
+      if (!(await confirmAction("退出登录", "确定退出当前账号？", { confirmText: "退出", danger: true }))) return;
+      await userStore.logout();
       this.leaveToLogin();
     },
     leaveToLogin() {
       this.user = null;
-      clearUserInfo();
-      this.$router.replace("/pages/login/login");
+      userStore.clearSession();
+      this.$router.replace("/login");
     },
   },
 };

@@ -83,9 +83,9 @@
 </template>
 
 <script>
-import api from "@/apiUtils/index.js";
-import { canUseCrab, getUserInfo, homePath } from "@/utils/auth.js";
-import { copyText, showToast } from "@/utils/ui.js";
+// 第一块：界面未重做，只换了接口和路由（准入由路由守卫按 appMenus 判断）
+import api from "@/api/crab";
+import { copyText, showToast } from "@/utils/ui";
 import { shareUrl, shiftDay, todayStr } from "@/utils/crab-parse.js";
 import { pickTrackingNoFromImage, scanTrackingNo } from "@/utils/barcode-scan.js";
 import { canvasToBlob, renderShipSheet, showSheetPreview } from "@/utils/crab-ship-sheet.js";
@@ -131,10 +131,6 @@ export default {
     },
   },
   mounted() {
-    if (!canUseCrab(getUserInfo())) {
-      this.$router.replace(homePath(getUserInfo()));
-      return;
-    }
     const q = this.$route.query;
     if (q.start || q.end) {
       this.dateMode = "range";
@@ -150,13 +146,13 @@ export default {
   },
   methods: {
     goHome() {
-      this.$router.replace("/pages/home/home");
+      this.$router.replace("/");
     },
     goEntry() {
-      this.$router.push({ path: "/pages/crab/entry", query: { date: this.entryDate() } });
+      this.$router.push({ path: "/crab/new", query: { date: this.entryDate() } });
     },
     openEdit(item) {
-      this.$router.push({ path: "/pages/crab/edit", query: { id: item.id } });
+      this.$router.push(`/crab/${encodeURIComponent(item.id)}`);
     },
     toggleSelect() {
       this.selecting = !this.selecting;

@@ -71,10 +71,10 @@
 </template>
 
 <script>
-import api from "@/apiUtils/index.js";
-import { canUseCrab, getUserInfo, homePath } from "@/utils/auth.js";
+// 第一块：界面未重做，只换了接口和路由（准入由路由守卫按 appMenus 判断）
+import api from "@/api/crab";
 import { parseCrabOrders, todayStr } from "@/utils/crab-parse.js";
-import { showToast } from "@/utils/ui.js";
+import { showToast } from "@/utils/ui";
 
 function emptyManual() {
   return { customerName: "", phone: "", address: "", spec: "", quantity: "" };
@@ -94,15 +94,11 @@ export default {
     };
   },
   mounted() {
-    if (!canUseCrab(getUserInfo())) {
-      this.$router.replace(homePath(getUserInfo()));
-      return;
-    }
     if (this.$route.query.date) this.shipDate = String(this.$route.query.date);
   },
   methods: {
     goBack() {
-      this.$router.replace({ path: "/pages/crab/list", query: { date: this.shipDate } });
+      this.$router.replace({ path: "/crab", query: { date: this.shipDate } });
     },
     applyRows(rows) {
       const list = Array.isArray(rows) ? rows.filter((item) => item && (item.customerName || item.phone)) : [];

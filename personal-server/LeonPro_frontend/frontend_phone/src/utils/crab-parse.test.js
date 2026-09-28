@@ -86,3 +86,9 @@ test("name at head when phone at end", () => {
   assert.equal(rows[0].customerName, "王大姐");
   assert.equal(rows[0].address, "阳江市江城区岗列街道幸福路12号");
 });
+
+test("shareUrl 生成新的分享路径 /s/crab/{publicId}", async () => {
+  const { shareUrl } = await import("./crab-parse.js");
+  assert.equal(shareUrl("abc 1"), "/s/crab/abc%201");
+  assert.equal(shareUrl(""), "");
+});

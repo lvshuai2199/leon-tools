@@ -38,10 +38,10 @@
 </template>
 
 <script>
-import api from "@/apiUtils/index.js";
-import { canUseCrab, getUserInfo, homePath } from "@/utils/auth.js";
+// 第一块：界面未重做，只换了接口和路由（准入由路由守卫按 appMenus 判断）
+import api from "@/api/crab";
 import { shareUrl, todayStr } from "@/utils/crab-parse.js";
-import { confirmAction, copyText, showToast } from "@/utils/ui.js";
+import { confirmAction, copyText, showToast } from "@/utils/ui";
 import { pickTrackingNoFromImage, scanTrackingNo } from "@/utils/barcode-scan.js";
 
 function emptyForm() {
@@ -65,16 +65,12 @@ export default {
     return { saving: false, form: emptyForm() };
   },
   mounted() {
-    if (!canUseCrab(getUserInfo())) {
-      this.$router.replace(homePath(getUserInfo()));
-      return;
-    }
-    const id = this.$route.query.id;
+    const id = this.$route.params.id;
     if (id) this.load(id);
   },
   methods: {
     goBack() {
-      this.$router.replace({ path: "/pages/crab/list", query: { date: this.form.shipDate } });
+      this.$router.replace({ path: "/crab", query: { date: this.form.shipDate } });
     },
     async load(id) {
       try {
@@ -105,7 +101,7 @@ export default {
     },
     async remove() {
       if (!this.form.id) return;
-      if (!confirmAction("删除出货单", `确定删除「${this.form.customerName}」？`)) return;
+      if (!(await confirmAction("删除出货单", `确定删除「${this.form.customerName}」？`, { confirmText: "删除", danger: true }))) return;
       try {
         await api.deleteCrabShipments([this.form.id]);
         showToast("已删除");
