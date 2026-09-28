@@ -24,5 +24,12 @@ public class RegCodeUserVO {
     private String remark;
     private List<String> configIds;
     private List<String> configLabels;
+    /** 各配置次数明细 [{configId, configName, allocated, used, remaining}]；上面的 generateLimit / generateUsed / remaining 是合计 */
+    private List<RegCodeSubUser.QuotaItem> quotas;
+    private Integer maxSubUsers;
+    /** 1 启用，0 停用 */
+    private Integer status;
+    /** 启用中的子用户数 */
+    private Integer subUserCount;
     private Date createTime;
 }

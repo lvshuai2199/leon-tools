@@ -81,6 +81,9 @@ public class AuthController {
                 return ApiResponse.failure("该用户角色已禁用");
             }
         }
+        if (this.regCodeAccessService.isRegCodeDisabled(user)) {
+            return ApiResponse.failure("该账号已停用");
+        }
         String source = loginData.get("source");
         boolean mobile = source != null && ("app".equalsIgnoreCase(source) || "h5".equalsIgnoreCase(source));
         if (mobile) {
@@ -131,7 +134,14 @@ public class AuthController {
         vo.setRoot(this.regCodeAccessService.isRootUser(user));
         vo.setCanLoginWeb(this.regCodeAccessService.canLoginWeb(user));
         vo.setCanUseCrab(this.regCodeAccessService.canUseCrab(user));
-        vo.setCanUseRegCode(this.regCodeAccessService.canUseRegCode(user));
+        boolean canUseRegCode = this.regCodeAccessService.canUseRegCode(user);
+        vo.setCanUseRegCode(canUseRegCode);
+        MeVO.RegCodeInfo regCode = vo.getRegCode();
+        regCode.setSubUser(this.regCodeAccessService.isBottomSubUser(user));
+        regCode.setMaxSubUsers(this.regCodeAccessService.maxSubUsersOf(user));
+        regCode.setCreatedCount(this.regCodeAccessService.enabledSubUserCount(user.getId()));
+        regCode.setCanManageSubUsers(canUseRegCode && !regCode.isSubUser());
+        regCode.setCanCreateSubUsers(regCode.isCanManageSubUsers() && regCode.getCreatedCount() < regCode.getMaxSubUsers());
         return ApiResponse.success(vo);
     }
 

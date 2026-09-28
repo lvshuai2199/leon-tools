@@ -28,6 +28,7 @@ public class SchemaPatcher implements CommandLineRunner {
                 "ALTER TABLE sys_users ADD COLUMN parent_id VARCHAR(64) DEFAULT NULL COMMENT '父用户ID，空表示主用户'");
         ensureRegCodeConfigTable();
         ensureRegCodeUserTables();
+        ensureRegCodeQuotaColumns();
         ensureToolMindmapTable();
         ensureCrabShipmentTable();
         ensureWallpaperTables();
@@ -215,7 +216,42 @@ public class SchemaPatcher implements CommandLineRunner {
         log.info("已创建表 sys_operation_log。");
     }
 
-    private void ensureColumn(String table, String column, String alterSql) {
+    /**
+     * 注册码次数改为按配置记录，并支持子用户：
+     * reg_code_user 加 max_sub_users / status；reg_code_user_config 加 generate_limit / generate_used。
+     * generate_limit 列是本次新建时，顺带把旧版“按用户合计”的次数迁移到各配置上（只执行一次）：
+     * 只分配了 1 个配置的用户原样迁移（上限、已用不变）；分配了多个配置的用户，每个配置都给“原剩余次数”、已用记 0。
+     */
+    private void ensureRegCodeQuotaColumns() {
+        ensureColumn("reg_code_user", "max_sub_users",
+                "ALTER TABLE reg_code_user ADD COLUMN max_sub_users INT NOT NULL DEFAULT 0 COMMENT '最多可创建的子用户数量'");
+        ensureColumn("reg_code_user", "status",
+                "ALTER TABLE reg_code_user ADD COLUMN status INT NOT NULL DEFAULT 1 COMMENT '状态 1启用 0停用'");
+        ensureColumn("reg_code_user_config", "generate_used",
+                "ALTER TABLE reg_code_user_config ADD COLUMN generate_used INT NOT NULL DEFAULT 0 COMMENT '该配置已使用次数'");
+        boolean created = ensureColumn("reg_code_user_config", "generate_limit",
+                "ALTER TABLE reg_code_user_config ADD COLUMN generate_limit INT NOT NULL DEFAULT 0 COMMENT '该配置已分配次数'");
+        if (created) {
+            int single = jdbcTemplate.update(
+                    "UPDATE reg_code_user_config c "
+                            + "JOIN reg_code_user u ON u.user_id = c.user_id "
+                            + "JOIN (SELECT user_id FROM reg_code_user_config GROUP BY user_id HAVING COUNT(*) = 1) s "
+                            + "  ON s.user_id = c.user_id "
+                            + "SET c.generate_limit = GREATEST(IFNULL(u.generate_limit, 0), 0), "
+                            + "    c.generate_used = LEAST(GREATEST(IFNULL(u.generate_used, 0), 0), GREATEST(IFNULL(u.generate_limit, 0), 0))");
+            int multi = jdbcTemplate.update(
+                    "UPDATE reg_code_user_config c "
+                            + "JOIN reg_code_user u ON u.user_id = c.user_id "
+                            + "JOIN (SELECT user_id FROM reg_code_user_config GROUP BY user_id HAVING COUNT(*) > 1) s "
+                            + "  ON s.user_id = c.user_id "
+                            + "SET c.generate_limit = GREATEST(IFNULL(u.generate_limit, 0) - IFNULL(u.generate_used, 0), 0), "
+                            + "    c.generate_used = 0");
+            log.info("注册码次数已迁移为按配置记录：单配置 {} 行，多配置 {} 行。", single, multi);
+        }
+    }
+
+    /** @return 本次是否新建了该列 */
+    private boolean ensureColumn(String table, String column, String alterSql) {
         Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM information_schema.COLUMNS "
                         + "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ? AND COLUMN_NAME = ?",
@@ -225,6 +261,8 @@ public class SchemaPatcher implements CommandLineRunner {
         if (count != null && count == 0) {
             jdbcTemplate.execute(alterSql);
             log.info("已为 {}.{} 补齐字段。", table, column);
+            return true;
         }
+        return false;
     }
 }

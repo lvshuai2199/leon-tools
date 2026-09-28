@@ -17,4 +17,10 @@ public class RegCodeUserConfig implements Serializable {
     private String userId;
 
     private String configId;
+
+    /** 该配置已分配的次数（可生成上限） */
+    private Integer generateLimit;
+
+    /** 该配置已使用的次数；剩余 = generateLimit - generateUsed */
+    private Integer generateUsed;
 }

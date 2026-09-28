@@ -3,8 +3,8 @@ package springboot.service;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 import springboot.DTO.RegCodeQuotaVO;
+import springboot.DTO.RegCodeSubUser;
 import springboot.domain.RegCodeUser;
 import springboot.domain.RegCodeUserConfig;
 import springboot.domain.SysMenus;
@@ -17,11 +17,13 @@ import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
- * 注册码权限：管理员可用全部配置且不限次数；客户仅能使用分配的配置并受配额约束。
+ * 注册码权限与次数查询：ROOT 可用全部配置且不限次数；其他账号只能用分配了次数的配置，按配置分别计次。
+ * 次数的扣减 / 分配 / 退回都在 {@link RegCodeQuotaService} 里用事务 + 条件更新完成。
  */
 @Service
 public class RegCodeAccessService {
@@ -31,6 +33,8 @@ public class RegCodeAccessService {
     public static final String MENU_REGCODE = "menu_regcode";
     public static final String MENU_CRAB = "menu_crab";
     public static final String ROLE_REGCODE_CLIENT_ID = "role_regcode_client";
+    public static final int STATUS_ENABLED = 1;
+    public static final int STATUS_DISABLED = 0;
 
     private final SysUsersService sysUsersService;
     private final SysRolesService sysRolesService;
@@ -38,19 +42,22 @@ public class RegCodeAccessService {
     private final SysMenusService sysMenusService;
     private final RegCodeUserService regCodeUserService;
     private final RegCodeUserConfigService regCodeUserConfigService;
+    private final RegCodeConfigService regCodeConfigService;
 
     public RegCodeAccessService(SysUsersService sysUsersService,
                                 SysRolesService sysRolesService,
                                 SysRoleMenuService sysRoleMenuService,
                                 SysMenusService sysMenusService,
                                 RegCodeUserService regCodeUserService,
-                                RegCodeUserConfigService regCodeUserConfigService) {
+                                RegCodeUserConfigService regCodeUserConfigService,
+                                RegCodeConfigService regCodeConfigService) {
         this.sysUsersService = sysUsersService;
         this.sysRolesService = sysRolesService;
         this.sysRoleMenuService = sysRoleMenuService;
         this.sysMenusService = sysMenusService;
         this.regCodeUserService = regCodeUserService;
         this.regCodeUserConfigService = regCodeUserConfigService;
+        this.regCodeConfigService = regCodeConfigService;
     }
 
     public boolean isRootUser(String userId) {
@@ -121,22 +128,131 @@ public class RegCodeAccessService {
     }
 
     /**
-     * 注册码生成（/common/**）：只允许
-     * ① 角色为 role_regcode_client 的注册码用户；② ROOT（及 {@link #adminMayGenerate} 放行的管理员）；
-     * ③ 子账号且其 parent_id 指向的用户是注册码用户或 ROOT（每次实时查父用户，不缓存）。
+     * 注册码生成（/common/**）的访问规则，每次请求都实时计算（父用户、角色、状态都不缓存）：
+     * <ol>
+     *   <li>ROOT：可以</li>
+     *   <li>自己的注册码账号被停用（reg_code_user.status = 0）：不可以</li>
+     *   <li>顶层账号（parent_id 为空，或父用户是 ROOT / 管理端账号，如管理员在后台建的注册码客户）：
+     *       看自己角色是否分配了“注册码生成”菜单（menu_regcode）</li>
+     *   <li>底层子用户（在注册码页由客户创建，父用户是注册码客户）：看创建人——创建人存在、角色未禁用、
+     *       注册码账号未停用、自己是顶层账号且角色有注册码生成菜单，才可以；否则下一次请求就 403</li>
+     * </ol>
      */
     public boolean canUseRegCode(SysUsers user) {
         if (user == null) {
             return false;
         }
-        if (isRegCodeUser(user) || adminMayGenerate(user)) {
+        if (isRootUser(user)) {
             return true;
         }
+        if (isRegCodeDisabled(user)) {
+            return false;
+        }
+        if (!isSubAccount(user)) {
+            return roleHasRegCode(user);
+        }
+        SysUsers parent = sysUsersService.getById(user.getParentId().trim());
+        if (parent == null) {
+            return false;
+        }
+        if (isAdminAccount(parent)) {
+            return roleHasRegCode(user);
+        }
+        // 底层子用户：权限跟着创建人走（只允许一层，创建人自己必须是顶层账号）
+        return creatorGrantsAccess(parent);
+    }
+
+    /** 创建人（顶层客户）是否仍然有效且有注册码权限 */
+    private boolean creatorGrantsAccess(SysUsers creator) {
+        if (creator == null || isRoleDisabled(creator) || isRegCodeDisabled(creator)) {
+            return false;
+        }
+        if (isRootUser(creator)) {
+            return true;
+        }
+        if (isSubAccount(creator)) {
+            SysUsers grand = sysUsersService.getById(creator.getParentId().trim());
+            if (grand == null || !isAdminAccount(grand)) {
+                return false;
+            }
+        }
+        return roleHasRegCode(creator);
+    }
+
+    /** ROOT 或能登录管理端的账号（非子账号、非注册码客户角色） */
+    public boolean isAdminAccount(SysUsers user) {
+        return user != null && (isRootUser(user) || !isWebBlocked(user));
+    }
+
+    /** 角色是否分配了“注册码生成”菜单 */
+    public boolean roleHasRegCode(SysUsers user) {
+        if (user == null || user.getRoleId() == null || user.getRoleId().isBlank()) {
+            return false;
+        }
+        List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(user.getRoleId());
+        return menuIds != null && menuIds.contains(MENU_REGCODE);
+    }
+
+    private boolean isRoleDisabled(SysUsers user) {
+        if (user.getRoleId() == null || user.getRoleId().isBlank()) {
+            return false;
+        }
+        springboot.domain.SysRoles role = sysRolesService.getById(user.getRoleId());
+        return role != null && role.getIsDisabled() != null && role.getIsDisabled() != 0;
+    }
+
+    /** 注册码账号被停用（有 reg_code_user 记录且 status = 0） */
+    public boolean isRegCodeDisabled(SysUsers user) {
+        RegCodeUser assignment = user == null ? null : getAssignment(user.getId());
+        return assignment != null && assignment.getStatus() != null && assignment.getStatus() == STATUS_DISABLED;
+    }
+
+    /**
+     * 底层子用户：parent_id 指向的不是 ROOT / 管理端账号（即在注册码页由客户创建的子用户）。
+     * 父用户已不存在时也按底层处理（权限会被挡住）。
+     */
+    public boolean isBottomSubUser(SysUsers user) {
         if (!isSubAccount(user)) {
             return false;
         }
         SysUsers parent = sysUsersService.getById(user.getParentId().trim());
-        return parent != null && (isRegCodeUser(parent) || isRootUser(parent));
+        return parent == null || !isAdminAccount(parent);
+    }
+
+    /** 能否在注册码页管理（查看 / 新建 / 停用 / 调整）自己的子用户：有注册码权限且是顶层账号 */
+    public boolean canManageSubUsers(SysUsers user) {
+        return canUseRegCode(user) && !isBottomSubUser(user);
+    }
+
+    /** 最多可创建的子用户数（reg_code_user.max_sub_users，没有记录为 0） */
+    public int maxSubUsersOf(SysUsers user) {
+        RegCodeUser assignment = user == null ? null : getAssignment(user.getId());
+        return assignment == null || assignment.getMaxSubUsers() == null ? 0 : Math.max(assignment.getMaxSubUsers(), 0);
+    }
+
+    /** 已创建且处于启用状态的子用户数（停用的不计入上限） */
+    public int enabledSubUserCount(String userId) {
+        if (userId == null || userId.isBlank()) {
+            return 0;
+        }
+        List<SysUsers> children = sysUsersService.list(
+                new LambdaQueryWrapper<SysUsers>().eq(SysUsers::getParentId, userId));
+        if (children == null || children.isEmpty()) {
+            return 0;
+        }
+        List<String> ids = children.stream().map(SysUsers::getId).filter(Objects::nonNull).toList();
+        List<RegCodeUser> rows = regCodeUserService.list(
+                new LambdaQueryWrapper<RegCodeUser>().in(RegCodeUser::getUserId, ids));
+        Set<String> disabled = rows == null ? Set.of() : rows.stream()
+                .filter(r -> r.getStatus() != null && r.getStatus() == STATUS_DISABLED)
+                .map(RegCodeUser::getUserId)
+                .collect(Collectors.toSet());
+        return (int) ids.stream().filter(id -> !disabled.contains(id)).count();
+    }
+
+    /** 能否再新建子用户：能管理子用户，且启用中的子用户数 < max_sub_users */
+    public boolean canCreateSubUsers(SysUsers user) {
+        return canManageSubUsers(user) && enabledSubUserCount(user.getId()) < maxSubUsersOf(user);
     }
 
     /**
@@ -298,113 +414,136 @@ public class RegCodeAccessService {
         return regCodeUserService.getOne(wrapper, false);
     }
 
-    public List<String> listAssignedConfigIds(String userId) {
+    /** 某账号的按配置次数行 */
+    public List<RegCodeUserConfig> quotaRows(String userId) {
         if (userId == null || userId.isBlank()) {
             return Collections.emptyList();
         }
-        LambdaQueryWrapper<RegCodeUserConfig> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(RegCodeUserConfig::getUserId, userId);
-        return regCodeUserConfigService.list(wrapper).stream()
+        List<RegCodeUserConfig> rows = regCodeUserConfigService.list(
+                new LambdaQueryWrapper<RegCodeUserConfig>().eq(RegCodeUserConfig::getUserId, userId));
+        return rows == null ? Collections.emptyList() : rows;
+    }
+
+    public List<String> listAssignedConfigIds(String userId) {
+        return quotaRows(userId).stream()
                 .map(RegCodeUserConfig::getConfigId)
                 .filter(id -> id != null && !id.isBlank())
+                .distinct()
                 .collect(Collectors.toList());
     }
 
     /**
-     * @return null 表示管理员可用全部；空列表表示无权；否则仅这些配置
+     * @return null 表示 ROOT 可用全部；否则只有分配了次数行的配置（可能为空列表 = 暂无可用配置）
      */
     public List<String> allowedConfigIds(String userId) {
         return allowedConfigIds(userId == null || userId.isBlank() ? null : sysUsersService.getById(userId));
     }
 
     public List<String> allowedConfigIds(SysUsers user) {
+        if (user == null) {
+            return Collections.emptyList();
+        }
         if (isRootUser(user)) {
             return null;
         }
-        String userId = user == null ? null : user.getId();
-        if (isRootUser(userId)) {
-            return null;
-        }
-        if (getAssignment(userId) != null) {
-            return listAssignedConfigIds(userId);
-        }
-        return null;
+        return listAssignedConfigIds(user.getId());
     }
 
-    public String assertCanGenerate(String userId, String configId) {
-        if (userId == null || userId.isBlank()) {
+    /** 生成前检查（真正扣次数在 RegCodeQuotaService 里用条件更新完成）；返回 null 表示可以生成 */
+    public String assertCanGenerate(SysUsers user, String configId) {
+        if (user == null) {
             return "请先登录";
         }
-        if (isRootUser(userId)) {
+        if (isRootUser(user)) {
             return null;
         }
-        RegCodeUser assignment = getAssignment(userId);
-        if (assignment != null) {
-            if (configId == null || configId.isBlank()) {
-                return "请选择注册码配置";
-            }
-            List<String> configIds = listAssignedConfigIds(userId);
-            if (!configIds.contains(configId)) {
-                return "无权使用该注册码配置";
-            }
-            int used = assignment.getGenerateUsed() == null ? 0 : assignment.getGenerateUsed();
-            int limit = assignment.getGenerateLimit() == null ? 0 : assignment.getGenerateLimit();
-            if (used >= limit) {
-                return "生成次数已用完";
-            }
-            return null;
+        List<RegCodeUserConfig> rows = quotaRows(user.getId());
+        if (rows.isEmpty()) {
+            return "暂无可用配置，请联系管理员分配";
+        }
+        if (configId == null || configId.isBlank()) {
+            return "请选择注册码配置";
+        }
+        List<RegCodeUserConfig> matched = rows.stream().filter(r -> configId.equals(r.getConfigId())).toList();
+        if (matched.isEmpty()) {
+            return "无权使用该注册码配置";
+        }
+        int remaining = matched.stream().mapToInt(RegCodeAccessService::remainingOf).sum();
+        if (remaining <= 0) {
+            return "该配置的生成次数已用完";
         }
         return null;
     }
 
-    public RegCodeQuotaVO quotaOf(String userId) {
+    public static int limitOf(RegCodeUserConfig row) {
+        return row.getGenerateLimit() == null ? 0 : row.getGenerateLimit();
+    }
+
+    public static int usedOf(RegCodeUserConfig row) {
+        return row.getGenerateUsed() == null ? 0 : row.getGenerateUsed();
+    }
+
+    public static int remainingOf(RegCodeUserConfig row) {
+        return Math.max(limitOf(row) - usedOf(row), 0);
+    }
+
+    /** 按配置汇总成明细（同一配置有多行时合并），带配置名 */
+    public List<RegCodeSubUser.QuotaItem> quotaItems(String userId) {
+        java.util.Map<String, RegCodeSubUser.QuotaItem> map = new java.util.LinkedHashMap<>();
+        for (RegCodeUserConfig row : quotaRows(userId)) {
+            if (row.getConfigId() == null) {
+                continue;
+            }
+            RegCodeSubUser.QuotaItem item = map.computeIfAbsent(row.getConfigId(), id -> {
+                RegCodeSubUser.QuotaItem it = new RegCodeSubUser.QuotaItem();
+                it.setConfigId(id);
+                return it;
+            });
+            item.setAllocated(item.getAllocated() + limitOf(row));
+            item.setUsed(item.getUsed() + usedOf(row));
+        }
+        if (!map.isEmpty()) {
+            java.util.Map<String, String> names = new java.util.HashMap<>();
+            List<springboot.domain.RegCodeConfig> configs = regCodeConfigService.listByIds(map.keySet());
+            if (configs != null) {
+                for (springboot.domain.RegCodeConfig c : configs) {
+                    names.put(c.getId(), configLabel(c));
+                }
+            }
+            map.values().forEach(it -> {
+                it.setRemaining(Math.max(it.getAllocated() - it.getUsed(), 0));
+                it.setConfigName(names.getOrDefault(it.getConfigId(), it.getConfigId()));
+            });
+        }
+        return new java.util.ArrayList<>(map.values());
+    }
+
+    public static String configLabel(springboot.domain.RegCodeConfig c) {
+        if (c == null) {
+            return null;
+        }
+        String company = c.getCompany() == null ? "" : c.getCompany().trim();
+        String name = c.getName() == null ? "" : c.getName().trim();
+        if (company.isEmpty()) {
+            return name;
+        }
+        return name.isEmpty() ? company : company + " / " + name;
+    }
+
+    public RegCodeQuotaVO quotaOf(SysUsers user) {
         RegCodeQuotaVO vo = new RegCodeQuotaVO();
-        RegCodeUser assignment = getAssignment(userId);
-        if (assignment != null) {
-            vo.setUnlimited(false);
-            int used = assignment.getGenerateUsed() == null ? 0 : assignment.getGenerateUsed();
-            int limit = assignment.getGenerateLimit() == null ? 0 : assignment.getGenerateLimit();
-            vo.setGenerateUsed(used);
-            vo.setGenerateLimit(limit);
-            vo.setRemaining(Math.max(limit - used, 0));
+        if (isRootUser(user)) {
+            vo.setUnlimited(true);
             return vo;
         }
-        vo.setUnlimited(true);
+        vo.setUnlimited(false);
+        List<RegCodeSubUser.QuotaItem> items = quotaItems(user == null ? null : user.getId());
+        vo.setItems(items);
+        int limit = items.stream().mapToInt(RegCodeSubUser.QuotaItem::getAllocated).sum();
+        int used = items.stream().mapToInt(RegCodeSubUser.QuotaItem::getUsed).sum();
+        vo.setGenerateLimit(limit);
+        vo.setGenerateUsed(used);
+        vo.setRemaining(items.stream().mapToInt(RegCodeSubUser.QuotaItem::getRemaining).sum());
         return vo;
-    }
-
-    @Transactional(rollbackFor = Exception.class)
-    public void consumeQuota(String userId) {
-        RegCodeUser assignment = getAssignment(userId);
-        if (assignment == null) {
-            return;
-        }
-        int used = assignment.getGenerateUsed() == null ? 0 : assignment.getGenerateUsed();
-        assignment.setGenerateUsed(used + 1);
-        assignment.setUpdateTime(springboot.utils.DateUtils.getNow());
-        regCodeUserService.updateById(assignment);
-    }
-
-    @Transactional(rollbackFor = Exception.class)
-    public void replaceConfigs(String userId, List<String> configIds) {
-        LambdaQueryWrapper<RegCodeUserConfig> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(RegCodeUserConfig::getUserId, userId);
-        regCodeUserConfigService.remove(wrapper);
-        if (configIds == null || configIds.isEmpty()) {
-            return;
-        }
-        List<RegCodeUserConfig> rows = configIds.stream()
-                .filter(id -> id != null && !id.isBlank())
-                .distinct()
-                .map(configId -> {
-                    RegCodeUserConfig row = new RegCodeUserConfig();
-                    row.setUserId(userId);
-                    row.setConfigId(configId);
-                    return row;
-                })
-                .collect(Collectors.toList());
-        if (!rows.isEmpty()) {
-            regCodeUserConfigService.saveBatch(rows);
-        }
     }
 }

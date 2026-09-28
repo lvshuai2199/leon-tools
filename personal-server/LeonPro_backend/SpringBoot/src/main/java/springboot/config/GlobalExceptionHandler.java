@@ -9,6 +9,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import springboot.utils.ApiResponse;
+import springboot.utils.BizException;
 import springboot.utils.ForbiddenException;
 
 /**
@@ -33,6 +34,12 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse> handleForbidden(ForbiddenException e) {
         return ResponseEntity.status(HttpStatus.FORBIDDEN)
                 .body(ApiResponse.withStatus(ForbiddenException.FORBIDDEN_STATUS, e.getMessage(), null));
+    }
+
+    /** 业务校验失败：返回普通业务失败提示，不记 ERROR 堆栈（事务已因异常回滚） */
+    @ExceptionHandler(BizException.class)
+    public ApiResponse handleBiz(BizException e) {
+        return ApiResponse.failure(e.getMessage());
     }
 
     /** 上传超过 spring.servlet.multipart 限制：返回业务提示（status 413），不当作 500 */

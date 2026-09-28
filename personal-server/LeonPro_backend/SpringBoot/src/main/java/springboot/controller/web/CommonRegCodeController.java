@@ -3,19 +3,23 @@ package springboot.controller.web;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import springboot.DTO.RegCode;
 import springboot.DTO.RegCodeConfigOptionVO;
+import springboot.DTO.RegCodeSubUser;
 import springboot.domain.ComRegistration;
 import springboot.domain.RegCodeConfig;
 import springboot.domain.SysUsers;
 import springboot.enums.RegCodeType;
-import springboot.service.ComRegistrationService;
 import springboot.service.RegCodeAccessService;
 import springboot.service.RegCodeConfigService;
+import springboot.service.RegCodeQuotaService;
+import springboot.service.SysUsersService;
+import springboot.utils.ForbiddenException;
 import springboot.utils.ApiResponse;
 import springboot.utils.DateUtils;
 import springboot.utils.HashUtil;
@@ -25,9 +29,10 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * 管理端和用户端共用的注册码生成接口（/common/**）。
- * 三个接口都先走 {@link RegCodeAccessService#requireRegCode}：只允许注册码用户、ROOT、
- * 以及父用户是注册码用户或 ROOT 的子账号，其他人 HTTP 403。
+ * 管理端和用户端共用的注册码接口（/common/**）。
+ * 所有接口都先走 {@link RegCodeAccessService#requireRegCode}（角色有注册码生成菜单 / ROOT /
+ * 创建人仍有效的底层子用户），不满足 HTTP 403。
+ * /common/regCode/subUsers/** 另外要求是顶层账号，且只能操作 parent_id = 自己的子用户（否则 403）。
  */
 @RestController
 @RequestMapping("/common")
@@ -35,18 +40,21 @@ public class CommonRegCodeController {
 
     private final RegCodeAccessService regCodeAccessService;
     private final RegCodeConfigService regCodeConfigService;
-    private final ComRegistrationService comRegistrationService;
+    private final RegCodeQuotaService regCodeQuotaService;
+    private final SysUsersService sysUsersService;
 
     public CommonRegCodeController(RegCodeAccessService regCodeAccessService,
                                    RegCodeConfigService regCodeConfigService,
-                                   ComRegistrationService comRegistrationService) {
+                                   RegCodeQuotaService regCodeQuotaService,
+                                   SysUsersService sysUsersService) {
         this.regCodeAccessService = regCodeAccessService;
         this.regCodeConfigService = regCodeConfigService;
-        this.comRegistrationService = comRegistrationService;
+        this.regCodeQuotaService = regCodeQuotaService;
+        this.sysUsersService = sysUsersService;
     }
 
     /**
-     * 生成页可选的注册码配置：只返回分配给自己的（ROOT / 未分配过的账号返回全部，沿用原规则），
+     * 生成页可选的注册码配置：只返回分配了次数的（ROOT 返回全部；没有分配时返回空数组，前端显示“暂无可用配置”），
      * 不返回 encryptSuffix、encryptType。合并了原 GET /regCodeConfig/list 与 POST /regCodeConfig/available。
      */
     @GetMapping("/regCodeConfig/list")
@@ -68,29 +76,114 @@ public class CommonRegCodeController {
                 .toList());
     }
 
-    /** 我的生成额度（合并原 GET / POST /regCodeUser/myQuota，只按 token） */
+    /** 我的各配置次数（合并原 GET / POST /regCodeUser/myQuota，只按 token）；子用户就是创建人分给自己的次数 */
     @GetMapping("/regCodeUser/myQuota")
     public ApiResponse myQuota(HttpServletRequest request) {
         SysUsers user = this.regCodeAccessService.requireRegCode(request);
-        return ApiResponse.success(this.regCodeAccessService.quotaOf(user.getId()));
+        return ApiResponse.success(this.regCodeAccessService.quotaOf(user));
+    }
+
+    // ------------------------------------------------------------ 子用户（只有顶层账号能管理，只能管理 parent_id = 自己的）
+
+    /** 我创建的子用户：{createdCount（启用中的）, maxSubUsers, canCreate, items:[{id, username, nickname, status, createTime, usedTotal, allocatedTotal}]} */
+    @GetMapping("/regCode/subUsers")
+    public ApiResponse listSubUsers(HttpServletRequest request) {
+        SysUsers me = requireSubUserManager(request);
+        return ApiResponse.success(this.regCodeQuotaService.subUserList(me));
+    }
+
+    /** 新建子用户：body {username, nickname, password, quotas:[{configId, count}]}，次数从自己剩余里划拨 */
+    @PostMapping("/regCode/subUsers")
+    public ApiResponse createSubUser(@RequestBody(required = false) RegCodeSubUser.CreateForm form,
+                                     HttpServletRequest request) {
+        SysUsers me = requireSubUserManager(request);
+        SysUsers created = this.regCodeQuotaService.createSubUser(me, form);
+        java.util.Map<String, Object> data = new java.util.HashMap<>();
+        data.put("id", created.getId());
+        data.put("username", created.getUsername());
+        return ApiResponse.success(data);
+    }
+
+    /** 子用户各配置 {used, allocated, remaining}、停用会退回的合计 refundableTotal，以及我自己各配置的剩余 */
+    @GetMapping("/regCode/subUsers/{id}/quota")
+    public ApiResponse subUserQuota(@PathVariable("id") String id, HttpServletRequest request) {
+        SysUsers me = requireSubUserManager(request);
+        SysUsers sub = ownSubUser(me, id);
+        return ApiResponse.success(this.regCodeQuotaService.subUserQuota(sub, me));
+    }
+
+    /** 调整子用户次数：body {items:[{configId, delta}]}，正数从我的剩余追加，负数收回未用的 */
+    @PostMapping("/regCode/subUsers/{id}/quota")
+    public ApiResponse adjustSubUserQuota(@PathVariable("id") String id,
+                                          @RequestBody(required = false) RegCodeSubUser.DeltaForm form,
+                                          HttpServletRequest request) {
+        SysUsers me = requireSubUserManager(request);
+        SysUsers sub = ownSubUser(me, id);
+        this.regCodeQuotaService.adjustByCreator(me, sub, form == null ? null : form.getItems());
+        return ApiResponse.success(this.regCodeQuotaService.subUserQuota(sub, me));
+    }
+
+    /** 停用 / 启用：body {status: 0|1}；停用返回 {status, refunded:[{configId, count}], refundedTotal} */
+    @PostMapping("/regCode/subUsers/{id}/status")
+    public ApiResponse setSubUserStatus(@PathVariable("id") String id,
+                                        @RequestBody(required = false) RegCodeSubUser.StatusForm form,
+                                        HttpServletRequest request) {
+        SysUsers me = requireSubUserManager(request);
+        SysUsers sub = ownSubUser(me, id);
+        if (form == null || form.getStatus() == null) {
+            return ApiResponse.failure("请指定状态");
+        }
+        return ApiResponse.success(this.regCodeQuotaService.setStatus(me, sub, form.getStatus()));
+    }
+
+    /** 重置子用户密码：返回 {password}，新密码只在这一次返回 */
+    @PostMapping("/regCode/subUsers/{id}/resetPassword")
+    public ApiResponse resetSubUserPassword(@PathVariable("id") String id, HttpServletRequest request) {
+        SysUsers me = requireSubUserManager(request);
+        SysUsers sub = ownSubUser(me, id);
+        return ApiResponse.success(java.util.Map.of("password", this.regCodeQuotaService.resetPassword(sub)));
+    }
+
+    private SysUsers requireSubUserManager(HttpServletRequest request) {
+        SysUsers me = this.regCodeAccessService.requireRegCode(request);
+        if (!this.regCodeAccessService.canManageSubUsers(me)) {
+            throw new ForbiddenException("子用户不能再创建或管理子用户");
+        }
+        return me;
+    }
+
+    /** 必须是 parent_id = 我 的子用户；不存在也按无权限处理（403），不泄露 id 是否存在 */
+    private SysUsers ownSubUser(SysUsers me, String id) {
+        SysUsers sub = id == null || id.isBlank() ? null : this.sysUsersService.getById(id.trim());
+        if (sub == null || sub.getParentId() == null || !sub.getParentId().trim().equals(me.getId())) {
+            throw new ForbiddenException("只能管理自己创建的子用户");
+        }
+        return sub;
     }
 
     @PostMapping("/regCode/genTempRegCode")
     public ApiResponse genTempRegCode(@RequestBody RegCode regCode, HttpServletRequest request){
 
         RegCode one = regCode;
-        // 注册码访问规则（注册码用户 / ROOT / 父用户是二者之一的子账号），不满足直接 403
+        // 注册码访问规则见 RegCodeAccessService#canUseRegCode，不满足直接 403
         SysUsers operator = this.regCodeAccessService.requireRegCode(request);
         String operatorId = operator.getId();
         // 前端传的 applyId 一律忽略，只认 token
         one.setApplyId(operatorId);
 
+        boolean root = this.regCodeAccessService.isRootUser(operator);
+        if (!root) {
+            List<String> allowed = this.regCodeAccessService.allowedConfigIds(operator);
+            if (allowed == null || allowed.isEmpty()) {
+                return ApiResponse.failure("暂无可用配置，请联系管理员分配");
+            }
+        }
         RegCodeConfig config = resolveRegCodeConfig(one);
         if (config == null && (one.getRegCodeType() == null || one.getRegCodeType() == 0)) {
             return ApiResponse.failure("请选择注册码配置或类型");
         }
         if (config != null) {
-            String deny = this.regCodeAccessService.assertCanGenerate(operatorId, config.getId());
+            String deny = this.regCodeAccessService.assertCanGenerate(operator, config.getId());
             if (deny != null) {
                 return ApiResponse.failure(deny);
             }
@@ -150,8 +243,8 @@ public class CommonRegCodeController {
                 ? "临时注册码生成 / " + config.getCompany() + " / " + config.getName()
                 : "临时注册码生成");
         record.setCreateTime(DateUtils.getNow());
-        this.comRegistrationService.save(record);
-        this.regCodeAccessService.consumeQuota(operatorId);
+        // 扣次数（条件更新）与保存记录在同一事务里，次数被并发用完时不会多生成
+        this.regCodeQuotaService.consumeAndRecord(operator, config == null ? null : config.getId(), record);
 
         return ApiResponse.success(one);
     }
