@@ -41,6 +41,8 @@ app:
     mode: ${MENU_SYNC_MODE:apply}
     # 开发库多人共用、各分支清单不同，只增改不停用
     disable-missing: false
+    # 本地开发两端都允许缺清单（只打 WARN）；生产见 application-prod.yml
+    allow-missing-manifest: ${MENU_SYNC_ALLOW_MISSING_MANIFEST:admin,app}
     first-grant:
       # 额外授予用户端出货菜单的角色 id（逗号分隔），见 sql/crab_users_without_menu_check.sql
       app-crab-extra-roles: ${MENU_SYNC_APP_CRAB_EXTRA_ROLES:}

@@ -123,6 +123,20 @@ if (-not (Test-Path $JarPath)) {
     Write-Error "未找到 $JarPath ，请先成功执行 mvn package"
 }
 
+# jar 里必须有两个页面清单（在只有后端目录的地方打包会漏掉，菜单同步会失败）
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$zip = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path $JarPath))
+try {
+    $names = $zip.Entries | ForEach-Object { $_.FullName }
+    foreach ($m in @("BOOT-INF/classes/menus/admin/menus.json", "BOOT-INF/classes/menus/app/menus.json")) {
+        if ($names -notcontains $m) {
+            Write-Error "jar 里没有 $m ：请在完整仓库里重新打包（SKIP_BUILD=0），不要上传这个 jar"
+        }
+    }
+} finally {
+    $zip.Dispose()
+}
+
 Write-Host "在服务器创建目录 $DEPLOY_REMOTE_DIR ..."
 & ssh @sshArgs $remote "${sudo}rm -rf /tmp/leonpro-backend-upload && mkdir -p /tmp/leonpro-backend-upload && ${sudo}mkdir -p '$DEPLOY_REMOTE_DIR' && ${sudo}chown -R '${DEPLOY_USER}:${DEPLOY_USER}' '$DEPLOY_REMOTE_DIR'"
 if ($LASTEXITCODE -ne 0) { throw "ssh mkdir 失败" }

@@ -81,6 +81,13 @@ public class MenuManifestSync implements CommandLineRunner {
      */
     @Value("${app.menu-sync.first-grant.app-crab-extra-roles:}")
     String appCrabExtraRoles = "";
+    /**
+     * 允许 jar 里缺少清单的端（逗号分隔 admin / app）。不在名单里的端缺清单时启动直接失败——
+     * 防止在只有后端目录的地方打包（Docker 构建、git archive 后端目录）导致清单没打进 jar、菜单同步静默跳过。
+     * 不配置时两端都允许缺（本地开发、测试）；生产配置见 application-prod.yml。
+     */
+    @Value("${app.menu-sync.allow-missing-manifest:admin,app}")
+    String allowMissingManifest = "admin,app";
 
     public MenuManifestSync(JdbcTemplate jdbc, PlatformTransactionManager transactionManager, ResourceLoader resourceLoader) {
         this.jdbc = jdbc;
@@ -99,6 +106,8 @@ public class MenuManifestSync implements CommandLineRunner {
             log.error("app.menu-sync.mode={} 无效（只能是 off / dry-run / apply），本次不同步菜单", mode);
             return;
         }
+        // 放在 try 外面：缺清单要让启动失败，不能被下面的“异常只记日志”吞掉
+        requireManifests();
         boolean apply = MODE_APPLY.equals(m);
         try {
             if (!schemaReady()) {
@@ -120,6 +129,34 @@ public class MenuManifestSync implements CommandLineRunner {
         } catch (Exception e) {
             log.error("菜单同步异常（不影响启动）：{}", e.getMessage(), e);
         }
+    }
+
+    /** 不允许缺失的端，jar 里没有清单就抛异常（启动失败） */
+    void requireManifests() {
+        Set<String> allowed = new HashSet<>();
+        for (String c : (allowMissingManifest == null ? "" : allowMissingManifest).split(",")) {
+            if (!c.isBlank()) {
+                allowed.add(c.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        List<String> missing = new java.util.ArrayList<>();
+        if (!allowed.contains(MenuClients.ADMIN) && !exists(adminManifest)) {
+            missing.add(MenuClients.ADMIN + "（" + adminManifest + "）");
+        }
+        if (!allowed.contains(MenuClients.APP) && !exists(appManifest)) {
+            missing.add(MenuClients.APP + "（" + appManifest + "）");
+        }
+        if (!missing.isEmpty()) {
+            throw new IllegalStateException("页面清单缺失：" + String.join("、", missing)
+                    + "。jar 必须在完整仓库里打包（后端目录旁边要有 LeonPro_frontend）；确实要在没有清单的情况下启动，"
+                    + "把该端加进 app.menu-sync.allow-missing-manifest（环境变量 MENU_SYNC_ALLOW_MISSING_MANIFEST），"
+                    + "或 app.menu-sync.mode=off");
+        }
+    }
+
+    private boolean exists(String location) {
+        Resource r = resolve(location);
+        return r != null && r.exists();
     }
 
     boolean schemaReady() {

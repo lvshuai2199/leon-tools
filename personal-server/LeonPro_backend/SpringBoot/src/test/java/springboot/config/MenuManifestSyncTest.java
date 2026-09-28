@@ -39,6 +39,33 @@ class MenuManifestSyncTest {
     }
 
     @Test
+    void missingRequiredManifestFailsStartupUnlessAllowed() throws Exception {
+        MenuManifestSync s = sync("apply");
+        s.allowMissingManifest = "admin";
+        IllegalStateException e = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, s::run,
+                "生产只允许缺 admin：app 清单没打进 jar 时启动失败");
+        org.junit.jupiter.api.Assertions.assertTrue(e.getMessage().contains("app"), e.getMessage());
+        verifyNoInteractions(jdbc);
+
+        s.allowMissingManifest = "";
+        java.nio.file.Path app = java.nio.file.Files.createTempFile("menus-app", ".json");
+        java.nio.file.Files.writeString(app, "[]");
+        s.appManifest = app.toUri().toString();
+        e = org.junit.jupiter.api.Assertions.assertThrows(IllegalStateException.class, s::requireManifests);
+        org.junit.jupiter.api.Assertions.assertTrue(e.getMessage().contains("admin") && !e.getMessage().contains("app（"), e.getMessage());
+
+        s.allowMissingManifest = " Admin ";
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(s::requireManifests, "app 在、admin 显式允许缺失");
+        s.allowMissingManifest = "admin,app";
+        s.appManifest = "classpath:menus/app/not-there.json";
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(s::requireManifests, "两端都允许缺（开发默认）");
+        MenuManifestSync off = sync("off");
+        off.allowMissingManifest = "";
+        org.junit.jupiter.api.Assertions.assertDoesNotThrow(() -> off.run(), "mode=off 不检查清单");
+        java.nio.file.Files.deleteIfExists(app);
+    }
+
+    @Test
     void offDoesNothing() {
         sync("off").run();
         verifyNoInteractions(jdbc);

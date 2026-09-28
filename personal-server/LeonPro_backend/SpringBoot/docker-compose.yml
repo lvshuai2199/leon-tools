@@ -19,6 +19,12 @@ services:
       MYSQL_HOST: 127.0.0.1
       MYSQL_PASSWORD: ${MYSQL_PASSWORD:-Root@123456}
       REDIS_HOST: 127.0.0.1
+      # 菜单同步（见 application-prod.yml / launch-checklist）。值写在服务器 /opt/leonpro/backend/.env 里，
+      # docker compose 会自动读取；不写时用这里的默认值（与 application-prod.yml 一致）。
+      MENU_SYNC_MODE: ${MENU_SYNC_MODE:-apply}
+      MENU_SYNC_DISABLE_MISSING: ${MENU_SYNC_DISABLE_MISSING:-true}
+      MENU_SYNC_APP_CRAB_EXTRA_ROLES: ${MENU_SYNC_APP_CRAB_EXTRA_ROLES:-}
+      MENU_SYNC_ALLOW_MISSING_MANIFEST: ${MENU_SYNC_ALLOW_MISSING_MANIFEST:-}
     volumes:
       # 壁纸等上传文件持久化（容器工作目录 /app，对应 app.wallpaper.storage-dir=./uploads/wallpaper）
       - ./uploads:/app/uploads

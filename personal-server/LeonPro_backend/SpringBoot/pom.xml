@@ -17,6 +17,15 @@
 		<java.version>21</java.version>
 		<mybatis-plus.version>3.5.17</mybatis-plus.version>
 		<twelvemonkeys.version>3.12.0</twelvemonkeys.version>
+		<!-- 两个前端的页面清单（打进 jar 的 classpath:menus/admin/、classpath:menus/app/），见下方 resources 与 check-menu-manifests -->
+		<menus.admin.dir>${project.basedir}/../../LeonPro_frontend/vue3_frontend/src/router</menus.admin.dir>
+		<menus.app.dir>${project.basedir}/../../LeonPro_frontend/frontend_phone/src/router</menus.app.dir>
+		<!--
+		  清单缺失时构建直接失败（避免只拷了后端目录、git archive 后端目录等情况下静默打出没有清单的 jar）。
+		  确实要在没有清单的情况下构建时显式加 -Dmenus.app.optional=true / -Dmenus.admin.optional=true。
+		-->
+		<menus.app.optional>false</menus.app.optional>
+		<menus.admin.optional>false</menus.admin.optional>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -89,7 +98,8 @@
 		<!--
 		  页面清单打进 jar（见 menu-sync-design.md 2.4）：前两段与 spring-boot-starter-parent 默认一致（application*.yml 过滤），
 		  后两段把两个前端的 src/router/menus.json 放到 classpath:menus/admin/、classpath:menus/app/。
-		  目录或文件不存在时 Maven 静默跳过，后端启动时打 WARN 并跳过该端同步（不会停用任何菜单）。
+		  Maven 对不存在的目录会静默跳过，所以 validate 阶段由 antrun 的 check-menu-manifests 先检查，缺了就失败
+		  （除非 menus.*.optional=true）；生产启动时 MenuManifestSync 也会再检查一次（app.menu-sync.allow-missing-manifest）。
 		-->
 		<resources>
 			<resource>
@@ -110,14 +120,14 @@
 				</excludes>
 			</resource>
 			<resource>
-				<directory>${project.basedir}/../../LeonPro_frontend/vue3_frontend/src/router</directory>
+				<directory>${menus.admin.dir}</directory>
 				<includes>
 					<include>menus.json</include>
 				</includes>
 				<targetPath>menus/admin</targetPath>
 			</resource>
 			<resource>
-				<directory>${project.basedir}/../../LeonPro_frontend/frontend_phone/src/router</directory>
+				<directory>${menus.app.dir}</directory>
 				<includes>
 					<include>menus.json</include>
 				</includes>
@@ -154,6 +164,33 @@
 				<artifactId>maven-antrun-plugin</artifactId>
 				<version>3.1.0</version>
 				<executions>
+					<execution>
+						<id>check-menu-manifests</id>
+						<phase>validate</phase>
+						<goals>
+							<goal>run</goal>
+						</goals>
+						<configuration>
+							<target>
+								<fail message="用户端页面清单不存在：${menus.app.dir}/menus.json。构建必须在完整仓库里进行（后端目录旁边要有 LeonPro_frontend），否则 jar 里没有清单、菜单同步会跳过。确实要跳过请显式加 -Dmenus.app.optional=true">
+									<condition>
+										<and>
+											<isfalse value="${menus.app.optional}"/>
+											<not><available file="${menus.app.dir}/menus.json" type="file"/></not>
+										</and>
+									</condition>
+								</fail>
+								<fail message="管理端页面清单不存在：${menus.admin.dir}/menus.json。构建必须在完整仓库里进行；确实要跳过请显式加 -Dmenus.admin.optional=true">
+									<condition>
+										<and>
+											<isfalse value="${menus.admin.optional}"/>
+											<not><available file="${menus.admin.dir}/menus.json" type="file"/></not>
+										</and>
+									</condition>
+								</fail>
+							</target>
+						</configuration>
+					</execution>
 					<execution>
 						<id>copy-jar-to-deploy-dist</id>
 						<phase>package</phase>
