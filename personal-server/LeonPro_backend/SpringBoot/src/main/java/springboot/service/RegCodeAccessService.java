@@ -49,6 +49,10 @@ public class RegCodeAccessService {
     @Value("${app.menu-sync.first-grant.app-crab-route:/crab}")
     private String appCrabRoute = "/crab";
 
+    /** 用户端注册码生成菜单的路由（与菜单同步的首次授权用同一个配置） */
+    @Value("${app.menu-sync.first-grant.app-regcode-route:/regcode}")
+    private String appRegCodeRoute = "/regcode";
+
     public RegCodeAccessService(SysUsersService sysUsersService,
                                 SysRolesService sysRolesService,
                                 SysRoleMenuService sysRoleMenuService,
@@ -176,18 +180,43 @@ public class RegCodeAccessService {
      * 有用户端出货菜单且未停用 → 它的 id；有但已停用 → null（谁都没有）；没有 → 管理端 menu_crab（同步前的兜底）。
      */
     public String effectiveCrabMenuId() {
-        SysMenus appCrab = findAppCrabMenu();
-        if (appCrab == null) {
-            return MENU_CRAB;
-        }
-        return appCrab.getDisabled() != null && appCrab.getDisabled() != 0 ? null : appCrab.getId();
+        return effectiveAppMenuId(appCrabRoute, MENU_CRAB);
     }
 
-    private SysMenus findAppCrabMenu() {
+    /**
+     * 判断注册码生成权限时要看的菜单 id：规则同 {@link #effectiveCrabMenuId()}——
+     * 有用户端注册码菜单且未停用 → 它的 id；有但已停用 → null；没有 → 管理端 menu_regcode（同步前的兜底）。
+     */
+    public String effectiveRegCodeMenuId() {
+        return effectiveAppMenuId(appRegCodeRoute, MENU_REGCODE);
+    }
+
+    /** 用户端出货菜单的路由（默认 /crab） */
+    public String appCrabRoute() {
+        return appCrabRoute;
+    }
+
+    /** 用户端注册码生成菜单的路由（默认 /regcode） */
+    public String appRegCodeRoute() {
+        return appRegCodeRoute;
+    }
+
+    private String effectiveAppMenuId(String route, String legacyMenuId) {
+        SysMenus appMenu = findAppMenu(route);
+        if (appMenu == null) {
+            return legacyMenuId;
+        }
+        return appMenu.getDisabled() != null && appMenu.getDisabled() != 0 ? null : appMenu.getId();
+    }
+
+    private SysMenus findAppMenu(String route) {
+        if (route == null || route.isBlank()) {
+            return null;
+        }
         try {
             List<SysMenus> rows = sysMenusService.list(new LambdaQueryWrapper<SysMenus>()
                     .eq(SysMenus::getClient, "app")
-                    .eq(SysMenus::getRouteKey, appCrabRoute)
+                    .eq(SysMenus::getRouteKey, route.trim())
                     .last("LIMIT 1"));
             return rows == null || rows.isEmpty() ? null : rows.get(0);
         } catch (RuntimeException e) {
@@ -210,7 +239,8 @@ public class RegCodeAccessService {
      *   <li>ROOT：可以</li>
      *   <li>自己的注册码账号被停用（reg_code_user.status = 0）：不可以</li>
      *   <li>顶层账号（parent_id 为空，或父用户是 ROOT / 管理端账号，如管理员在后台建的注册码客户）：
-     *       看自己角色是否分配了“注册码生成”菜单（menu_regcode）</li>
+     *       看自己角色是否分配了“注册码生成”菜单（见 {@link #effectiveRegCodeMenuId()}：菜单同步后是用户端
+     *       /regcode 菜单，已停用则除 ROOT 外都不行；同步前退回看管理端 menu_regcode）</li>
      *   <li>底层子用户（在注册码页由客户创建，父用户是注册码客户）：看创建人——创建人存在、角色未禁用、
      *       注册码账号未停用、自己是顶层账号且角色有注册码生成菜单，才可以；否则下一次请求就 403</li>
      * </ol>
@@ -261,13 +291,34 @@ public class RegCodeAccessService {
         return user != null && (isRootUser(user) || !isWebBlocked(user));
     }
 
-    /** 角色是否分配了“注册码生成”菜单 */
+    /** 角色是否分配了“注册码生成”菜单（用户端 /regcode 菜单，同步前为 menu_regcode） */
     public boolean roleHasRegCode(SysUsers user) {
-        if (user == null || user.getRoleId() == null || user.getRoleId().isBlank()) {
+        if (user == null) {
             return false;
         }
-        List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(user.getRoleId());
-        return menuIds != null && menuIds.contains(MENU_REGCODE);
+        return roleHasMenu(user.getRoleId(), effectiveRegCodeMenuId());
+    }
+
+    /**
+     * 用户端出货、注册码以外的其他用户端菜单按谁的角色显示：顶层账号看自己（角色未禁用）；
+     * 子账号看创建人（创建人存在、是顶层账号、角色未禁用、账号未停用），与出货的“跟着创建人走”一致。
+     * 返回 null 表示没有这类菜单。
+     */
+    public SysUsers appMenuGoverningUser(SysUsers user) {
+        if (user == null || isRegCodeDisabled(user)) {
+            return null;
+        }
+        if (!isSubAccount(user)) {
+            return isRoleDisabled(user) ? null : user;
+        }
+        SysUsers creator = sysUsersService.getById(user.getParentId().trim());
+        if (creator == null || isRoleDisabled(creator) || isRegCodeDisabled(creator)) {
+            return null;
+        }
+        if (isRootUser(creator)) {
+            return creator;
+        }
+        return isSubAccount(creator) ? null : creator;
     }
 
     private boolean isRoleDisabled(SysUsers user) {

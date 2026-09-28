@@ -167,13 +167,32 @@ class RegCodeAccessServiceTest {
         assertTrue(svc.canLoginWeb(u("m", "role_admin", null)));
     }
 
-    private void appCrabMenu(String id, int disabled) {
+    /** route_key -> 用户端菜单（按查询条件里的路由返回，出货和注册码分开） */
+    Map<String, SysMenus> appMenusByRoute = new HashMap<>();
+
+    @SuppressWarnings("unchecked")
+    private void appMenu(String route, String id, int disabled) {
         SysMenus m = new SysMenus();
         m.setId(id);
         m.setClient("app");
-        m.setRouteKey("/crab");
+        m.setRouteKey(route);
         m.setDisabled(disabled);
-        when(sysMenus.list(any(Wrapper.class))).thenReturn(List.of(m));
+        appMenusByRoute.put(route, m);
+        when(sysMenus.list(any(Wrapper.class))).thenAnswer(inv -> {
+            AbstractWrapper<?, ?, ?> w = inv.getArgument(0);
+            w.getSqlSegment();
+            for (Object v : w.getParamNameValuePairs().values()) {
+                SysMenus hit = appMenusByRoute.get(String.valueOf(v));
+                if (hit != null) {
+                    return List.of(hit);
+                }
+            }
+            return List.of();
+        });
+    }
+
+    private void appCrabMenu(String id, int disabled) {
+        appMenu("/crab", id, disabled);
     }
 
     @Test
@@ -243,6 +262,25 @@ class RegCodeAccessServiceTest {
         assertEquals(null, svc.effectiveCrabMenuId(), "用户端出货菜单已停用");
         assertFalse(svc.canUseCrab(u("boss", "role_boss", null)), "菜单停用后谁都不能用");
         assertTrue(svc.canUseCrab(u("root", "role_root", null)), "ROOT 除外");
+    }
+
+    @Test
+    void regCodeUsesAppMenuAfterSync() {
+        menus.put("role_app_gen", List.of("menu_app_regcode"));
+        assertEquals("menu_regcode", svc.effectiveRegCodeMenuId(), "还没有用户端注册码菜单时看 menu_regcode");
+        appMenu("/regcode", "menu_app_regcode", 0);
+        assertEquals("menu_app_regcode", svc.effectiveRegCodeMenuId());
+        assertFalse(svc.canUseRegCode(u("genAdmin", "role_gen_admin", null)), "同步后只认用户端注册码菜单，只有 menu_regcode 不行");
+        assertTrue(svc.canUseRegCode(u("gen", "role_app_gen", null)));
+        u("admin", "role_admin", null);
+        SysUsers cust = u("cust", "role_app_gen", "admin");
+        assertTrue(svc.canUseRegCode(u("sub", "role_x", "cust")), "底层子用户跟着创建人");
+        assertTrue(cust.getParentId() != null);
+
+        appMenu("/regcode", "menu_app_regcode", 1);
+        assertEquals(null, svc.effectiveRegCodeMenuId(), "用户端注册码菜单已停用");
+        assertFalse(svc.canUseRegCode(u("gen", "role_app_gen", null)), "菜单停用后谁都不能用");
+        assertTrue(svc.canUseRegCode(u("root", "role_root", null)), "ROOT 除外");
     }
 
     @Test

@@ -17,6 +17,7 @@ import springboot.service.AuthTokenService;
 import springboot.service.RegCodeAccessService;
 import springboot.service.SysRolesService;
 import springboot.service.SysUsersService;
+import springboot.service.menu.AppMenuAccessService;
 import springboot.service.menu.MenuClients;
 import springboot.service.menu.MenuQueryService;
 import springboot.utils.ApiResponse;
@@ -40,15 +41,18 @@ public class AuthController {
     private final MenuQueryService menuQueryService;
     private final RegCodeAccessService regCodeAccessService;
     private final AuthTokenService authTokenService;
+    private final AppMenuAccessService appMenuAccessService;
 
     public AuthController(SysUsersService sysUsersService, SysRolesService sysRolesService,
                           MenuQueryService menuQueryService,
-                          RegCodeAccessService regCodeAccessService, AuthTokenService authTokenService) {
+                          RegCodeAccessService regCodeAccessService, AuthTokenService authTokenService,
+                          AppMenuAccessService appMenuAccessService) {
         this.sysUsersService = sysUsersService;
         this.sysRolesService = sysRolesService;
         this.menuQueryService = menuQueryService;
         this.regCodeAccessService = regCodeAccessService;
         this.authTokenService = authTokenService;
+        this.appMenuAccessService = appMenuAccessService;
     }
 
     /**
@@ -120,13 +124,11 @@ public class AuthController {
         vo.setRoleName(user.getRoleName());
         vo.setParentId(user.getParentId());
         vo.setMenuIds(this.regCodeAccessService.menuIdsOf(user));
-        // 用户端菜单：client=app、未停用；ROOT 全部，其他按角色授权（含隐藏子页和祖先目录）
-        vo.setAppMenus(this.menuQueryService.menusFor(user, MenuClients.APP));
+        // 用户端菜单：前端只按它显示入口；出货 / 注册码菜单与 /app/crabShipment、/common 的权限判断完全一致
+        vo.setAppMenus(this.appMenuAccessService.appMenusFor(user));
         vo.setRoot(this.regCodeAccessService.isRootUser(user));
         vo.setCanLoginWeb(this.regCodeAccessService.canLoginWeb(user));
-        vo.setCanUseCrab(this.regCodeAccessService.canUseCrab(user));
         boolean canUseRegCode = this.regCodeAccessService.canUseRegCode(user);
-        vo.setCanUseRegCode(canUseRegCode);
         MeVO.RegCodeInfo regCode = vo.getRegCode();
         regCode.setSubUser(this.regCodeAccessService.isBottomSubUser(user));
         regCode.setMaxSubUsers(this.regCodeAccessService.maxSubUsersOf(user));
