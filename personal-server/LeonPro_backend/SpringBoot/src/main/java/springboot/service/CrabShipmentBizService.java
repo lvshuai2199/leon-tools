@@ -1,44 +1,43 @@
-package springboot.controller.web;
+package springboot.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.update.LambdaUpdateWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
-import jakarta.servlet.http.HttpServletRequest;
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.PostMapping;
-import org.springframework.web.bind.annotation.RequestBody;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.stereotype.Service;
 import springboot.DTO.CrabShipmentBatchRequest;
-import springboot.DTO.CrabShipmentParseRequest;
 import springboot.domain.CrabShipment;
 import springboot.domain.SysUsers;
-import springboot.service.CrabOrderParser;
-import springboot.service.CrabShipmentService;
-import springboot.service.RegCodeAccessService;
-import springboot.service.SysUsersService;
 import springboot.utils.ApiResponse;
 import springboot.utils.DateUtils;
-import springboot.utils.RequestUserUtils;
+import springboot.utils.ForbiddenException;
+import springboot.utils.PhoneMaskUtils;
 
-import java.io.Serializable;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
+import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Pattern;
 
 /**
- * 螃蟹每日出货：录入、改状态、单条公开分享。
+ * 螃蟹出货业务逻辑，管理端 / 用户端 / 公开分享三个入口共用。
+ * <p>
+ * 数据范围 scope：null 表示不限（管理端、ROOT）；否则只能看 / 改 operatorId 在集合里的记录，
+ * 范围外的记录一律 403（批量删除只要有一条越界整批 403）。新建记录都记在当前用户名下。
  */
-@RestController
-public class CrabShipmentController {
+@Service
+public class CrabShipmentBizService {
+
+    /** 分享页地址（用户端 history 路由），前端拼上域名即可 */
+    public static final String SHARE_PATH_PREFIX = "/s/crab/";
 
     private static final Pattern PUBLIC_ID = Pattern.compile("^[a-zA-Z0-9-]{8,64}$");
     private static final DateTimeFormatter DAY = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -48,7 +47,7 @@ public class CrabShipmentController {
     private final SysUsersService sysUsersService;
     private final RegCodeAccessService regCodeAccessService;
 
-    public CrabShipmentController(CrabShipmentService crabShipmentService,
+    public CrabShipmentBizService(CrabShipmentService crabShipmentService,
                                   SysUsersService sysUsersService,
                                   RegCodeAccessService regCodeAccessService) {
         this.crabShipmentService = crabShipmentService;
@@ -56,17 +55,38 @@ public class CrabShipmentController {
         this.regCodeAccessService = regCodeAccessService;
     }
 
-    @GetMapping({"/admin/crabShipment/getAll", "/app/crabShipment/getAll"})
-    public ApiResponse selectAll(Page<CrabShipment> page,
-                                 CrabShipment query,
-                                 @RequestParam(value = "shipDateStart", required = false) String shipDateStart,
-                                 @RequestParam(value = "shipDateEnd", required = false) String shipDateEnd,
-                                 HttpServletRequest request) {
-        ApiResponse deny = denyUnlessCrab(request);
-        if (deny != null) {
-            return deny;
+    /**
+     * 用户端数据范围（按 operator_id）：ROOT 不限（返回 null）；子账号只有自己；
+     * 主账号 = 自己 + parent_id 是自己的子账号。
+     */
+    public Set<String> scopeOf(SysUsers user) {
+        if (user == null || user.getId() == null || user.getId().isBlank()) {
+            throw new ForbiddenException();
         }
+        if (this.regCodeAccessService.isRootUser(user)) {
+            return null;
+        }
+        Set<String> ids = new LinkedHashSet<>();
+        ids.add(user.getId());
+        if (!this.regCodeAccessService.isSubAccount(user)) {
+            List<SysUsers> children = this.sysUsersService.list(
+                    new LambdaQueryWrapper<SysUsers>().eq(SysUsers::getParentId, user.getId()));
+            if (children != null) {
+                children.stream()
+                        .map(SysUsers::getId)
+                        .filter(id -> id != null && !id.isBlank())
+                        .forEach(ids::add);
+            }
+        }
+        return ids;
+    }
+
+    public Page<CrabShipment> page(Page<CrabShipment> page, CrabShipment query, String shipDateStart,
+                                   String shipDateEnd, Collection<String> scope) {
         LambdaQueryWrapper<CrabShipment> wrapper = new LambdaQueryWrapper<>();
+        if (scope != null) {
+            wrapper.in(CrabShipment::getOperatorId, scope);
+        }
         applyShipDateFilter(wrapper, query == null ? null : query.getShipDate(), shipDateStart, shipDateEnd);
         if (query != null) {
             if (notBlank(query.getCustomerName())) {
@@ -91,29 +111,20 @@ public class CrabShipmentController {
         if (result.getRecords() != null) {
             result.getRecords().forEach(this::fillShare);
         }
-        return ApiResponse.success(result);
+        return result;
     }
 
-    @GetMapping("/app/crabShipment/{id}")
-    public ApiResponse selectOne(@PathVariable Serializable id, HttpServletRequest request) {
-        ApiResponse deny = denyUnlessCrab(request);
-        if (deny != null) {
-            return deny;
-        }
-        CrabShipment entity = this.crabShipmentService.getById(id);
+    public ApiResponse detail(String id, Collection<String> scope) {
+        CrabShipment entity = id == null ? null : this.crabShipmentService.getById(id.trim());
         if (entity == null) {
             return ApiResponse.failure("记录不存在");
         }
+        assertInScope(entity, scope);
         fillShare(entity);
         return ApiResponse.success(entity);
     }
 
-    @PostMapping({"/admin/crabShipment/save", "/app/crabShipment/save"})
-    public ApiResponse save(@RequestBody CrabShipment body, HttpServletRequest request) {
-        ApiResponse deny = denyUnlessCrab(request);
-        if (deny != null) {
-            return deny;
-        }
+    public ApiResponse save(CrabShipment body, SysUsers operator, Collection<String> scope) {
         if (body == null) {
             return ApiResponse.failure("请填写出货信息");
         }
@@ -129,12 +140,13 @@ public class CrabShipmentController {
             entity.setId(newId());
             entity.setPublicId(newId());
             entity.setCreateTime(now);
-            applyOperator(entity, request);
+            applyOperator(entity, operator);
         } else {
             entity = this.crabShipmentService.getById(body.getId().trim());
             if (entity == null) {
                 return ApiResponse.failure("记录不存在");
             }
+            assertInScope(entity, scope);
         }
         String shipDate = normalizeDate(body.getShipDate());
         entity.setCustomerName(name);
@@ -161,12 +173,7 @@ public class CrabShipmentController {
         return ApiResponse.success(entity);
     }
 
-    @PostMapping({"/admin/crabShipment/status", "/app/crabShipment/status"})
-    public ApiResponse updateStatus(@RequestBody CrabShipment body, HttpServletRequest request) {
-        ApiResponse deny = denyUnlessCrab(request);
-        if (deny != null) {
-            return deny;
-        }
+    public ApiResponse updateStatus(CrabShipment body, Collection<String> scope) {
         if (body == null || body.getId() == null || body.getId().isBlank()) {
             return ApiResponse.failure("缺少记录");
         }
@@ -174,6 +181,7 @@ public class CrabShipmentController {
         if (entity == null) {
             return ApiResponse.failure("记录不存在");
         }
+        assertInScope(entity, scope);
         LambdaUpdateWrapper<CrabShipment> uw = new LambdaUpdateWrapper<>();
         uw.eq(CrabShipment::getId, entity.getId());
         if (body.getPaid() != null) {
@@ -192,19 +200,13 @@ public class CrabShipmentController {
         return ApiResponse.success(latest);
     }
 
-    @PostMapping({"/admin/crabShipment/batchSave", "/app/crabShipment/batchSave"})
-    public ApiResponse batchSave(@RequestBody CrabShipmentBatchRequest req, HttpServletRequest request) {
-        ApiResponse deny = denyUnlessCrab(request);
-        if (deny != null) {
-            return deny;
-        }
+    public ApiResponse batchSave(CrabShipmentBatchRequest req, SysUsers operator) {
         if (req == null || req.getRecords() == null || req.getRecords().isEmpty()) {
             return ApiResponse.failure("没有可保存的记录");
         }
         String shipDate = normalizeDate(req.getShipDate());
         int seq = nextSeq(shipDate);
         Date now = DateUtils.getNow();
-        Operator operator = resolveOperator(request);
         List<CrabShipment> saved = new ArrayList<>();
         for (CrabShipment item : req.getRecords()) {
             if (item == null || isBlank(item.getCustomerName()) && isBlank(item.getPhone())) {
@@ -224,8 +226,7 @@ public class CrabShipmentController {
             entity.setTrackingNo(trimToNull(item.getTrackingNo()));
             entity.setRemark(trimToNull(item.getRemark()));
             entity.setShipDate(notBlank(item.getShipDate()) ? normalizeDate(item.getShipDate()) : shipDate);
-            entity.setOperatorId(operator.id);
-            entity.setOperatorName(operator.name);
+            applyOperator(entity, operator);
             entity.setCreateTime(now);
             entity.setUpdateTime(now);
             this.crabShipmentService.save(entity);
@@ -241,13 +242,7 @@ public class CrabShipmentController {
         return ApiResponse.success(saved);
     }
 
-    @PostMapping({"/admin/crabShipment/parse", "/app/crabShipment/parse"})
-    public ApiResponse parse(@RequestBody CrabShipmentParseRequest req, HttpServletRequest request) {
-        ApiResponse deny = denyUnlessCrab(request);
-        if (deny != null) {
-            return deny;
-        }
-        String text = req == null ? null : req.getText();
+    public ApiResponse parse(String text) {
         List<CrabShipment> rows = CrabOrderParser.parse(text);
         Map<String, Object> data = new HashMap<>();
         data.put("records", rows);
@@ -255,26 +250,28 @@ public class CrabShipmentController {
         return ApiResponse.success(data);
     }
 
-    @PostMapping({"/admin/crabShipment/del", "/app/crabShipment/del"})
-    public ApiResponse delete(@RequestBody List<String> idList, HttpServletRequest request) {
-        ApiResponse deny = denyUnlessCrab(request);
-        if (deny != null) {
-            return deny;
-        }
+    public ApiResponse delete(List<String> idList, Collection<String> scope) {
         if (idList == null || idList.isEmpty()) {
             return ApiResponse.failure("请选择要删除的记录");
+        }
+        if (scope != null) {
+            List<CrabShipment> targets = this.crabShipmentService.listByIds(idList);
+            if (targets != null) {
+                for (CrabShipment t : targets) {
+                    assertInScope(t, scope);
+                }
+            }
         }
         return ApiResponse.success(this.crabShipmentService.removeByIds(idList));
     }
 
-    /** 单条公开状态：无需登录。 */
-    @GetMapping("/public/crabShipment/{publicId}")
-    public ApiResponse publicView(@PathVariable String publicId) {
+    /** 公开分享：无需登录，手机号和地址里的号码脱敏 */
+    public ApiResponse publicView(String publicId) {
         if (publicId == null || !PUBLIC_ID.matcher(publicId).matches()) {
             return ApiResponse.failure("链接无效");
         }
         CrabShipment entity = this.crabShipmentService.getOne(
-                new LambdaQueryWrapper<CrabShipment>().eq(CrabShipment::getPublicId, publicId));
+                new LambdaQueryWrapper<CrabShipment>().eq(CrabShipment::getPublicId, publicId), false);
         if (entity == null) {
             return ApiResponse.failure("记录不存在或链接已失效");
         }
@@ -282,8 +279,8 @@ public class CrabShipmentController {
         view.put("publicId", entity.getPublicId());
         view.put("seqNo", entity.getSeqNo());
         view.put("customerName", entity.getCustomerName());
-        view.put("phone", maskPhone(entity.getPhone()));
-        view.put("address", entity.getAddress());
+        view.put("phone", PhoneMaskUtils.maskPhone(entity.getPhone()));
+        view.put("address", PhoneMaskUtils.maskAddress(entity.getAddress()));
         view.put("spec", entity.getSpec());
         view.put("quantity", entity.getQuantity());
         view.put("paid", entity.getPaid() != null && entity.getPaid() != 0 ? 1 : 0);
@@ -294,15 +291,28 @@ public class CrabShipmentController {
         return ApiResponse.success(view);
     }
 
-    private ApiResponse denyUnlessCrab(HttpServletRequest request) {
-        this.regCodeAccessService.requireCrab(request);
-        return null;
+    static void assertInScope(CrabShipment entity, Collection<String> scope) {
+        if (scope == null) {
+            return;
+        }
+        String owner = entity.getOperatorId();
+        if (owner == null || owner.isBlank() || !scope.contains(owner)) {
+            throw new ForbiddenException("无权操作这条出货记录");
+        }
     }
 
     private void fillShare(CrabShipment entity) {
         if (entity != null && entity.getPublicId() != null) {
-            entity.setSharePath("/h5/#/pages/crab/share?id=" + entity.getPublicId());
+            entity.setSharePath(SHARE_PATH_PREFIX + entity.getPublicId());
         }
+    }
+
+    private void applyOperator(CrabShipment entity, SysUsers operator) {
+        if (operator == null) {
+            return;
+        }
+        entity.setOperatorId(operator.getId());
+        entity.setOperatorName(notBlank(operator.getNickname()) ? operator.getNickname() : operator.getUsername());
     }
 
     private int nextSeq(String shipDate) {
@@ -316,27 +326,6 @@ public class CrabShipmentController {
             return 1;
         }
         return last.getSeqNo() + 1;
-    }
-
-    private void applyOperator(CrabShipment entity, HttpServletRequest request) {
-        Operator operator = resolveOperator(request);
-        entity.setOperatorId(operator.id);
-        entity.setOperatorName(operator.name);
-    }
-
-    private Operator resolveOperator(HttpServletRequest request) {
-        Operator operator = new Operator();
-        String userId = RequestUserUtils.currentUserId(request);
-        if (userId != null && !userId.isBlank()) {
-            SysUsers user = this.sysUsersService.getById(userId);
-            if (user != null) {
-                operator.id = user.getId();
-                operator.name = notBlank(user.getNickname()) ? user.getNickname() : user.getUsername();
-                return operator;
-            }
-            operator.id = userId;
-        }
-        return operator;
     }
 
     private static void applyShipDateFilter(LambdaQueryWrapper<CrabShipment> wrapper,
@@ -389,17 +378,6 @@ public class CrabShipmentController {
         return LocalDate.now(ZONE).format(DAY);
     }
 
-    private static String maskPhone(String phone) {
-        if (phone == null) {
-            return null;
-        }
-        String p = phone.trim();
-        if (p.length() == 11) {
-            return p.substring(0, 3) + "****" + p.substring(7);
-        }
-        return p;
-    }
-
     private static String newId() {
         return UUID.randomUUID().toString().replace("-", "");
     }
@@ -422,10 +400,5 @@ public class CrabShipmentController {
 
     private static String trimToEmpty(String value) {
         return value == null ? "" : value.trim();
-    }
-
-    private static final class Operator {
-        private String id;
-        private String name;
     }
 }
