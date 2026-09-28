@@ -14,6 +14,9 @@ import springboot.utils.ApiResponse;
 import jakarta.annotation.Resource;
 import org.springframework.web.bind.annotation.*;
 import springboot.utils.DateUtils;
+import springboot.utils.ForbiddenException;
+import springboot.utils.RequestUserUtils;
+import jakarta.servlet.http.HttpServletRequest;
 
 import java.io.Serializable;
 import java.time.LocalDate;
@@ -50,18 +53,18 @@ public class SysTasksController {
 //    }
 
     @GetMapping("getAll")
-    public ApiResponse selectAll(Page<SysTasks> page, TaskDto taskDto) {
+    public ApiResponse selectAll(Page<SysTasks> page, TaskDto taskDto, HttpServletRequest request) {
         LambdaQueryWrapper<SysTasks> queryWrapper = new LambdaQueryWrapper<>();
+        // 只看自己发布的任务：发布人取 token，前端传的 publisherId 忽略
+        String me = RequestUserUtils.currentUserId(request);
+        if (StringUtils.isBlank(me)) {
+            return ApiResponse.failure("请先登录！！！");
+        }
+        queryWrapper.eq(SysTasks::getPublisherId, me);
 
         if (taskDto.getId() != null) {
             queryWrapper.eq(SysTasks::getId, taskDto.getId());
         }else {
-
-            if (StringUtils.isNotBlank(taskDto.getPublisherId())) {
-                queryWrapper.eq(SysTasks::getPublisherId,taskDto.getPublisherId());
-            }else {
-                return ApiResponse.failure("请先登录！！！");
-            }
 
             // 处理 isDelete 字段
             if (taskDto.getIsDelete() != null && taskDto.getIsDelete() != 0) {
@@ -88,11 +91,6 @@ public class SysTasksController {
             // 处理 taskStatus 字段
             if (StringUtils.isNotBlank(taskDto.getTaskStatus())) {
                 queryWrapper.eq(SysTasks::getTaskStatus, taskDto.getTaskStatus());
-            }
-
-            // 处理 publisherId 字段
-            if (StringUtils.isNotBlank(taskDto.getPublisherId())) {
-                queryWrapper.eq(SysTasks::getPublisherId, taskDto.getPublisherId());
             }
 
             // 处理 handlerId 字段
@@ -146,7 +144,9 @@ public class SysTasksController {
      * @return 新增结果
      */
     @PostMapping("add")
-    public ApiResponse insert(@RequestBody SysTasks sysTasks) {
+    public ApiResponse insert(@RequestBody SysTasks sysTasks, HttpServletRequest request) {
+        // 发布人取 token
+        sysTasks.setPublisherId(RequestUserUtils.currentUserId(request));
         // 设置当前时间
         sysTasks.setCreateTime(DateUtils.getNow()); // 获取当前时间并设置
 
@@ -163,7 +163,16 @@ public class SysTasksController {
      * @return 修改结果
      */
     @PostMapping ("update")
-    public ApiResponse update(@RequestBody SysTasks sysTasks) {
+    public ApiResponse update(@RequestBody SysTasks sysTasks, HttpServletRequest request) {
+        SysTasks exist = sysTasks.getId() == null ? null : this.sysTasksService.getById(sysTasks.getId());
+        if (exist == null) {
+            return ApiResponse.failure("任务不存在");
+        }
+        if (!java.util.Objects.equals(exist.getPublisherId(), RequestUserUtils.currentUserId(request))) {
+            throw new ForbiddenException("只能修改自己发布的任务");
+        }
+        // 发布人不允许改
+        sysTasks.setPublisherId(null);
         sysTasks.setUpdateTime(DateUtils.getNow());
         return ApiResponse.success(this.sysTasksService.updateById(sysTasks));
     }
@@ -175,7 +184,16 @@ public class SysTasksController {
      * @return 删除结果
      */
     @DeleteMapping("del")
-    public ApiResponse delete(@RequestParam("idList") List<Long> idList) {
+    public ApiResponse delete(@RequestParam("idList") List<Long> idList, HttpServletRequest request) {
+        if (idList == null || idList.isEmpty()) {
+            return ApiResponse.failure("请选择要删除的任务");
+        }
+        // 只删自己发布的任务，混入别人的任务整批 403
+        String me = RequestUserUtils.currentUserId(request);
+        List<SysTasks> targets = this.sysTasksService.listByIds(idList);
+        if (targets.stream().anyMatch(t -> !java.util.Objects.equals(t.getPublisherId(), me))) {
+            throw new ForbiddenException("只能删除自己发布的任务");
+        }
         return ApiResponse.success(this.sysTasksService.removeByIds(idList));
     }
 }

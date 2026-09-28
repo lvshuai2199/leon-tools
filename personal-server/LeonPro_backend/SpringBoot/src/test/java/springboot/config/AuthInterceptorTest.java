@@ -22,6 +22,8 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import springboot.domain.SysRoles;
 import springboot.domain.SysUsers;
 import springboot.service.AuthTokenService;
+import springboot.service.RegCodeAccessService;
+import springboot.service.SysMenusService;
 import springboot.service.SysRolesService;
 import springboot.service.SysUsersService;
 import springboot.utils.ApiResponse;
@@ -59,13 +61,25 @@ class AuthInterceptorTest {
     SysUsersService users;
     @Autowired
     SysRolesService roles;
+    @Autowired
+    RegCodeAccessService access;
 
     MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         REDIS.clear();
-        reset(users, roles);
+        reset(users, roles, access);
+        when(access.currentUser(any())).thenAnswer(inv ->
+                users.getById(RequestUserUtils.currentUserId(inv.getArgument(0))));
+        when(access.isWebBlocked(any())).thenAnswer(inv -> {
+            SysUsers u = inv.getArgument(0);
+            return u != null && "u-sub".equals(u.getId());
+        });
+        when(access.isRootUser(any(SysUsers.class))).thenAnswer(inv -> {
+            SysUsers u = inv.getArgument(0);
+            return u != null && "role_root".equals(u.getRoleId());
+        });
         when(users.getById("u-admin")).thenReturn(user("u-admin", "admin", "role_root"));
         when(users.getById("u-sub")).thenReturn(user("u-sub", "sub", "role_sub"));
         when(users.getById("u-off")).thenReturn(user("u-off", "off", "role_off"));
@@ -154,6 +168,21 @@ class AuthInterceptorTest {
     }
 
     @Test
+    void adminPathsGoThroughRoleCheckAfterToken() throws Exception {
+        mvc.perform(get("/admin/sysUsers/getUsers").header("Authorization", "Bearer " + tokens.issue("u-admin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value("u-admin"));
+        mvc.perform(get("/admin/sysUsers/getUsers").header("Authorization", "Bearer " + tokens.issue("u-sub")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value(AdminAuthInterceptor.WEB_BLOCKED_MESSAGE))
+                .andExpect(jsonPath("$.data").doesNotExist());
+        // 子账号不走 /admin 时（用户端接口）不受影响
+        mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer " + tokens.issue("u-sub")))
+                .andExpect(status().isOk());
+    }
+
+    @Test
     void exemptPathsNeedNoToken() throws Exception {
         mvc.perform(post("/auth/login")).andExpect(status().isOk()).andExpect(jsonPath("$.data").value("open"));
         for (String p : new String[]{"/public/wallpaper/random", "/public/crabShipment/abc",
@@ -196,7 +225,7 @@ class AuthInterceptorTest {
 
     @Configuration
     @EnableWebMvc
-    @Import({AuthWebConfig.class, AuthInterceptor.class, ProbeController.class})
+    @Import({AuthWebConfig.class, AuthInterceptor.class, AdminAuthInterceptor.class, ProbeController.class})
     static class TestConfig {
 
         @Bean
@@ -228,6 +257,16 @@ class AuthInterceptorTest {
         @Bean
         SysRolesService sysRolesService() {
             return mock(SysRolesService.class);
+        }
+
+        @Bean
+        RegCodeAccessService regCodeAccessService() {
+            return mock(RegCodeAccessService.class);
+        }
+
+        @Bean
+        SysMenusService sysMenusService() {
+            return mock(SysMenusService.class);
         }
 
         @Bean
