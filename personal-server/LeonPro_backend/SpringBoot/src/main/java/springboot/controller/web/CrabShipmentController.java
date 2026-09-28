@@ -295,8 +295,8 @@ public class CrabShipmentController {
     }
 
     private ApiResponse denyUnlessCrab(HttpServletRequest request) {
-        String err = this.regCodeAccessService.requireCrab(RequestUserUtils.currentUserId(request));
-        return err == null ? null : ApiResponse.failure(err);
+        this.regCodeAccessService.requireCrab(request);
+        return null;
     }
 
     private void fillShare(CrabShipment entity) {

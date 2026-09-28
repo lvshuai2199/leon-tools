@@ -9,6 +9,7 @@ import springboot.domain.RegCodeUser;
 import springboot.domain.RegCodeUserConfig;
 import springboot.domain.SysMenus;
 import springboot.domain.SysUsers;
+import springboot.utils.ForbiddenException;
 import springboot.utils.RequestUserUtils;
 import springboot.utils.RoleUtils;
 
@@ -50,14 +51,6 @@ public class RegCodeAccessService {
         this.sysMenusService = sysMenusService;
         this.regCodeUserService = regCodeUserService;
         this.regCodeUserConfigService = regCodeUserConfigService;
-    }
-
-    public boolean isClient(String userId) {
-        if (userId == null || userId.isBlank()) {
-            return false;
-        }
-        SysUsers user = sysUsersService.getById(userId);
-        return user != null && isRegCodeUser(user);
     }
 
     public boolean isRootUser(String userId) {
@@ -117,29 +110,65 @@ public class RegCodeAccessService {
                 .orElse(users.get(0));
     }
 
-    /** 手机端：主账号可用全部模块；注册码子用户只走生成 */
+    /** 手机端（用户端）登录：任何有效账号都可以登录，能用哪些功能再按下面的规则判断 */
     public boolean canLoginMobile(SysUsers user) {
         return user != null;
     }
 
-    /** 注册码子用户禁止出货；主账号可用 */
+    /** 出货：注册码客户角色不能用；其他账号（含普通子账号）可以用，数据范围另行限制 */
     public boolean canUseCrab(SysUsers user) {
         return user != null && !isRegCodeUser(user);
     }
 
-    /** 主账号和注册码子用户都可以生成 */
+    /**
+     * 注册码生成（/common/**）：只允许
+     * ① 角色为 role_regcode_client 的注册码用户；② ROOT（及 {@link #adminMayGenerate} 放行的管理员）；
+     * ③ 子账号且其 parent_id 指向的用户是注册码用户或 ROOT（每次实时查父用户，不缓存）。
+     */
     public boolean canUseRegCode(SysUsers user) {
-        return user != null;
+        if (user == null) {
+            return false;
+        }
+        if (isRegCodeUser(user) || adminMayGenerate(user)) {
+            return true;
+        }
+        if (!isSubAccount(user)) {
+            return false;
+        }
+        SysUsers parent = sysUsersService.getById(user.getParentId().trim());
+        return parent != null && (isRegCodeUser(parent) || isRootUser(parent));
     }
 
-    public String requireCrab(String userId) {
-        if (userId == null || userId.isBlank()) {
-            return "请先登录";
+    /**
+     * 哪些“管理员”可以直接生成注册码（包括不选配置、按类型生成）。
+     * 目前只有 ROOT；以后要放宽给其他管理员，只改这一处（例如加上 {@code || isManager(user)}）。
+     */
+    public boolean adminMayGenerate(SysUsers user) {
+        return isRootUser(user);
+    }
+
+    /** 当前登录人必须能用注册码生成，否则 403；返回当前用户 */
+    public SysUsers requireRegCode(HttpServletRequest request) {
+        SysUsers user = currentUser(request);
+        if (user == null) {
+            throw new ForbiddenException("请先登录");
         }
-        if (!canUseCrab(sysUsersService.getById(userId))) {
-            return "无螃蟹出货权限";
+        if (!canUseRegCode(user)) {
+            throw new ForbiddenException("无权使用注册码生成");
         }
-        return null;
+        return user;
+    }
+
+    /** 当前登录人必须能用出货，否则 403；返回当前用户 */
+    public SysUsers requireCrab(HttpServletRequest request) {
+        SysUsers user = currentUser(request);
+        if (user == null) {
+            throw new ForbiddenException("请先登录");
+        }
+        if (!canUseCrab(user)) {
+            throw new ForbiddenException("无螃蟹出货权限");
+        }
+        return user;
     }
 
     public List<String> menuIdsOf(SysUsers user) {
@@ -164,23 +193,25 @@ public class RegCodeAccessService {
         return menuIds != null && menuIds.contains(menuId);
     }
 
-    /** Web：只有挂了父用户的子账号走手机端；角色账号按菜单进后台 */
+    /** Web 管理端：子账号和注册码客户都不能登录，也不能调 /admin/** */
     public boolean canLoginWeb(SysUsers user) {
-        if (user == null) {
-            return false;
-        }
-        return user.getParentId() == null || user.getParentId().isBlank();
+        return user != null && !isWebBlocked(user);
     }
 
-    /** 模块子账号：注册码客户角色，或挂了父用户 */
+    /** 管理端要挡掉的账号：子账号（parent_id 非空）或注册码客户角色 */
+    public boolean isWebBlocked(SysUsers user) {
+        return user != null && (isSubAccount(user) || isRegCodeUser(user));
+    }
+
+    /** 注册码用户：只看角色是否为 role_regcode_client（不再把“挂了父用户”当成注册码用户） */
     public boolean isRegCodeUser(SysUsers user) {
-        if (user == null) {
-            return false;
-        }
-        if (ROLE_REGCODE_CLIENT_ID.equals(user.getRoleId())) {
-            return true;
-        }
-        return user.getParentId() != null && !user.getParentId().isBlank();
+        return user != null && user.getRoleId() != null
+                && ROLE_REGCODE_CLIENT_ID.equals(user.getRoleId().trim());
+    }
+
+    /** 子账号：parent_id 非空 */
+    public boolean isSubAccount(SysUsers user) {
+        return user != null && user.getParentId() != null && !user.getParentId().isBlank();
     }
 
     /** 当前登录用户：只按 token 校验后得到的 userId 查找，不再按用户名兜底 */
