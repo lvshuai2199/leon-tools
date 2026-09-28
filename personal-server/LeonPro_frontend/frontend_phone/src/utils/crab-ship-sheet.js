@@ -1,3 +1,6 @@
+/** 发货图：画布颜色取主题常量（theme-colors.js，与 shared/theme.scss 同步），预览层用主题 CSS 变量 */
+import { THEME } from "./theme-colors.js";
+
 const WIDTH = 1080;
 const PAD = 48;
 
@@ -61,60 +64,60 @@ export function renderShipSheet(records, options = {}) {
   canvas.width = WIDTH;
   canvas.height = Math.max(height, 640);
 
-  ctx.fillStyle = "#f3f4f6";
+  ctx.fillStyle = THEME.bgPage;
   ctx.fillRect(0, 0, canvas.width, canvas.height);
 
   roundRect(ctx, PAD, PAD, WIDTH - PAD * 2, 140, 24);
-  ctx.fillStyle = "#1d4ed8";
+  ctx.fillStyle = THEME.primary;
   ctx.fill();
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = THEME.white;
   ctx.font = "700 48px 'PingFang SC','Microsoft YaHei',sans-serif";
   ctx.fillText("螃蟹发货清单", PAD + 36, PAD + 62);
   ctx.font = "500 28px 'PingFang SC','Microsoft YaHei',sans-serif";
-  ctx.fillStyle = "#dbeafe";
+  ctx.fillStyle = THEME.primaryLight9;
   ctx.fillText(`${date || "未填日期"}  ·  ${list.length} 单  ·  合计 ${totalQty} 只`, PAD + 36, PAD + 110);
 
   let y = PAD + 168;
   list.forEach((item, index) => {
     const h = cardHeights[index];
     roundRect(ctx, PAD, y, WIDTH - PAD * 2, h, 20);
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = THEME.bg;
     ctx.fill();
-    ctx.strokeStyle = "#e5e7eb";
+    ctx.strokeStyle = THEME.borderLighter;
     ctx.lineWidth = 2;
     ctx.stroke();
 
     const x = PAD + 28;
     let cursor = y + 56;
-    ctx.fillStyle = "#111827";
+    ctx.fillStyle = THEME.textPrimary;
     ctx.font = "700 40px 'PingFang SC','Microsoft YaHei',sans-serif";
     const seq = item.seqNo || index + 1;
     ctx.fillText(`${seq}. ${item.customerName || "未填姓名"}`, x, cursor);
-    ctx.fillStyle = "#c2410c";
+    ctx.fillStyle = THEME.crabText;
     ctx.font = "700 34px 'PingFang SC','Microsoft YaHei',sans-serif";
     const qtyText = `${item.spec || "-"}  ×  ${item.quantity || 0}只`;
     const qtyW = ctx.measureText(qtyText).width;
     ctx.fillText(qtyText, WIDTH - PAD - 28 - qtyW, cursor);
 
     cursor += 48;
-    ctx.fillStyle = "#374151";
+    ctx.fillStyle = THEME.textRegular;
     ctx.font = "500 32px 'PingFang SC','Microsoft YaHei',sans-serif";
     ctx.fillText(item.phone || "无电话", x, cursor);
 
     cursor += 18;
     let px = x;
-    px += pill(ctx, px, cursor, item.paid ? "已付款" : "未付款", item.paid ? "#dcfce7" : "#f3f4f6", item.paid ? "#166534" : "#6b7280");
-    pill(ctx, px, cursor, item.shipped ? "已发货" : "未发货", item.shipped ? "#dbeafe" : "#f3f4f6", item.shipped ? "#1d4ed8" : "#6b7280");
+    px += pill(ctx, px, cursor, item.paid ? "已付款" : "未付款", item.paid ? THEME.successBg : THEME.bgPage, item.paid ? THEME.success : THEME.textSecondary);
+    pill(ctx, px, cursor, item.shipped ? "已发货" : "未发货", item.shipped ? THEME.primaryLight9 : THEME.bgPage, item.shipped ? THEME.primary : THEME.textSecondary);
 
     cursor += 68;
-    ctx.fillStyle = "#111827";
+    ctx.fillStyle = THEME.textPrimary;
     ctx.font = "600 36px 'PingFang SC','Microsoft YaHei',sans-serif";
     wrapText(ctx, item.address, inner).forEach((line) => {
       ctx.fillText(line, x, cursor);
       cursor += 48;
     });
 
-    ctx.fillStyle = item.trackingNo ? "#1d4ed8" : "#9ca3af";
+    ctx.fillStyle = item.trackingNo ? THEME.primary : THEME.textPlaceholder;
     ctx.font = "600 32px 'PingFang SC','Microsoft YaHei',sans-serif";
     wrapText(ctx, item.trackingNo ? `快递 ${item.trackingNo}` : "快递单号未填", inner).forEach((line) => {
       ctx.fillText(line, x, cursor);
@@ -205,15 +208,16 @@ export function showSheetPreview(blob, options = {}) {
   });
 }
 
+// 预览层用主题 CSS 变量（和底部抽屉一致：圆角 12、标题 18/600 左对齐、按钮 44、底部安全区）
 const PREVIEW_CSS = `
 .ship-sheet-root{position:fixed;inset:0;z-index:4200;}
-.ship-sheet-mask{position:absolute;inset:0;background:rgba(15,23,42,.55);display:flex;align-items:flex-end;justify-content:center;}
-.ship-sheet-panel{width:100%;max-width:560px;max-height:92vh;background:#fff;border-radius:16px 16px 0 0;padding:14px 14px 18px;display:flex;flex-direction:column;box-sizing:border-box;}
-.ship-sheet-title{font-size:17px;font-weight:700;}
-.ship-sheet-hint{margin:6px 0 10px;font-size:12px;color:#6b7280;line-height:1.5;}
-.ship-sheet-scroll{overflow:auto;flex:1;min-height:180px;background:#f3f4f6;border-radius:12px;padding:8px;}
+.ship-sheet-mask{position:absolute;inset:0;background:var(--el-overlay-color-lighter);display:flex;align-items:flex-end;justify-content:center;}
+.ship-sheet-panel{width:100%;max-width:560px;max-height:92vh;background:var(--el-bg-color);color:var(--el-text-color-primary);border-radius:12px 12px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom));display:flex;flex-direction:column;box-sizing:border-box;}
+.ship-sheet-title{font-size:18px;font-weight:600;text-align:left;}
+.ship-sheet-hint{margin:6px 0 10px;font-size:12px;color:var(--el-text-color-secondary);line-height:1.5;}
+.ship-sheet-scroll{overflow:auto;flex:1;min-height:180px;background:var(--el-fill-color-light);border-radius:12px;padding:8px;}
 .ship-sheet-img{display:block;width:100%;border-radius:8px;}
-.ship-sheet-actions{display:flex;gap:8px;margin-top:12px;}
-.ship-sheet-actions button{flex:1;height:42px;border:none;border-radius:10px;background:#2563eb;color:#fff;font-size:14px;}
-.ship-sheet-actions button.ghost{background:#e5e7eb;color:#111827;}
+.ship-sheet-actions{display:flex;gap:12px;margin-top:12px;}
+.ship-sheet-actions button{flex:1;height:44px;border:none;border-radius:var(--el-border-radius-base);background:var(--el-color-primary);color:var(--el-color-white);font-size:15px;}
+.ship-sheet-actions button.ghost{background:var(--el-fill-color);color:var(--el-text-color-primary);}
 `;

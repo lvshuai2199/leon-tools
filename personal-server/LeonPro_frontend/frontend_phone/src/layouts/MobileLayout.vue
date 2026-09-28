@@ -5,10 +5,12 @@
  */
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, ArrowRight, Grid, HomeFilled, Picture, User } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight } from '@element-plus/icons-vue'
 import { SITE_NAME } from '@/config'
 import { useSession } from '@/composables/useSession'
 import ToolIcon from '@/components/ToolIcon.vue'
+import { pageChrome } from '@/composables/usePageChrome'
+import TabIcon from './TabIcon.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -17,11 +19,15 @@ const { isLoggedIn, displayName, tools, logout, goLogin } = useSession()
 const toolsOpen = ref(false)
 const meOpen = ref(false)
 
-/** 标签页根页面不显示返回 */
+/** 标签页根页面不显示返回；页面可用 <PageBar :show-back="false"> 关掉 */
 const isTabRoot = computed(() => route.name === 'home' || route.name === 'wallpaper')
-const title = computed(() => (route.name === 'home' ? SITE_NAME : route.meta.title || SITE_NAME))
-/** 旧界面（第一块未重做）自带标题和返回，不再套标题栏/标签栏 */
-const bare = computed(() => !!route.meta.legacyUi)
+const showBack = computed(() => !isTabRoot.value && pageChrome.showBack)
+const title = computed(() => {
+  if (route.name === 'home') return SITE_NAME
+  // 404 页顶栏标题留空（页面里已有大标题）
+  if (route.name === 'notFound') return pageChrome.title || ''
+  return pageChrome.title || route.meta.title || SITE_NAME
+})
 
 const activeTab = computed(() => {
   if (toolsOpen.value) return 'tools'
@@ -30,7 +36,8 @@ const activeTab = computed(() => {
 })
 
 function back() {
-  if (window.history.state?.back) router.back()
+  if (pageChrome.back) router.replace(pageChrome.back)
+  else if (window.history.state?.back) router.back()
   else router.replace('/')
 }
 
@@ -61,30 +68,32 @@ watch(
 </script>
 
 <template>
-  <div class="m-layout" :class="{ 'm-layout--bare': bare }">
-    <header v-if="!bare" class="navbar">
-      <button v-if="!isTabRoot" type="button" class="navbar__back" aria-label="返回" @click="back">
+  <div class="m-layout">
+    <header class="navbar">
+      <button v-if="showBack" type="button" class="navbar__back" aria-label="返回" @click="back">
         <el-icon :size="20"><ArrowLeft /></el-icon>
       </button>
       <h1 class="navbar__title">{{ title }}</h1>
+      <!-- 页面右侧操作区（PageBar #actions 传送到这里），每个按钮 44×44 -->
+      <div id="lp-navbar-actions" class="navbar__actions" />
     </header>
 
     <main class="m-main">
       <router-view />
     </main>
 
-    <nav v-if="!bare" class="tabbar" aria-label="底部导航">
+    <nav class="tabbar" aria-label="底部导航">
       <router-link to="/" class="tab" :class="{ 'is-active': activeTab === 'home' }">
-        <el-icon :size="22"><HomeFilled /></el-icon><span>首页</span>
+        <TabIcon name="home" :active="activeTab === 'home'" /><span>首页</span>
       </router-link>
       <router-link to="/wallpaper" class="tab" :class="{ 'is-active': activeTab === 'wallpaper' }">
-        <el-icon :size="22"><Picture /></el-icon><span>壁纸</span>
+        <TabIcon name="wallpaper" :active="activeTab === 'wallpaper'" /><span>壁纸</span>
       </router-link>
       <button type="button" class="tab" :class="{ 'is-active': activeTab === 'tools' }" @click="toolsOpen = true">
-        <el-icon :size="22"><Grid /></el-icon><span>工具</span>
+        <TabIcon name="tools" :active="activeTab === 'tools'" /><span>工具</span>
       </button>
       <button type="button" class="tab" :class="{ 'is-active': activeTab === 'me' }" @click="meOpen = true">
-        <el-icon :size="22"><User /></el-icon><span>我的</span>
+        <TabIcon name="me" :active="activeTab === 'me'" /><span>我的</span>
       </button>
     </nav>
 
@@ -133,10 +142,8 @@ watch(
   padding-top: var(--topbar-h);
   padding-bottom: var(--tabbar-h);
   font-size: lp.$font-size-mobile-body;
-}
-.m-layout--bare {
-  --topbar-h: 0px;
-  --tabbar-h: 0px;
+  /* 页面底部固定操作栏放在标签栏上方（FixedActionBar 用） */
+  --lp-fixed-bottom: var(--tabbar-h);
 }
 .navbar {
   position: fixed;
@@ -167,9 +174,17 @@ watch(
   color: var(--el-text-color-primary);
   cursor: pointer;
 }
+.navbar__actions {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  height: lp.$mobile-topbar-height;
+}
 .navbar__title {
   margin: 0;
-  max-width: 60%;
+  max-width: 56%;
   font-size: lp.$font-size-large;
   font-weight: lp.$font-weight-semibold;
   overflow: hidden;
@@ -208,7 +223,8 @@ watch(
 }
 .sheet-list {
   list-style: none;
-  margin: 0;
+  /* 行高 56、图标 36：上移 10，让标题到第一个图标正好 16 */
+  margin: -10px 0 0;
   padding: 0;
 }
 .sheet-item {

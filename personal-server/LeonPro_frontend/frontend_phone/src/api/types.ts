@@ -14,10 +14,7 @@ export interface UserInfo {
   /** 以下为 GET /auth/me 才有的字段 */
   root?: boolean
   canLoginWeb?: boolean
-  /** 过渡期入口判断用（appMenus 为空时），见 utils/app-menus.js menusFromLegacyFlags */
-  canUseCrab?: boolean
-  canUseRegCode?: boolean
-  /** 注册码子用户相关（第二块做子用户界面时用） */
+  /** 注册码子用户相关（注册码页「子用户」入口） */
   regCode?: RegCodeMeInfo
   [key: string]: unknown
 }
@@ -131,3 +128,28 @@ export interface RegCodeSubUserQuota {
   /** 创建人自己各配置的剩余 */
   creatorRemaining: RegCodeQuotaItem[]
 }
+
+/** 螃蟹出货单（/app/crabShipment/*） */
+export interface CrabShipment {
+  id: string
+  /** 公开分享 id（分享链接 /s/crab/{publicId}） */
+  publicId?: string
+  sharePath?: string
+  shipDate: string
+  seqNo?: number | null
+  customerName: string
+  phone?: string
+  address?: string
+  /** 规格，如 4两公 */
+  spec?: string
+  /** 数量（只） */
+  quantity?: number | string | null
+  /** 0/1（后端也可能给 boolean） */
+  paid: number | boolean
+  shipped: number | boolean
+  trackingNo?: string
+  remark?: string
+}
+
+/** 公开分享页返回（手机号由后端打码） */
+export type CrabShipmentPublic = Omit<CrabShipment, 'id'>

@@ -51,7 +51,7 @@ function onCommand(cmd: string) {
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item command="logout">退出登录</el-dropdown-item>
+                <el-dropdown-item command="logout" class="user__logout">退出登录</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -59,7 +59,7 @@ function onCommand(cmd: string) {
         </div>
       </div>
     </header>
-    <main class="d-main" :class="{ 'd-main--legacy': route.meta.legacyUi }">
+    <main class="d-main" :class="{ 'd-main--narrow': route.meta.narrow }">
       <router-view />
     </main>
   </div>
@@ -131,7 +131,15 @@ function onCommand(cmd: string) {
   display: inline-flex;
   align-items: center;
   gap: lp.$space-2;
+  /* 点击区不小于 44px（打开后是「退出登录」） */
+  min-height: 44px;
+  padding: 0 lp.$space-2;
+  border-radius: lp.$radius-base;
   cursor: pointer;
+  &:hover,
+  &:focus-visible {
+    background: var(--el-fill-color-light);
+  }
   color: var(--el-text-color-regular);
   outline: none;
 }
@@ -150,9 +158,9 @@ function onCommand(cmd: string) {
   margin: 0 auto;
   padding: 0 lp.$page-padding-desktop;
 }
-// 旧界面（第一块未重做）：居中窄栏
-.d-main--legacy {
-  max-width: 560px;
-  padding: lp.$space-5 0 lp.$space-6;
+// 表单类页面（注册码生成等）：居中窄栏
+.d-main--narrow {
+  max-width: 880px;
+  padding-bottom: lp.$space-6;
 }
 </style>

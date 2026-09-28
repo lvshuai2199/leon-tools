@@ -13,7 +13,7 @@
     "build-only": "vite build",
     "type-check": "vue-tsc --noEmit",
     "preview": "vite preview",
-    "test": "node --test src/utils/*.test.js"
+    "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.2",

@@ -1,5 +1,6 @@
 /** 螃蟹出货：/app/crabShipment/*，公开分享 /public/crabShipment/{publicId} */
-import { http, type Query } from './request'
+import { http, type Query, type RequestOptions } from './request'
+import type { CrabShipment, CrabShipmentPublic, PageResult } from './types'
 
 const BASE = '/app/crabShipment'
 const enc = encodeURIComponent
@@ -7,16 +8,16 @@ const enc = encodeURIComponent
 export const crabApi = {
   /** 列表：shipDate 单日，或 shipDateStart/shipDateEnd 区间；customerName / phone 搜索；current/size 分页 */
   listCrabShipments(params: Query) {
-    return http.get<any>(`${BASE}/getAll`, params)
+    return http.get<PageResult<CrabShipment> | CrabShipment[]>(`${BASE}/getAll`, params)
   },
-  getCrabShipment(id: string) {
-    return http.get<any>(`${BASE}/${enc(id)}`)
+  getCrabShipment(id: string, opts: Pick<RequestOptions, 'silent'> = {}) {
+    return http.get<CrabShipment>(`${BASE}/${enc(id)}`, undefined, opts)
   },
   saveCrabShipment(data: Record<string, unknown>) {
-    return http.post<any>(`${BASE}/save`, data)
+    return http.post<CrabShipment>(`${BASE}/save`, data)
   },
   updateCrabStatus(data: Record<string, unknown>) {
-    return http.post<any>(`${BASE}/status`, data)
+    return http.post<CrabShipment | null>(`${BASE}/status`, data)
   },
   batchSaveCrabShipments(data: Record<string, unknown>) {
     return http.post<any>(`${BASE}/batchSave`, data)
@@ -28,8 +29,8 @@ export const crabApi = {
     return http.post<any>(`${BASE}/del`, ids)
   },
   /** 公开分享页（免登录） */
-  publicCrabShipment(publicId: string) {
-    return http.get<any>(`/public/crabShipment/${enc(publicId)}`)
+  publicCrabShipment(publicId: string, opts: Pick<RequestOptions, 'silent'> = {}) {
+    return http.get<CrabShipmentPublic>(`/public/crabShipment/${enc(publicId)}`, undefined, opts)
   },
 }
 

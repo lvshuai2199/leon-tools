@@ -27,8 +27,8 @@ declare module 'vue-router' {
     layout?: 'blank'
     /** 手机底部标签栏里高亮哪一项 */
     tab?: 'home' | 'wallpaper' | 'tools' | 'me'
-    /** 第一块：旧界面还没重做，手机上不套标题栏/标签栏（页面自带返回），电脑上居中窄栏显示 */
-    legacyUi?: boolean
+    /** 电脑上内容区用居中窄栏（表单类页面） */
+    narrow?: boolean
     keepAlive?: boolean
   }
 }
@@ -45,6 +45,9 @@ interface MenuItem {
 }
 
 const pages = import.meta.glob('../pages/**/*.vue')
+
+/** 电脑上用居中窄栏的菜单页面 */
+const NARROW_PAGES = new Set(['/regcode'])
 
 /** component 指向单个 .vue 或目录（目录里用 index.vue） */
 function resolvePage(component: string) {
@@ -65,7 +68,7 @@ const menuRoutes: RouteRecordRaw[] = (menus as MenuItem[])
       title: m.name,
       keepAlive: !!m.keepAlive,
       tab: 'tools',
-      legacyUi: true,
+      narrow: NARROW_PAGES.has(m.path),
     },
   }))
 
@@ -84,7 +87,7 @@ const routes: RouteRecordRaw[] = [
     // 蟹单公开分享（后端 sharePath = /s/crab/{publicId}）
     path: '/s/crab/:publicId',
     name: 'crabShare',
-    component: () => import('@/pages/crab/share.vue'),
+    component: () => import('@/pages/crab/share/index.vue'),
     meta: { public: true, title: '出货信息', layout: 'blank' },
   },
   { path: '/:pathMatch(.*)*', name: 'notFound', component: () => import('@/pages/not-found/index.vue'), meta: { public: true, title: '页面不存在' } },
@@ -97,6 +100,9 @@ const router = createRouter({
     if (saved) return saved
     // 同一页面只改 query（例如蟹单换日期）时不回顶部
     if (to.path === from.path) return false
+    // 电脑上蟹单列表 ⇄ 详情弹窗（/crab ⇄ /crab/:id）不回顶部
+    const crabDialog = (r: typeof to) => r.name === 'crabList' || r.name === 'crabDetail'
+    if (window.innerWidth >= 768 && crabDialog(to) && crabDialog(from)) return false
     return { top: 0 }
   },
 })

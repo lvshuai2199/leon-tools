@@ -108,13 +108,17 @@ export function scanTrackingNo() {
       if (hint) hint.textContent = "正在识别图片...";
       try {
         const code = await recognizeTrackingFromFile(file);
-        if (code) finish(code);
-        else window.alert("没有识别到快递单号，请换张更清晰的面单照片");
+        if (code) {
+          finish(code);
+          return;
+        }
+        // 不用 window.alert：直接把提示写在取景框下方
+        if (hint) hint.textContent = "没有识别到快递单号，请换张更清晰的面单照片";
       } catch (error) {
         console.error(error);
-        window.alert("识别失败，请重试");
+        if (hint) hint.textContent = "识别失败，请重试，或对准条码扫描";
       } finally {
-        if (hint && !done) hint.textContent = "对准条码，或选快递单照片";
+        fileInput.value = "";
       }
     });
 
@@ -203,13 +207,14 @@ function pickCode(codes) {
   return raw.length >= 8 ? raw : "";
 }
 
+// 相机取景层：背景黑、遮罩 rgba 属于相机画面，不跟主题（见报告）；其余用主题变量
 const SCAN_CSS = `
 .barcode-scan-root{position:fixed;inset:0;z-index:4000;}
-.barcode-scan-mask{position:absolute;inset:0;background:#000;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;}
+.barcode-scan-mask{position:absolute;inset:0;background:var(--lp-viewer-bg);display:flex;flex-direction:column;align-items:center;justify-content:flex-end;}
 .barcode-scan-video{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;}
-.barcode-scan-frame{position:absolute;left:10%;right:10%;top:28%;height:22%;border:2px solid #60a5fa;border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.35);}
-.barcode-scan-hint{position:relative;z-index:1;margin-bottom:12px;color:#fff;font-size:14px;}
-.barcode-scan-actions{position:relative;z-index:1;display:flex;gap:10px;padding:0 16px 28px;width:100%;box-sizing:border-box;}
-.barcode-scan-btn{flex:1;height:44px;border:none;border-radius:10px;background:#2563eb;color:#fff;font-size:15px;display:flex;align-items:center;justify-content:center;}
-.barcode-scan-btn.ghost{background:#1f2937;}
+.barcode-scan-frame{position:absolute;left:10%;right:10%;top:28%;height:22%;border:2px solid var(--el-color-primary-light-3);border-radius:12px;box-shadow:0 0 0 9999px rgba(0,0,0,.35);}
+.barcode-scan-hint{position:relative;z-index:1;margin-bottom:12px;color:var(--el-color-white);font-size:14px;text-align:center;padding:0 16px;}
+.barcode-scan-actions{position:relative;z-index:1;display:flex;gap:10px;padding:0 16px calc(28px + env(safe-area-inset-bottom));width:100%;box-sizing:border-box;}
+.barcode-scan-btn{flex:1;height:44px;border:none;border-radius:var(--el-border-radius-base);background:var(--el-color-primary);color:var(--el-color-white);font-size:15px;display:flex;align-items:center;justify-content:center;}
+.barcode-scan-btn.ghost{background:rgba(255,255,255,.16);}
 `;
