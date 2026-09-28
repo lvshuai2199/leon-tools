@@ -56,7 +56,7 @@ public class CrabShipmentController {
         this.regCodeAccessService = regCodeAccessService;
     }
 
-    @GetMapping("crabShipment/getAll")
+    @GetMapping({"/admin/crabShipment/getAll", "/app/crabShipment/getAll"})
     public ApiResponse selectAll(Page<CrabShipment> page,
                                  CrabShipment query,
                                  @RequestParam(value = "shipDateStart", required = false) String shipDateStart,
@@ -94,7 +94,7 @@ public class CrabShipmentController {
         return ApiResponse.success(result);
     }
 
-    @GetMapping("crabShipment/{id}")
+    @GetMapping("/app/crabShipment/{id}")
     public ApiResponse selectOne(@PathVariable Serializable id, HttpServletRequest request) {
         ApiResponse deny = denyUnlessCrab(request);
         if (deny != null) {
@@ -108,7 +108,7 @@ public class CrabShipmentController {
         return ApiResponse.success(entity);
     }
 
-    @PostMapping("crabShipment/save")
+    @PostMapping({"/admin/crabShipment/save", "/app/crabShipment/save"})
     public ApiResponse save(@RequestBody CrabShipment body, HttpServletRequest request) {
         ApiResponse deny = denyUnlessCrab(request);
         if (deny != null) {
@@ -161,7 +161,7 @@ public class CrabShipmentController {
         return ApiResponse.success(entity);
     }
 
-    @PostMapping("crabShipment/status")
+    @PostMapping({"/admin/crabShipment/status", "/app/crabShipment/status"})
     public ApiResponse updateStatus(@RequestBody CrabShipment body, HttpServletRequest request) {
         ApiResponse deny = denyUnlessCrab(request);
         if (deny != null) {
@@ -192,7 +192,7 @@ public class CrabShipmentController {
         return ApiResponse.success(latest);
     }
 
-    @PostMapping("crabShipment/batchSave")
+    @PostMapping({"/admin/crabShipment/batchSave", "/app/crabShipment/batchSave"})
     public ApiResponse batchSave(@RequestBody CrabShipmentBatchRequest req, HttpServletRequest request) {
         ApiResponse deny = denyUnlessCrab(request);
         if (deny != null) {
@@ -241,7 +241,7 @@ public class CrabShipmentController {
         return ApiResponse.success(saved);
     }
 
-    @PostMapping("crabShipment/parse")
+    @PostMapping({"/admin/crabShipment/parse", "/app/crabShipment/parse"})
     public ApiResponse parse(@RequestBody CrabShipmentParseRequest req, HttpServletRequest request) {
         ApiResponse deny = denyUnlessCrab(request);
         if (deny != null) {
@@ -255,7 +255,7 @@ public class CrabShipmentController {
         return ApiResponse.success(data);
     }
 
-    @PostMapping("crabShipment/del")
+    @PostMapping({"/admin/crabShipment/del", "/app/crabShipment/del"})
     public ApiResponse delete(@RequestBody List<String> idList, HttpServletRequest request) {
         ApiResponse deny = denyUnlessCrab(request);
         if (deny != null) {

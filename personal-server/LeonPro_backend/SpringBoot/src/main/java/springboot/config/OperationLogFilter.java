@@ -81,10 +81,7 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
         if (uri.startsWith("/public/") || uri.startsWith("/uploads/") || uri.startsWith("/error")) {
             return true;
         }
-        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
-            return true;
-        }
-        return uri.contains("/auth/captcha");
+        return "OPTIONS".equalsIgnoreCase(request.getMethod());
     }
 
     private void persist(ContentCachingRequestWrapper req, ContentCachingResponseWrapper res, long start) {
@@ -204,7 +201,7 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
 
     private static boolean isLoginRequest(HttpServletRequest req) {
         String uri = path(req);
-        return "/auth/login".equals(uri) || "/auth/login2".equals(uri);
+        return "/auth/login".equals(uri);
     }
 
     private String usernameFromBody(HttpServletRequest req) {
@@ -230,6 +227,7 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
         return null;
     }
 
+    /** 按路径片段匹配模块，/admin、/app、/common 前缀不影响（contains 匹配），顺序即优先级 */
     private static String resolveModule(String uri) {
         Map<String, String> map = new LinkedHashMap<>();
         map.put("/auth", "认证");
@@ -239,11 +237,12 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
         map.put("/sysOperationLog", "操作日志");
         map.put("/comRegistration", "注册码记录");
         map.put("/regCodeConfig", "注册码配置");
+        map.put("/regCodeUser", "注册码客户");
+        map.put("/regCode/", "注册码生成");
         map.put("/mindmap", "思维导图");
         map.put("/crabShipment", "螃蟹出货");
         map.put("/sysTasks", "任务管理");
         map.put("/systemData", "系统数据");
-        map.put("/extern", "外部接口");
         map.put("/wallpaper", "壁纸管理");
         for (Map.Entry<String, String> e : map.entrySet()) {
             if (uri.startsWith(e.getKey()) || uri.contains(e.getKey())) {
@@ -276,7 +275,6 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
         }
         return request.getRemoteAddr();
     }
-
 
     private static String trim(String s, int max) {
         if (s == null) {

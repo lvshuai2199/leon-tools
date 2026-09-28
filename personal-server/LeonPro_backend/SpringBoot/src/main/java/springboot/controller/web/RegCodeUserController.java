@@ -24,7 +24,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 
 @RestController
-@RequestMapping("regCodeUser")
+@RequestMapping("/admin/regCodeUser")
 public class RegCodeUserController {
 
     private final RegCodeUserService regCodeUserService;
@@ -84,26 +84,6 @@ public class RegCodeUserController {
         Page<RegCodeUserVO> voPage = new Page<>(result.getCurrent(), result.getSize(), result.getTotal());
         voPage.setRecords(result.getRecords().stream().map(this::toVO).toList());
         return ApiResponse.success(voPage);
-    }
-
-    @GetMapping("myQuota")
-    public ApiResponse myQuota(HttpServletRequest request) {
-        return quota(RequestUserUtils.currentUserId(request), null);
-    }
-
-    /** body 中的 userId / username 已废弃（仅兼容旧客户端，忽略），身份只取登录 token */
-    @PostMapping("myQuota")
-    public ApiResponse myQuotaPost(@RequestBody(required = false) java.util.Map<String, String> body,
-                                   HttpServletRequest request) {
-        return quota(RequestUserUtils.currentUserId(request), null);
-    }
-
-    private ApiResponse quota(String userId, String username) {
-        springboot.domain.SysUsers user = this.regCodeAccessService.findUser(userId, username);
-        if (user == null) {
-            return ApiResponse.failure("请先登录");
-        }
-        return ApiResponse.success(this.regCodeAccessService.quotaOf(user.getId()));
     }
 
     @PostMapping("save")

@@ -33,7 +33,6 @@ public class SysUsers implements Serializable {
 
     private String avatarUrl;
 
-
     /**
      * 用户密码（只接收不输出：任何接口响应都不返回密码）
      */
@@ -79,7 +78,7 @@ public class SysUsers implements Serializable {
     private java.util.List<String> menuIds;
 
     /**
-     * 登录凭证（非表字段，仅 /auth/login2 等登录接口返回；为空时不输出）
+     * 登录凭证（非表字段，仅 /auth/login 登录接口返回；为空时不输出）
      */
     @TableField(exist = false)
     @JsonInclude(JsonInclude.Include.NON_NULL)

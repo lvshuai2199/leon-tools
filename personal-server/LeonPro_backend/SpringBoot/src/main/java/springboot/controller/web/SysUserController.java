@@ -1,6 +1,5 @@
 package springboot.controller.web;
 
-
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -19,7 +18,6 @@ import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-
 /**
  * (User)表控制层
  *
@@ -27,7 +25,7 @@ import java.util.List;
  * @since 2023-05-14 10:40:35
  */
 @RestController
-@RequestMapping("sysUsers")
+@RequestMapping("/admin/sysUsers")
 
 public class SysUserController {
     /**
@@ -38,7 +36,6 @@ public class SysUserController {
 
     @Autowired
     private SysRolesService sysRolesService;
-
 
     /**
      * 分页查询所有数据
@@ -129,33 +126,6 @@ public class SysUserController {
         return ApiResponse.success(saved ? "User registered successfully." : "User registration failed.");
     }
 
-    @GetMapping("getAllUsers")
-    public ApiResponse getAllUsers(
-            @RequestParam(defaultValue = "1") int currentPage,
-            @RequestParam(defaultValue = "10") int pageSize,
-            SysUsers sysUsers // 假设 sysUsers 包含查询条件
-    ) {
-        // 创建分页对象
-        Page<SysUsers> page = new Page<>(currentPage, pageSize);
-
-        // 创建 QueryWrapper 实例
-        LambdaQueryWrapper<SysUsers> queryWrapper = new LambdaQueryWrapper<>();
-
-        // 添加条件
-        if (sysUsers.getUsername() != null) {
-            queryWrapper.eq(SysUsers::getUsername, sysUsers.getUsername());
-        }
-        // 其他条件可以继续添加，例如:
-        // if (sysUsers.getEmail() != null) {
-        //     queryWrapper.eq("email", sysUsers.getEmail());
-        // }
-
-        // 执行分页查询
-        IPage<SysUsers> userPage = this.sysUsersService.page(page, queryWrapper);
-
-        return ApiResponse.success(userPage);
-    }
-
     @PostMapping("delUsers")
     public ApiResponse delUsers(@RequestBody UsersDelDto request) {
         List<String> userIds = request.getUserIds();
@@ -179,23 +149,6 @@ public class SysUserController {
         } else {
             return ApiResponse.failure("Failed to delete users");
         }
-    }
-
-    @GetMapping("getMyInfo")
-    public ApiResponse getMyInfo(@RequestParam(required = false) String username) {
-        String name = (username == null || username.isEmpty()) ? "admin" : username;
-
-        // 通过用户名检索数据库中是否存在对应的数据项
-        LambdaQueryWrapper<SysUsers> lambdaQueryWrapper = new LambdaQueryWrapper<>();
-        lambdaQueryWrapper.eq(SysUsers::getUsername, name);
-        SysUsers user = this.sysUsersService.getOne(lambdaQueryWrapper);
-        if (user != null && user.getRoleId() != null && !user.getRoleId().isEmpty()) {
-            SysRoles role = this.sysRolesService.getById(user.getRoleId());
-            if (role != null) {
-                user.setRoleName(role.getRoleName());
-            }
-        }
-        return ApiResponse.success(user);
     }
 
     private void fillChildCounts(List<SysUsers> records) {

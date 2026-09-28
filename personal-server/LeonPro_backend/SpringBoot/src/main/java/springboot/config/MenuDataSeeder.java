@@ -19,7 +19,7 @@ import java.util.Set;
 /**
  * 菜单种子：仅在 sys_menus 为空时写入默认路由，或补插缺失的固定 id。
  * 已有行（图标、名称、路径等）一律以数据库为准，启动时不再用代码覆盖。
- * 侧边栏由 /auth/getMenuList 读表生成。
+ * 侧边栏由 /auth/menus 读表生成。
  */
 @Slf4j
 @Component

@@ -20,12 +20,12 @@ public class SystemDataController {
     @Autowired
     private SystemDataPackService systemDataPackService;
 
-    @GetMapping("systemData/status")
+    @GetMapping("/admin/systemData/status")
     public ApiResponse status() {
         return ApiResponse.success(systemDataPackService.status());
     }
 
-    @GetMapping("systemData/export")
+    @GetMapping("/admin/systemData/export")
     public void export(HttpServletResponse response) throws IOException {
         String filename = URLEncoder.encode("system-data.zip", StandardCharsets.UTF_8).replace("+", "%20");
         response.setContentType("application/zip");

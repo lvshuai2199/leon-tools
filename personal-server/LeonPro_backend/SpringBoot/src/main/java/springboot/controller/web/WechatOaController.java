@@ -30,10 +30,10 @@ import java.util.regex.Pattern;
 
 /**
  * 微信公众号服务器回调：把收到的文本按螃蟹出货单解析并入库。
- * 公众号后台 URL 填 https://域名/prod-api/wechat/oa ，Token 与配置一致。
+ * 公众号后台 URL 填 https://域名/prod-api/public/wechat/oa （原 /wechat/oa，上线后需在公众号后台同步修改），Token 与配置一致。
  */
 @RestController
-@RequestMapping("wechat/oa")
+@RequestMapping("/public/wechat/oa")
 public class WechatOaController {
 
     private final CrabShipmentService crabShipmentService;

@@ -1,6 +1,5 @@
 package springboot.controller.web;
 
-
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +24,7 @@ import java.util.List;
  * @since 2024-12-06 11:26:18
  */
 @RestController
-@RequestMapping("sysRoles")
+@RequestMapping("/admin/sysRoles")
 public class SysRolesController {
     /**
      * 服务对象
@@ -54,17 +53,6 @@ public class SysRolesController {
         }
         queryWrapper.orderByAsc(SysRoles::getCreateTime);
         return ApiResponse.success(this.sysRolesService.page(page, queryWrapper));
-    }
-
-    /**
-     * 通过主键查询单条数据
-     *
-     * @param id 主键
-     * @return 单条数据
-     */
-    @GetMapping("{id}")
-    public ApiResponse selectOne(@PathVariable Serializable id) {
-        return ApiResponse.success(this.sysRolesService.getById(id));
     }
 
     /**

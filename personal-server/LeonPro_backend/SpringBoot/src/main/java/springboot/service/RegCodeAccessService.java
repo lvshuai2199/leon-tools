@@ -259,13 +259,17 @@ public class RegCodeAccessService {
                 .anyMatch(menu -> menu != null && owned.contains(menu.getId()));
     }
 
+    /**
+     * 注册码客户 / 配置管理权限。无权限时抛 {@link ForbiddenException}（HTTP 403），
+     * 只有取不到当前用户时才返回错误文案（正常情况下 token 拦截器已先挡住）。
+     */
     public String requireManager(HttpServletRequest request) {
         SysUsers user = currentUser(request);
         if (user == null) {
             return "请先登录";
         }
         if (!isManager(user)) {
-            return "无权限管理注册码用户或配置";
+            throw new ForbiddenException("无权限管理注册码用户或配置");
         }
         return null;
     }

@@ -1,4 +1,4 @@
-package springboot.controller.Extern;
+package springboot.controller.web;
 
 import org.springframework.http.CacheControl;
 import org.springframework.http.HttpHeaders;
@@ -15,27 +15,27 @@ import springboot.utils.ApiResponse;
 import java.util.Collections;
 
 /**
- * 壁纸外部接口（免登录）。
+ * 壁纸公开接口（免登录，/public/wallpaper/**，原 /extern/wallpaper/**）。
  * groups / images 供门户浏览，不需要也不返回 token；
  * random 供外部小工具取图，必须带 group + token（分组访问令牌）。
  */
 @RestController
-public class ExternWallpaperController {
+public class PublicWallpaperController {
 
     private final WallpaperService wallpaperService;
 
-    public ExternWallpaperController(WallpaperService wallpaperService) {
+    public PublicWallpaperController(WallpaperService wallpaperService) {
         this.wallpaperService = wallpaperService;
     }
 
     /** 公开分组列表（imageCount 只算启用图片；coverUrl 取排序第一张启用图片） */
-    @GetMapping("/extern/wallpaper/groups")
+    @GetMapping("/public/wallpaper/groups")
     public ApiResponse groups() {
         return ApiResponse.success(wallpaperService.publicGroups());
     }
 
     /** 公开分组内的启用图片，分页参数 current/size，返回 IPageResult */
-    @GetMapping("/extern/wallpaper/images")
+    @GetMapping("/public/wallpaper/images")
     public ResponseEntity<ApiResponse> images(@RequestParam(value = "group", required = false) String group,
                                               @RequestParam(value = "current", required = false, defaultValue = "1") long current,
                                               @RequestParam(value = "size", required = false, defaultValue = "20") long size) {
@@ -52,7 +52,7 @@ public class ExternWallpaperController {
      * /uploads/wallpaper/...）；format=json 返回图片信息，url / thumbUrl 同样带该前缀。
      * 分组不存在 / 未公开 / 无启用图片 → 404；token 缺失或错误 → 403。
      */
-    @GetMapping("/extern/wallpaper/random")
+    @GetMapping("/public/wallpaper/random")
     public ResponseEntity<?> random(@RequestParam(value = "group", required = false) String group,
                                     @RequestParam(value = "token", required = false) String token,
                                     @RequestParam(value = "format", required = false) String format) {

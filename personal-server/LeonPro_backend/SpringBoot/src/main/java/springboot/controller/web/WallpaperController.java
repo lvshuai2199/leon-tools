@@ -39,7 +39,7 @@ public class WallpaperController {
 
     // ------------------------------------------------------------------ 分组
 
-    @GetMapping("wallpaper/group/list")
+    @GetMapping("/admin/wallpaper/group/list")
     public ApiResponse listGroups(HttpServletRequest request) {
         ApiResponse deny = denyUnlessLogin(request);
         if (deny != null) {
@@ -48,7 +48,7 @@ public class WallpaperController {
         return ApiResponse.success(wallpaperService.listGroups());
     }
 
-    @PostMapping("wallpaper/group")
+    @PostMapping("/admin/wallpaper/group")
     public ApiResponse createGroup(@RequestBody WallpaperGroupForm form, HttpServletRequest request) {
         ApiResponse deny = denyUnlessLogin(request);
         if (deny != null) {
@@ -61,7 +61,7 @@ public class WallpaperController {
         }
     }
 
-    @PutMapping("wallpaper/group/sort")
+    @PutMapping("/admin/wallpaper/group/sort")
     public ApiResponse sortGroups(@RequestBody List<String> ids, HttpServletRequest request) {
         ApiResponse deny = denyUnlessLogin(request);
         if (deny != null) {
@@ -74,7 +74,7 @@ public class WallpaperController {
         }
     }
 
-    @PutMapping("wallpaper/group/{id}")
+    @PutMapping("/admin/wallpaper/group/{id}")
     public ApiResponse updateGroup(@PathVariable String id, @RequestBody WallpaperGroupForm form,
                                    HttpServletRequest request) {
         ApiResponse deny = denyUnlessLogin(request);
@@ -89,7 +89,7 @@ public class WallpaperController {
     }
 
     /** 分组下有图片时需 force=true，会连同图片记录和文件一起删除；否则返回 status=409 + imageCount */
-    @DeleteMapping("wallpaper/group/{id}")
+    @DeleteMapping("/admin/wallpaper/group/{id}")
     public ApiResponse deleteGroup(@PathVariable String id,
                                    @RequestParam(value = "force", required = false, defaultValue = "false") boolean force,
                                    HttpServletRequest request) {
@@ -114,7 +114,7 @@ public class WallpaperController {
     }
 
     /** 重新生成分组访问令牌，data 为新 token 字符串；旧 token 立即失效 */
-    @PostMapping("wallpaper/group/{id}/token/regenerate")
+    @PostMapping("/admin/wallpaper/group/{id}/token/regenerate")
     public ApiResponse regenerateToken(@PathVariable String id, HttpServletRequest request) {
         ApiResponse deny = denyUnlessLogin(request);
         if (deny != null) {
@@ -130,7 +130,7 @@ public class WallpaperController {
     // ------------------------------------------------------------------ 图片
 
     /** 分页参数 current/size（与项目其他分页一致），返回 IPageResult（MyBatis-Plus Page：records/total/size/current/pages） */
-    @GetMapping("wallpaper/image/page")
+    @GetMapping("/admin/wallpaper/image/page")
     public ApiResponse pageImages(@RequestParam(value = "groupId", required = false) String groupId,
                                   @RequestParam(value = "current", required = false, defaultValue = "1") long current,
                                   @RequestParam(value = "size", required = false, defaultValue = "20") long size,
@@ -142,7 +142,7 @@ public class WallpaperController {
         return ApiResponse.success(wallpaperService.pageImages(groupId, current, size, false));
     }
 
-    @PostMapping("wallpaper/image/upload")
+    @PostMapping("/admin/wallpaper/image/upload")
     public ApiResponse upload(@RequestParam("groupId") String groupId,
                               @RequestParam("file") MultipartFile file,
                               @RequestParam(value = "title", required = false) String title,
@@ -160,7 +160,7 @@ public class WallpaperController {
         }
     }
 
-    @PutMapping("wallpaper/image/sort")
+    @PutMapping("/admin/wallpaper/image/sort")
     public ApiResponse sortImages(@RequestBody List<String> ids, HttpServletRequest request) {
         ApiResponse deny = denyUnlessLogin(request);
         if (deny != null) {
@@ -173,7 +173,7 @@ public class WallpaperController {
         }
     }
 
-    @PutMapping("wallpaper/image/{id}")
+    @PutMapping("/admin/wallpaper/image/{id}")
     public ApiResponse updateImage(@PathVariable String id, @RequestBody WallpaperImageUpdateRequest req,
                                    HttpServletRequest request) {
         ApiResponse deny = denyUnlessLogin(request);
@@ -187,7 +187,7 @@ public class WallpaperController {
         }
     }
 
-    @PostMapping("wallpaper/image/{id}/replace")
+    @PostMapping("/admin/wallpaper/image/{id}/replace")
     public ApiResponse replace(@PathVariable String id, @RequestParam("file") MultipartFile file,
                                HttpServletRequest request) {
         ApiResponse deny = denyUnlessLogin(request);
@@ -204,7 +204,7 @@ public class WallpaperController {
     }
 
     /** body: {ids:[], action: enable|disable|move|delete, targetGroupId}；返回受影响条数 */
-    @PostMapping("wallpaper/image/batch")
+    @PostMapping("/admin/wallpaper/image/batch")
     public ApiResponse batch(@RequestBody WallpaperBatchRequest req, HttpServletRequest request) {
         ApiResponse deny = denyUnlessLogin(request);
         if (deny != null) {

@@ -29,7 +29,7 @@ import java.util.List;
  * @since 2025-03-05 13:28:30
  */
 @RestController
-@RequestMapping("sysTasks")
+@RequestMapping("/admin/sysTasks")
 public class SysTasksController {
     /**
      * 服务对象
@@ -48,7 +48,6 @@ public class SysTasksController {
 //    public ApiResponse selectAll(Page<SysTasks> page, SysTasks taskDto) {
 //        return ApiResponse.success(this.sysTasksService.page(page, new QueryWrapper<>(taskDto)));
 //    }
-
 
     @GetMapping("getAll")
     public ApiResponse selectAll(Page<SysTasks> page, TaskDto taskDto) {
@@ -138,18 +137,6 @@ public class SysTasksController {
         Page<SysTasks> resultPage = this.sysTasksService.page(page, queryWrapper);
 
         return ApiResponse.success(resultPage);
-    }
-
-
-    /**
-     * 通过主键查询单条数据
-     *
-     * @param id 主键
-     * @return 单条数据
-     */
-    @GetMapping("{id}")
-    public ApiResponse selectOne(@PathVariable Serializable id) {
-        return ApiResponse.success(this.sysTasksService.getById(id));
     }
 
     /**
