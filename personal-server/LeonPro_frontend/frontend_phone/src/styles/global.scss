@@ -1,0 +1,99 @@
+// 全局样式。lp（shared/theme.scss）已由 vite additionalData 注入，这里不用再 @use。
+
+// 输出 Element Plus 变量和 --lp-*（全局只 include 一次）
+@include lp.css-vars;
+
+// 手机布局：44px 控件、15px 正文。useBreakpoint 给 <html> 加 lp-mobile，
+// 抽屉、消息框等挂到 body 下的组件也能拿到
+html.lp-mobile {
+  @include lp.mobile-vars;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--el-font-family);
+  font-size: var(--el-font-size-base);
+  line-height: lp.$line-height;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color-page);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+// 图片淡入（v-lazy 加载完成后加 is-loaded）
+.fade-img {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  &.is-loaded {
+    opacity: 1;
+  }
+}
+
+// 骨架屏闪光（基于主题边框色）
+@keyframes lp-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.lp-skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--el-fill-color) 30%,
+    var(--el-fill-color-lighter) 50%,
+    var(--el-fill-color) 70%
+  );
+  background-size: 200% 100%;
+  animation: lp-shimmer 1.4s linear infinite;
+}
+
+@keyframes lp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// 底部抽屉：顶部两角 12px 圆角，留出 iPhone 底部安全区
+.el-drawer.btt {
+  border-radius: lp.$radius-card lp.$radius-card 0 0;
+  .el-drawer__body {
+    padding: lp.$space-4 lp.$space-4 calc(#{lp.$space-4} + env(safe-area-inset-bottom));
+  }
+}
+
+// 电脑确认框统一 480 宽
+.el-message-box {
+  --el-messagebox-width: #{lp.$dialog-width-desktop};
+}
