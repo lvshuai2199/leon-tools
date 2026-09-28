@@ -43,13 +43,12 @@ public class SysRoleMenuServiceImpl extends ServiceImpl<SysRoleMenuMapper, SysRo
     }
 
     @Override
-    public void assignMenus(String roleId, List<String> menuIds) {
-        assignMenus(roleId, menuIds, null);
-    }
-
-    @Override
     @Transactional(rollbackFor = Exception.class)
     public void assignMenus(String roleId, List<String> menuIds, String client) {
+        if (client == null || !springboot.service.menu.MenuClients.isValid(client.trim())) {
+            throw new IllegalArgumentException("保存角色菜单必须指定端 client（admin / app）");
+        }
+        client = client.trim();
         List<String> existing = getMenuIdsByRole(roleId);
         Set<String> ids = new HashSet<>(existing);
         if (menuIds != null) {
@@ -79,7 +78,8 @@ public class SysRoleMenuServiceImpl extends ServiceImpl<SysRoleMenuMapper, SysRo
      * 角色授权保存后的最终菜单 id：
      * <ul>
      *   <li>原有授权里指向已停用菜单（disabled=1）的保留——停用菜单在角色页不显示，保存时不能把它的授权删掉，重新启用后授权自动恢复；</li>
-     *   <li>指定了 client 时只替换该端的授权，其他端的原有授权保留，提交里其他端的 id 忽略；</li>
+     *   <li>只替换 client 这一端的授权，其他端的原有授权保留，提交里其他端的 id 忽略
+     *       （client 为 null 时整体替换——只保留给老调用方的静态方法，接口和 assignMenus 都要求 client）；</li>
      *   <li>提交里不存在的菜单 id 忽略（不再产生指向不存在菜单的授权行）。</li>
      * </ul>
      */
