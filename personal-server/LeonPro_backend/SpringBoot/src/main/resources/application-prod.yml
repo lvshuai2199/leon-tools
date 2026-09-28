@@ -35,6 +35,12 @@ app:
     thumb-width: 640
     max-file-size: 20MB
 
+  # 页面清单同步（menu-sync-design.md）：mode = off | dry-run（只打印计划不写库）| apply
+  menu-sync:
+    mode: ${MENU_SYNC_MODE:apply}
+    # 清单里删掉的页面标记停用（不删行、不删授权）
+    disable-missing: ${MENU_SYNC_DISABLE_MISSING:true}
+
 wechat:
   enabled: ${WECHAT_ENABLED:false}
   token: ${WECHAT_TOKEN:}

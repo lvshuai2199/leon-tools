@@ -11,26 +11,19 @@ import org.springframework.web.bind.annotation.RestController;
 import springboot.DTO.MeUpdateForm;
 import springboot.DTO.MeVO;
 import springboot.config.AuthInterceptor;
-import springboot.domain.SysMenus;
 import springboot.domain.SysRoles;
 import springboot.domain.SysUsers;
 import springboot.service.AuthTokenService;
 import springboot.service.RegCodeAccessService;
-import springboot.service.SysMenusService;
-import springboot.service.SysRoleMenuService;
 import springboot.service.SysRolesService;
 import springboot.service.SysUsersService;
+import springboot.service.menu.MenuClients;
+import springboot.service.menu.MenuQueryService;
 import springboot.utils.ApiResponse;
 import springboot.utils.RequestUserUtils;
-import springboot.utils.RoleUtils;
 
 import java.util.Collections;
-import java.util.HashSet;
-import java.util.List;
 import java.util.Map;
-import java.util.Set;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 /**
  * 认证：登录、登出、当前用户、后台菜单。只有 /auth/login 免登录，其余都要 token。
@@ -44,18 +37,16 @@ public class AuthController {
 
     private final SysUsersService sysUsersService;
     private final SysRolesService sysRolesService;
-    private final SysRoleMenuService sysRoleMenuService;
-    private final SysMenusService sysMenusService;
+    private final MenuQueryService menuQueryService;
     private final RegCodeAccessService regCodeAccessService;
     private final AuthTokenService authTokenService;
 
     public AuthController(SysUsersService sysUsersService, SysRolesService sysRolesService,
-                          SysRoleMenuService sysRoleMenuService, SysMenusService sysMenusService,
+                          MenuQueryService menuQueryService,
                           RegCodeAccessService regCodeAccessService, AuthTokenService authTokenService) {
         this.sysUsersService = sysUsersService;
         this.sysRolesService = sysRolesService;
-        this.sysRoleMenuService = sysRoleMenuService;
-        this.sysMenusService = sysMenusService;
+        this.menuQueryService = menuQueryService;
         this.regCodeAccessService = regCodeAccessService;
         this.authTokenService = authTokenService;
     }
@@ -129,8 +120,8 @@ public class AuthController {
         vo.setRoleName(user.getRoleName());
         vo.setParentId(user.getParentId());
         vo.setMenuIds(this.regCodeAccessService.menuIdsOf(user));
-        // 一期：sys_menus 还没有 client 字段，用户端菜单固定为空数组；二期按菜单清单同步后填充
-        vo.setAppMenus(Collections.emptyList());
+        // 用户端菜单：client=app、未停用；ROOT 全部，其他按角色授权（含隐藏子页和祖先目录）
+        vo.setAppMenus(this.menuQueryService.menusFor(user, MenuClients.APP));
         vo.setRoot(this.regCodeAccessService.isRootUser(user));
         vo.setCanLoginWeb(this.regCodeAccessService.canLoginWeb(user));
         vo.setCanUseCrab(this.regCodeAccessService.canUseCrab(user));
@@ -189,8 +180,8 @@ public class AuthController {
     }
 
     /**
-     * 后台菜单路由（原 /auth/getMenuList，去掉 username 参数，只按 token）：
-     * ROOT 返回全部目录与菜单；其他角色返回已分配菜单并补全祖先目录；子账号 / 注册码客户返回空数组。
+     * 后台菜单路由（原 /auth/getMenuList，去掉 username 参数，只按 token）：只返回 client=admin、未停用的目录和菜单。
+     * ROOT 返回全部；其他角色返回已分配菜单 + 其隐藏子页 + 祖先目录；子账号 / 注册码客户返回空数组。
      */
     @GetMapping("/menus")
     public ApiResponse menus(HttpServletRequest request) {
@@ -201,40 +192,7 @@ public class AuthController {
         if (this.regCodeAccessService.isWebBlocked(user)) {
             return ApiResponse.success(Collections.emptyList());
         }
-        if (user.getRoleId() == null || user.getRoleId().isEmpty()) {
-            return ApiResponse.success(Collections.emptyList());
-        }
-        SysRoles role = sysRolesService.getById(user.getRoleId());
-        if (RoleUtils.isRoot(role)) {
-            return ApiResponse.success(listAllMenus());
-        }
-        List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(user.getRoleId());
-        if (menuIds == null || menuIds.isEmpty()) {
-            return ApiResponse.success(Collections.emptyList());
-        }
-        Set<String> visibleIds = new HashSet<>(menuIds);
-        Map<String, SysMenus> menuMap = sysMenusService.list().stream()
-                .collect(Collectors.toMap(SysMenus::getId, Function.identity(), (a, b) -> a));
-        for (String id : menuIds) {
-            SysMenus cur = menuMap.get(id);
-            while (cur != null && cur.getParentId() != null && !"0".equals(cur.getParentId())
-                    && visibleIds.add(cur.getParentId())) {
-                cur = menuMap.get(cur.getParentId());
-            }
-        }
-        LambdaQueryWrapper<SysMenus> queryWrapper = new LambdaQueryWrapper<>();
-        // 0目录 1菜单 2按钮：路由只取目录与菜单
-        queryWrapper.ne(SysMenus::getMenuType, 2);
-        queryWrapper.in(SysMenus::getId, visibleIds);
-        queryWrapper.orderByAsc(SysMenus::getSortOrder);
-        return ApiResponse.success(sysMenusService.list(queryWrapper));
-    }
-
-    private List<SysMenus> listAllMenus() {
-        LambdaQueryWrapper<SysMenus> queryWrapper = new LambdaQueryWrapper<>();
-        queryWrapper.ne(SysMenus::getMenuType, 2);
-        queryWrapper.orderByAsc(SysMenus::getSortOrder);
-        return sysMenusService.list(queryWrapper);
+        return ApiResponse.success(this.menuQueryService.menusFor(user, MenuClients.ADMIN));
     }
 
     private void fillRoleName(SysUsers user) {

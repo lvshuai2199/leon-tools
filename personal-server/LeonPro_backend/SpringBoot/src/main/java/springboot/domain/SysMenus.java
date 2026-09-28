@@ -88,6 +88,26 @@ public class SysMenus implements Serializable {
     private String redirect;
 
     /**
+     * 所属端：admin 管理端 / app 用户端（默认 admin）
+     */
+    private String client;
+
+    /**
+     * 规范化后的完整路径（如 /regcode/user），与 client 一起唯一；菜单清单同步按它匹配
+     */
+    private String routeKey;
+
+    /**
+     * 1 = 由页面清单 menus.json 管理（启动时同步覆盖清单负责的字段）；0 = 手工菜单
+     */
+    private Integer managed;
+
+    /**
+     * 1 = 已从清单移除而停用（保留行和角色授权，任何菜单接口都不返回）
+     */
+    private Integer disabled;
+
+    /**
      * 创建时间
      */
     private Date createTime;

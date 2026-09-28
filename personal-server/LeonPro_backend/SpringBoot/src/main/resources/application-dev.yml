@@ -36,6 +36,12 @@ app:
     thumb-width: 640
     max-file-size: 20MB
 
+  # 页面清单同步（menu-sync-design.md）：mode = off | dry-run（只打印计划不写库）| apply
+  menu-sync:
+    mode: ${MENU_SYNC_MODE:apply}
+    # 开发库多人共用、各分支清单不同，只增改不停用
+    disable-missing: false
+
 wechat:
   enabled: ${WECHAT_ENABLED:false}
   token: ${WECHAT_TOKEN:}

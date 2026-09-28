@@ -32,6 +32,74 @@ public class SchemaPatcher implements CommandLineRunner {
         ensureToolMindmapTable();
         ensureCrabShipmentTable();
         ensureWallpaperTables();
+        ensureMenuSyncColumns();
+    }
+
+    /**
+     * 页面清单同步所需的 sys_menus 字段（见 menu-sync-design.md 第 3 节），并补齐老库可能缺的列：
+     * client（admin/app，存量行默认 admin）、route_key（规范化完整路径）、managed（1=清单管理）、disabled（1=已停用），
+     * 唯一索引 (client, route_key)；另建 sys_setup_marker 记录一次性迁移是否已执行。全部幂等。
+     */
+    private void ensureMenuSyncColumns() {
+        if (!tableExists("sys_menus")) {
+            log.warn("sys_menus 表不存在，跳过菜单字段补齐。");
+            return;
+        }
+        ensureColumn("sys_menus", "component",
+                "ALTER TABLE sys_menus ADD COLUMN component VARCHAR(255) DEFAULT NULL COMMENT '组件路径'");
+        ensureColumn("sys_menus", "route_name",
+                "ALTER TABLE sys_menus ADD COLUMN route_name VARCHAR(100) DEFAULT NULL COMMENT '路由名称'");
+        ensureColumn("sys_menus", "keep_alive",
+                "ALTER TABLE sys_menus ADD COLUMN keep_alive INT DEFAULT 0 COMMENT '是否缓存 1是 0否'");
+        ensureColumn("sys_menus", "always_show",
+                "ALTER TABLE sys_menus ADD COLUMN always_show INT DEFAULT 0 COMMENT '始终显示 1是 0否'");
+        ensureColumn("sys_menus", "redirect",
+                "ALTER TABLE sys_menus ADD COLUMN redirect VARCHAR(255) DEFAULT NULL COMMENT '目录跳转地址'");
+        ensureColumn("sys_menus", "create_time",
+                "ALTER TABLE sys_menus ADD COLUMN create_time DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间'");
+        ensureColumn("sys_menus", "update_time",
+                "ALTER TABLE sys_menus ADD COLUMN update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间'");
+        ensureColumn("sys_menus", "client",
+                "ALTER TABLE sys_menus ADD COLUMN client VARCHAR(16) NOT NULL DEFAULT 'admin' COMMENT '所属端 admin管理端 app用户端'");
+        ensureColumn("sys_menus", "route_key",
+                "ALTER TABLE sys_menus ADD COLUMN route_key VARCHAR(191) DEFAULT NULL COMMENT '规范化完整路径，与 client 唯一'");
+        ensureColumn("sys_menus", "managed",
+                "ALTER TABLE sys_menus ADD COLUMN managed INT NOT NULL DEFAULT 0 COMMENT '1由页面清单管理 0手工菜单'");
+        ensureColumn("sys_menus", "disabled",
+                "ALTER TABLE sys_menus ADD COLUMN disabled INT NOT NULL DEFAULT 0 COMMENT '1已从清单移除而停用'");
+        ensureIndex("sys_menus", "uk_menu_client_route",
+                "ALTER TABLE sys_menus ADD UNIQUE KEY uk_menu_client_route (client, route_key)");
+        ensureTable("sys_setup_marker",
+                "CREATE TABLE `sys_setup_marker` ("
+                        + "`marker_key` VARCHAR(100) NOT NULL COMMENT '一次性任务标识',"
+                        + "`done_at` DATETIME DEFAULT NULL COMMENT '执行时间',"
+                        + "`note` VARCHAR(500) DEFAULT NULL COMMENT '执行结果摘要',"
+                        + "PRIMARY KEY (`marker_key`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='一次性初始化 / 迁移的执行标记'");
+    }
+
+    private boolean tableExists(String table) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = ?",
+                Integer.class, table);
+        return count != null && count > 0;
+    }
+
+    /** 索引不存在才建；建失败只记错误（菜单同步会因唯一索引缺失而更依赖计划器自身的查重），不阻止启动 */
+    private void ensureIndex(String table, String index, String ddl) {
+        Integer count = jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
+                        + "AND TABLE_NAME = ? AND INDEX_NAME = ?",
+                Integer.class, table, index);
+        if (count != null && count > 0) {
+            return;
+        }
+        try {
+            jdbcTemplate.execute(ddl);
+            log.info("已为 {} 建索引 {}。", table, index);
+        } catch (Exception e) {
+            log.error("为 {} 建索引 {} 失败：{}", table, index, e.getMessage());
+        }
     }
 
     /** 壁纸模块表，与 sql/wallpaper_module.sql 保持一致 */

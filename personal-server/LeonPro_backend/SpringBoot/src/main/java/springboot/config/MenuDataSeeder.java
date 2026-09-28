@@ -3,26 +3,30 @@ package springboot.config;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
-import springboot.domain.SysMenus;
 import springboot.domain.SysRoleMenu;
 import springboot.service.RegCodeAccessService;
 import springboot.service.SysMenusService;
 import springboot.service.SysRoleMenuService;
 
-import java.util.ArrayList;
-import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 /**
- * 菜单种子：仅在 sys_menus 为空时写入默认路由，或补插缺失的固定 id。
- * 已有行（图标、名称、路径等）一律以数据库为准，启动时不再用代码覆盖。
- * 侧边栏由 /auth/menus 读表生成。
+ * 菜单相关的角色补授权（原菜单种子）。
+ * <p>
+ * 菜单行本身已改由页面清单同步（{@link MenuManifestSync}，清单 menus.json 打进 jar）负责插入和更新，
+ * 这里不再插入任何菜单；只保留原来的两段补授权，并且只授予确实存在的菜单，避免产生指向不存在菜单的授权行。
+ * 菜单 id 常量仍在这里定义，供权限判断引用（这些 id 必须保持不变）。
+ * <p>
+ * 顺序：放在菜单清单同步（Order 5）之前执行，这样首次授权（按“已有 menu_regcode / menu_crab 的角色”授用户端菜单）
+ * 能看到这里补齐后的授权。
  */
 @Slf4j
 @Component
+@Order(4)
 public class MenuDataSeeder implements CommandLineRunner {
 
     public static final String MENU_REGCODE_CENTER = "menu_regcode_center";
@@ -31,6 +35,7 @@ public class MenuDataSeeder implements CommandLineRunner {
     public static final String MENU_REGCODE_USER = "menu_regcode_user";
     public static final String MENU_REGISTRATION = "menu_registration";
     public static final String MENU_CRAB = "menu_crab";
+    public static final String MENU_TASKS = "menu_tasks";
 
     private static final List<String> REGCODE_MENU_IDS = List.of(
             MENU_REGCODE_CENTER,
@@ -50,108 +55,21 @@ public class MenuDataSeeder implements CommandLineRunner {
 
     @Override
     public void run(String... args) {
-        long count = sysMenusService.count();
-        if (count == 0) {
-            Date now = new Date();
-            List<SysMenus> menus = new ArrayList<>();
-
-            menus.add(build("menu_tool", "0", "工具中心", "/tool", "Layout", "/tool/trace", null,
-                    "api", 1, 0, 1, 0, 0, null, now));
-            menus.add(build("menu_trace", "menu_tool", "轨迹分析", "trace", "tool/trace/index", null,
-                    "Trace", "code", 1, 1, 1, 0, 0, null, now));
-            menus.add(build("menu_files", "menu_tool", "文件工具", "files", "tool/files/index", null,
-                    "Files", "document", 2, 1, 1, 0, 0, null, now));
-            menus.add(build("menu_documents", "menu_tool", "文档工具", "documents", "tool/documents/index", null,
-                    "Documents", "file", 3, 1, 1, 0, 0, null, now));
-            menus.add(build("menu_mindmap", "menu_tool", "思维导图", "mindmap", "tool/mindmap/index", null,
-                    "Mindmap", "share", 4, 1, 1, 0, 0, null, now));
-
-            menus.add(build(MENU_REGCODE_CENTER, "0", "注册码", "/regcode", "Layout", "/regcode/generate",
-                    "RegCodeCenter", "key", 2, 0, 1, 1, 0, null, now));
-            menus.add(build(MENU_REGCODE, MENU_REGCODE_CENTER, "注册码生成", "generate", "tool/regcode/index", null,
-                    "RegCode", "key", 1, 1, 1, 0, 0, null, now));
-            menus.add(build(MENU_REGCODE_CONFIG, MENU_REGCODE_CENTER, "注册码配置", "config", "tool/regcode-config/index", null,
-                    "RegCodeConfig", "setting", 2, 1, 1, 0, 0, null, now));
-            menus.add(build(MENU_REGCODE_USER, MENU_REGCODE_CENTER, "注册码用户", "user", "tool/regcode-user/index", null,
-                    "RegCodeUser", "user", 3, 1, 1, 0, 1, null, now));
-            menus.add(build(MENU_REGISTRATION, MENU_REGCODE_CENTER, "注册码记录", "records", "work/registration/index", null,
-                    "Registration", "client", 4, 1, 1, 0, 1, null, now));
-
-            menus.add(build("menu_work", "0", "业务管理", "/work", "Layout", "/work/tasks", null,
-                    "todo", 3, 0, 1, 0, 0, null, now));
-            menus.add(build("menu_tasks", "menu_work", "任务管理", "tasks", "work/tasks/index", null,
-                    "Tasks", "todo", 1, 1, 1, 0, 1, null, now));
-            menus.add(build(MENU_CRAB, "menu_work", "螃蟹出货", "crab", "work/crab/index", null,
-                    "CrabShipment", "table", 2, 1, 1, 0, 0, null, now));
-
-            menus.add(build("menu_system", "0", "系统管理", "/system", "Layout", "/system/user", null,
-                    "system", 4, 0, 1, 0, 0, null, now));
-            menus.add(build("menu_user", "menu_system", "用户管理", "user", "system/user/index", null,
-                    "User", "role", 1, 1, 1, 0, 1, null, now));
-            menus.add(build("menu_role", "menu_system", "角色管理", "role", "system/role/index", null,
-                    "Role", "role", 2, 1, 1, 0, 1, null, now));
-            menus.add(build("menu_menu", "menu_system", "路由配置", "menu", "system/menu/index", null,
-                    "Menu", "menu", 3, 1, 1, 0, 1, null, now));
-            menus.add(build("menu_oplog", "menu_system", "操作日志", "oplog", "system/oplog/index", null,
-                    "Oplog", "document", 4, 1, 1, 0, 1, null, now));
-
-            sysMenusService.saveBatch(menus);
-            log.info("sys_menus 为空，已初始化 {} 条默认路由配置。", menus.size());
-            return;
-        }
-
-        ensureSeedMenu();
-        groupRegCodeMenus();
         grantRegCodeMenusToManagers();
         grantCrabMenuToBusinessRoles();
     }
 
-    private void ensureSeedMenu() {
-        Date now = new Date();
-        if (sysMenusService.getById("menu_mindmap") == null) {
-            sysMenusService.save(build("menu_mindmap", "menu_tool", "思维导图", "mindmap",
-                    "tool/mindmap/index", null, "Mindmap", "share", 4, 1, 1, 0, 0, null, now));
-            log.info("已补插种子菜单 menu_mindmap（思维导图）。");
-        }
-        if (sysMenusService.getById("menu_oplog") == null) {
-            sysMenusService.save(build("menu_oplog", "menu_system", "操作日志", "oplog",
-                    "system/oplog/index", null, "Oplog", "document", 4, 1, 1, 0, 1, null, now));
-            log.info("已补插种子菜单 menu_oplog（操作日志）。");
-        }
-        insertIfAbsent(MENU_CRAB, "menu_work", "螃蟹出货", "crab", "work/crab/index",
-                null, "CrabShipment", "table", 2, 1, 1, 0, 0, now);
-    }
-
-    /** 只补缺失的注册码菜单，已有行完全以 sys_menus 为准 */
-    private void groupRegCodeMenus() {
-        Date now = new Date();
-        insertIfAbsent(MENU_REGCODE_CENTER, "0", "注册码", "/regcode", "Layout", "/regcode/generate",
-                "RegCodeCenter", "key", 2, 0, 1, 1, 0, now);
-        insertIfAbsent(MENU_REGCODE, MENU_REGCODE_CENTER, "注册码生成", "generate", "tool/regcode/index",
-                null, "RegCode", "key", 1, 1, 1, 0, 0, now);
-        insertIfAbsent(MENU_REGCODE_CONFIG, MENU_REGCODE_CENTER, "注册码配置", "config", "tool/regcode-config/index",
-                null, "RegCodeConfig", "setting", 2, 1, 1, 0, 0, now);
-        insertIfAbsent(MENU_REGCODE_USER, MENU_REGCODE_CENTER, "注册码用户", "user", "tool/regcode-user/index",
-                null, "RegCodeUser", "user", 3, 1, 1, 0, 1, now);
-        insertIfAbsent(MENU_REGISTRATION, MENU_REGCODE_CENTER, "注册码记录", "records", "work/registration/index",
-                null, "Registration", "client", 4, 1, 1, 0, 1, now);
-    }
-
-    private void insertIfAbsent(String id, String parentId, String menuName, String menuUrl, String component,
-                                String redirect, String routeName, String icon, Integer sortOrder,
-                                Integer menuType, Integer visible, Integer alwaysShow, Integer keepAlive, Date now) {
-        if (sysMenusService.getById(id) != null) {
-            return;
-        }
-        sysMenusService.save(build(id, parentId, menuName, menuUrl, component, redirect,
-                routeName, icon, sortOrder, menuType, visible, alwaysShow, keepAlive, null, now));
-        log.info("已补插种子菜单 {}（{}）。", id, menuName);
+    private boolean menuExists(String menuId) {
+        return sysMenusService.getById(menuId) != null;
     }
 
     /** 已有任务管理菜单的业务角色，补插螃蟹出货；注册码客户除外。 */
     private void grantCrabMenuToBusinessRoles() {
+        if (!menuExists(MENU_CRAB)) {
+            return;
+        }
         LambdaQueryWrapper<SysRoleMenu> wrapper = new LambdaQueryWrapper<>();
-        wrapper.eq(SysRoleMenu::getMenuId, "menu_tasks");
+        wrapper.eq(SysRoleMenu::getMenuId, MENU_TASKS);
         Set<String> roleIds = new HashSet<>();
         for (SysRoleMenu row : sysRoleMenuService.list(wrapper)) {
             if (row.getRoldId() != null) {
@@ -185,13 +103,17 @@ public class MenuDataSeeder implements CommandLineRunner {
                 roleIds.add(row.getRoldId());
             }
         }
+        if (roleIds.isEmpty()) {
+            return;
+        }
+        List<String> existing = REGCODE_MENU_IDS.stream().filter(this::menuExists).toList();
         for (String roleId : roleIds) {
             if (RegCodeAccessService.ROLE_REGCODE_CLIENT_ID.equals(roleId)) {
                 continue;
             }
             List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(roleId);
             Set<String> owned = menuIds == null ? new HashSet<>() : new HashSet<>(menuIds);
-            for (String menuId : REGCODE_MENU_IDS) {
+            for (String menuId : existing) {
                 if (owned.contains(menuId)) {
                     continue;
                 }
@@ -202,28 +124,5 @@ public class MenuDataSeeder implements CommandLineRunner {
                 log.info("已为角色 {} 补齐菜单 {}。", roleId, menuId);
             }
         }
-    }
-
-    private SysMenus build(String id, String parentId, String menuName, String menuUrl,
-                           String component, String redirect, String routeName, String icon,
-                           Integer sortOrder, Integer menuType, Integer visible,
-                           Integer alwaysShow, Integer keepAlive, String permission, Date now) {
-        SysMenus menu = new SysMenus();
-        menu.setId(id);
-        menu.setParentId(parentId);
-        menu.setMenuName(menuName);
-        menu.setMenuUrl(menuUrl);
-        menu.setComponent(component);
-        menu.setRedirect(redirect);
-        menu.setRouteName(routeName);
-        menu.setIcon(icon);
-        menu.setSortOrder(sortOrder);
-        menu.setMenuType(menuType);
-        menu.setVisible(visible);
-        menu.setAlwaysShow(alwaysShow);
-        menu.setKeepAlive(keepAlive);
-        menu.setPermission(permission);
-        menu.setCreateTime(now);
-        return menu;
     }
 }

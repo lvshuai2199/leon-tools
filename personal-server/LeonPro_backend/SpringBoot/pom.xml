@@ -86,6 +86,44 @@
 
 	<build>
 		<finalName>leonpro-backend</finalName>
+		<!--
+		  页面清单打进 jar（见 menu-sync-design.md 2.4）：前两段与 spring-boot-starter-parent 默认一致（application*.yml 过滤），
+		  后两段把两个前端的 src/router/menus.json 放到 classpath:menus/admin/、classpath:menus/app/。
+		  目录或文件不存在时 Maven 静默跳过，后端启动时打 WARN 并跳过该端同步（不会停用任何菜单）。
+		-->
+		<resources>
+			<resource>
+				<directory>${basedir}/src/main/resources</directory>
+				<filtering>true</filtering>
+				<includes>
+					<include>**/application*.yml</include>
+					<include>**/application*.yaml</include>
+					<include>**/application*.properties</include>
+				</includes>
+			</resource>
+			<resource>
+				<directory>${basedir}/src/main/resources</directory>
+				<excludes>
+					<exclude>**/application*.yml</exclude>
+					<exclude>**/application*.yaml</exclude>
+					<exclude>**/application*.properties</exclude>
+				</excludes>
+			</resource>
+			<resource>
+				<directory>${project.basedir}/../../LeonPro_frontend/vue3_frontend/src/router</directory>
+				<includes>
+					<include>menus.json</include>
+				</includes>
+				<targetPath>menus/admin</targetPath>
+			</resource>
+			<resource>
+				<directory>${project.basedir}/../../LeonPro_frontend/frontend_phone/src/router</directory>
+				<includes>
+					<include>menus.json</include>
+				</includes>
+				<targetPath>menus/app</targetPath>
+			</resource>
+		</resources>
 		<plugins>
 			<plugin>
 				<groupId>org.apache.maven.plugins</groupId>

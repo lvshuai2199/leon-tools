@@ -104,7 +104,9 @@ public class SysRolesController {
     }
 
     /**
-     * 分配角色可访问的菜单（路由）列表（先删后插）
+     * 分配角色可访问的菜单（路由）列表。body: {roleId, menuIds, client?}；
+     * client=admin/app 时只替换该端的授权（角色页按端分两棵树时用），不传则替换全部。
+     * 已停用菜单的原有授权始终保留；不存在的菜单 id 忽略。
      */
     @PostMapping("menus")
     public ApiResponse assignRoleMenus(@RequestBody Map<String, Object> body) {
@@ -119,7 +121,12 @@ public class SysRolesController {
                 menuIds.add(String.valueOf(o));
             }
         }
-        sysRoleMenuService.assignMenus(roleId, menuIds);
+        Object clientValue = body.get("client");
+        String client = clientValue == null || String.valueOf(clientValue).isBlank() ? null : String.valueOf(clientValue).trim();
+        if (client != null && !springboot.service.menu.MenuClients.isValid(client)) {
+            return ApiResponse.failure("client 只能是 admin 或 app");
+        }
+        sysRoleMenuService.assignMenus(roleId, menuIds, client);
         return ApiResponse.success("OK");
     }
 
