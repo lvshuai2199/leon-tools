@@ -71,6 +71,10 @@ static const int BASE_PANEL_H = 380;
 static const UINT WM_USAGE = WM_APP + 1;
 static const UINT WM_WAKE_PAINT = WM_APP + 4;
 static const UINT WM_QUICK_CLICK = WM_APP + 6;
+static const UINT WM_EDGE_PEEK = WM_APP + 8;
+static const int kHidePx = 5;
+static const int kHideHoverPad = 20;
+static const UINT_PTR kHideTimer = 9;
 
 static std::wstring Utf8ToWide(const std::string& s) {
     if (s.empty()) return L"";
@@ -639,6 +643,9 @@ static std::wstring FormatTok(long long n) {
 struct App {
     HWND hwnd = nullptr;
     bool expanded = false;
+    bool autoHide = true;
+    bool peeking = false;
+    bool menuOpen = false;
     int dockEdge = 1; // 0 left, 1 right, 2 top
     int y = -1;
     bool dragging = false;
@@ -811,8 +818,19 @@ static int TokenViewH() {
 static int MaxScroll() {
     return 0;
 }
-static int WinW() { return g.expanded ? PanelW() : StripW(); }
-static int WinH() { return g.expanded ? ExpandedH() : StripH(); }
+static bool EdgeHidden() {
+    return g.autoHide && !g.expanded && !g.peeking && !g.dragging && !g.menuOpen;
+}
+static int WinW() {
+    if (g.expanded) return PanelW();
+    if (EdgeHidden() && g.dockEdge != 2) return kHidePx;
+    return StripW();
+}
+static int WinH() {
+    if (g.expanded) return ExpandedH();
+    if (EdgeHidden() && g.dockEdge == 2) return kHidePx;
+    return StripH();
+}
 
 // ---- Scheduled wallpaper state (persisted in ui.ini) ----
 struct WallpaperState {
@@ -861,6 +879,7 @@ static void LoadConfig() {
         if (k == "showApi") g.showApi = v == "1";
         if (k == "showModels") g.showModels = v == "1";
         if (k == "ringMode") g.ringMode = (atoi(v.c_str()) == 1) ? 1 : 0;
+        if (k == "autoHide") g.autoHide = v != "0";
         if (!v.empty() && v.back() == '\r') v.pop_back();
         if (k == "wpEnabled") g_wp.enabled = v == "1";
         if (k == "wpUrl") g_wp.url = Utf8ToWide(v);
@@ -882,6 +901,7 @@ static void SaveConfig() {
     out << "showApi=" << (g.showApi ? "1" : "0") << "\n";
     out << "showModels=" << (g.showModels ? "1" : "0") << "\n";
     out << "ringMode=" << g.ringMode << "\n";
+    out << "autoHide=" << (g.autoHide ? "1" : "0") << "\n";
     {
         std::wstring u = g_wp.url;
         u.erase(std::remove_if(u.begin(), u.end(), [](wchar_t c) { return c == L'\r' || c == L'\n'; }), u.end());
@@ -980,6 +1000,7 @@ static HHOOK g_mouseHook = nullptr;
 static DWORD g_lastWakePaint = 0;
 static POINT g_hookDown{};
 static bool g_hookDownOn = false;
+static bool g_hideArmed = false;
 
 static bool TopMostYielded() {
     DWORD until = g_yieldTopUntil;
@@ -1040,6 +1061,66 @@ static void DragMove(HWND h) {
     }
     SetWindowPos(h, HWND_TOPMOST, x, y, 0, 0,
                  SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+}
+
+static RECT PeekHitRect() {
+    RECT wa = Work();
+    int sw = StripW(), sh = StripH();
+    RECT r{};
+    if (g.expanded && g.hwnd) {
+        GetWindowRect(g.hwnd, &r);
+        InflateRect(&r, 4, 4);
+        return r;
+    }
+    if (g.dockEdge == 2) {
+        int x = g.y;
+        if (x < 0) x = wa.left + (wa.right - wa.left - sw) / 2;
+        x = ClampI(x, (int)wa.left + 4, (int)wa.right - sw - 4);
+        r.left = x;
+        r.right = x + sw;
+        r.top = wa.top;
+        r.bottom = wa.top + (g.peeking ? sh : kHidePx + kHideHoverPad);
+    } else {
+        int y = g.y;
+        if (y < 0) y = wa.top + (wa.bottom - wa.top - sh) / 2;
+        y = ClampI(y, (int)wa.top + 4, (int)wa.bottom - sh - 4);
+        r.top = y;
+        r.bottom = y + sh;
+        if (g.dockEdge == 1) {
+            r.right = wa.right;
+            r.left = wa.right - (g.peeking ? sw : kHidePx + kHideHoverPad);
+        } else {
+            r.left = wa.left;
+            r.right = wa.left + (g.peeking ? sw : kHidePx + kHideHoverPad);
+        }
+    }
+    InflateRect(&r, 2, 2);
+    return r;
+}
+
+static bool CursorNearPeek() {
+    POINT pt{};
+    GetCursorPos(&pt);
+    RECT r = PeekHitRect();
+    return PtInRect(&r, pt) != FALSE;
+}
+
+static void PeekShow(HWND h) {
+    if (!h || !g.autoHide) return;
+    KillTimer(h, kHideTimer);
+    g_hideArmed = false;
+    if (g.peeking) return;
+    g.peeking = true;
+    Place(h);
+}
+
+static void PeekHide(HWND h) {
+    if (!h || !g.autoHide || g.expanded || g.dragging || g.menuOpen) return;
+    if (CursorNearPeek()) { g_hideArmed = false; return; }
+    if (!g.peeking) { g_hideArmed = false; return; }
+    g.peeking = false;
+    g_hideArmed = false;
+    Place(h);
 }
 
 struct ACCENTPOLICY { int s, f; DWORD c; int a; };
@@ -1420,6 +1501,9 @@ static void AddBodyPath(GraphicsPath& body, float w, float hh, float rad, float 
     else if (g.dockEdge == 1) R = w;       // right flush
     else if (g.dockEdge == 2) T = 0.f;     // top flush
     float rw = R - L, rh = B - T;
+    float thin = (g.dockEdge == 2) ? rh : rw;
+    if (thin < r * 2.f) r = thin * 0.45f;
+    if (r < 1.f) r = 1.f;
     if (g.dockEdge == 2) {
         if (r * 2.f > rw * 0.45f) r = rw * 0.22f;
     } else {
@@ -2385,6 +2469,8 @@ struct SettingsDlg {
     RECT shortcutRow[9]{};
     int shortcutRows = 0;
     RECT dockCard{};
+    RECT hideRow{};
+    RECT hideSwitch{};
     RECT modeCard{};
     RECT visCard{};
     RECT scCard{};
@@ -3013,8 +3099,10 @@ static int LayoutSettings() {
         int x0 = leftX + cardPad + i * (bw + 8);
         g_settings.dockBtn[i] = { x0, contentTop, x0 + bw, contentTop + chipH };
     }
-    int dockH = cardPad + chipH + cardPad;
+    int dockH = cardPad + chipH + 8 + 26 + cardPad;
     g_settings.dockCard = placeCard(leftX, cardTop, dockH);
+    g_settings.hideRow = { leftX + cardPad, contentTop + chipH + 8, leftX + colW - cardPad, contentTop + chipH + 8 + 26 };
+    g_settings.hideSwitch = { g_settings.hideRow.right - 44, g_settings.hideRow.top + 2, g_settings.hideRow.right, g_settings.hideRow.top + 24 };
     y = g_settings.dockCard.bottom + cardGap;
 
     // Left: display mode
@@ -3261,6 +3349,20 @@ static void PaintSettings(HWND h) {
             const wchar_t* docks[] = { L"\u5de6", L"\u53f3", L"\u9876" };
             for (int i = 0; i < 3; ++i)
                 DrawSettingsChip(gph, g_settings.dockBtn[i], docks[i], g.dockEdge == i, true, ui);
+            {
+                const RECT& row = g_settings.hideRow;
+                const RECT& sw = g_settings.hideSwitch;
+                gph.DrawString(L"\u81ea\u52a8\u9690\u85cf", -1, &ui, PointF((float)row.left, (float)row.top + 3.f), &titleBr);
+                float tx = (float)sw.left, ty = (float)sw.top, tw = 44.f, th = 22.f;
+                GraphicsPath tpath;
+                RoundRectPath(tpath, tx, ty, tw, th, th / 2.f);
+                SolidBrush tfill(g.autoHide ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0xD0, 0xD4, 0xDA));
+                gph.FillPath(&tfill, &tpath);
+                float knob = th - 4.f;
+                float kx = g.autoHide ? (tx + tw - knob - 2.f) : (tx + 2.f);
+                SolidBrush knobBr(Color(255, 255, 255, 255));
+                gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
+            }
         }
         {
             labelOf(L"\u663e\u793a\u6a21\u5f0f", g_settings.modeCard);
@@ -3683,6 +3785,11 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             if (g.dockEdge != i) { g.dockEdge = i; g.y = -1; }
             SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
+        if (PtIn(g_settings.hideRow, x, y) || PtIn(g_settings.hideSwitch, x, y)) {
+            g.autoHide = !g.autoHide;
+            g.peeking = !g.autoHide || CursorNearPeek();
+            SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
+        }
         for (int i = 0; i < 2; ++i) if (PtIn(g_settings.modeBtn[i], x, y)) {
             g.ringMode = i; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
@@ -3999,12 +4106,25 @@ static LRESULT CALLBACK MouseHookProc(int code, WPARAM wp, LPARAM lp) {
             PostMessageW(g.hwnd, WM_QUICK_CLICK, (WPARAM)(inf->pt.x - wr.left), (LPARAM)(inf->pt.y - wr.top));
         return CallNextHookEx(g_mouseHook, code, wp, lp);
     }
-    if (wp == WM_MOUSEMOVE && PtInRect(&wr, inf->pt)) {
-        DWORD now = GetTickCount();
-        if (now - g_lastWakePaint > 250) {
-            g_lastWakePaint = now;
-            PostMessageW(g.hwnd, WM_WAKE_PAINT, 0, 0);
+    if (wp == WM_MOUSEMOVE) {
+        RECT hit = PeekHitRect();
+        bool hovering = PtInRect(&hit, inf->pt) != FALSE;
+        if (g.autoHide && !g.expanded && !g.dragging && !g.menuOpen) {
+            if (hovering && !g.peeking)
+                PostMessageW(g.hwnd, WM_EDGE_PEEK, 1, 0);
+            else if (!hovering && g.peeking && !g_hideArmed) {
+                g_hideArmed = true;
+                PostMessageW(g.hwnd, WM_EDGE_PEEK, 0, 0);
+            }
         }
+        if (hovering) {
+            DWORD now = GetTickCount();
+            if (now - g_lastWakePaint > 250) {
+                g_lastWakePaint = now;
+                PostMessageW(g.hwnd, WM_WAKE_PAINT, 0, 0);
+            }
+        }
+        return CallNextHookEx(g_mouseHook, code, wp, lp);
     }
     return CallNextHookEx(g_mouseHook, code, wp, lp);
 }
@@ -4067,6 +4187,7 @@ static void Paint(HWND h, HDC hdc) {
     SolidBrush muted(g.dark ? Color(200, 0xA0, 0xA4, 0xAE) : Color(200, 90, 96, 105));
 
     if (!g.expanded) {
+        if (!EdgeHidden()) {
         float r = RingR();
         if (g.dockEdge == 2 && g.ringMode == 1) {
             float Ro = DualOuterR();
@@ -4114,6 +4235,7 @@ static void Paint(HWND h, HDC hdc) {
             float y0 = r + topPad;
             float step = RingStepV();
             DrawCollapsedRingsHV(gph, num, cx, y0, r, 0.f, step, false);
+        }
         }
     } else {
 
@@ -4266,6 +4388,11 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (w == 7) { WpTick(); return 0; }
         if (w == 8) { KillTimer(h, 8); WpTick(); return 0; }
         if (w == 2) { RefreshTheme(h); KeepTopMost(h); return 0; }
+        if (w == kHideTimer) {
+            KillTimer(h, kHideTimer);
+            PeekHide(h);
+            return 0;
+        }
         Refresh();
         return 0;
     case WM_SETTINGCHANGE:
@@ -4282,6 +4409,14 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     case WM_WALLPAPER_DONE:
         WpOnDone((WpResult*)l);
+        return 0;
+    case WM_EDGE_PEEK:
+        if (w)
+            PeekShow(h);
+        else {
+            KillTimer(h, kHideTimer);
+            SetTimer(h, kHideTimer, 400, nullptr);
+        }
         return 0;
     case WM_WAKE_PAINT:
         KeepTopMost(h);
@@ -4308,6 +4443,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return HTCLIENT;
     case WM_LBUTTONDOWN: {
         POINT cpt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
+        PeekShow(h);
         g.dragging = false;
         g.scrolling = false;
         g.pressIcon = g.expanded ? HitQuickIndex(cpt.x, cpt.y) : -1;
@@ -4324,7 +4460,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         return 0;
     }
     case WM_MOUSEMOVE:
-        if (g.expanded && !g.tracking && GetCapture() != h) TrackLeave(h);
+        if ((g.expanded || (g.autoHide && g.peeking)) && !g.tracking && GetCapture() != h) TrackLeave(h);
         if (GetCapture() != h) return 0;
         if (g.scrolling) {
             int dy = GET_Y_LPARAM(l) - g.press.y;
@@ -4379,6 +4515,9 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         }
         if (!g.expanded) {
             g.expanded = true;
+            g.peeking = true;
+            g_hideArmed = false;
+            KillTimer(h, kHideTimer);
             g.scrollY = 0;
             g.holdUntil = GetTickCount() + 300;
             Place(h);
@@ -4391,15 +4530,27 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     case WM_MOUSELEAVE:
         g.tracking = false;
         if (GetCapture() == h || g.dragging) return 0;
-        if (!g.expanded) return 0;
         if (GetTickCount() < g.holdUntil || CursorInWindow(h)) {
             TrackLeave(h);
             return 0;
         }
-        g.expanded = false;
-        g.scrollY = 0;
-        g.scrolling = false;
-        Place(h);
+        if (g.expanded) {
+            g.expanded = false;
+            g.scrollY = 0;
+            g.scrolling = false;
+            Place(h);
+            if (g.autoHide) {
+                g_hideArmed = true;
+                KillTimer(h, kHideTimer);
+                SetTimer(h, kHideTimer, 400, nullptr);
+            }
+            return 0;
+        }
+        if (g.autoHide && g.peeking) {
+            g_hideArmed = true;
+            KillTimer(h, kHideTimer);
+            SetTimer(h, kHideTimer, 400, nullptr);
+        }
         return 0;
     case WM_RBUTTONUP: {
         POINT pt{ GET_X_LPARAM(l), GET_Y_LPARAM(l) };
@@ -4429,7 +4580,10 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             flags |= TPM_BOTTOMALIGN;
         TPMPARAMS tp{ sizeof(tp), wr };
         SetForegroundWindow(h);
+        g.menuOpen = true;
+        PeekShow(h);
         int cmd = TrackPopupMenuEx(menu, flags, x, y, h, &tp);
+        g.menuOpen = false;
         PostMessageW(h, WM_NULL, 0, 0);
         DestroyMenu(menu);
         if (cmd == 10) Refresh();
@@ -4448,6 +4602,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         KillTimer(h, 4);
         KillTimer(h, 7);
         KillTimer(h, 8);
+        KillTimer(h, kHideTimer);
         PostQuitMessage(0);
         return 0;
     }
