@@ -222,10 +222,6 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
-
 .header-hint {
   margin-left: 12px;
   font-size: 12px;

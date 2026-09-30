@@ -166,10 +166,6 @@ function submitPassword() {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
-
 .profile-card {
   max-width: 640px;
 }

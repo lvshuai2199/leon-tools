@@ -42,7 +42,7 @@
     <el-card shadow="never">
       <template #header>
         <div class="flex-x-between">
-          <span>注册码客户</span>
+          <span class="card-title">注册码客户</span>
           <el-button type="primary" @click="openDialog()">
             <el-icon class="mr-1"><Plus /></el-icon>
             新增客户
@@ -51,22 +51,32 @@
       </template>
 
       <el-table v-loading="loading" :data="tableData" row-key="id" border>
-        <el-table-column type="expand" width="40">
+        <template #empty>
+          <div class="table-empty">
+            <div class="table-empty__icon">
+              <el-icon><component :is="hasFilter ? 'Search' : 'User'" /></el-icon>
+            </div>
+            <div class="table-empty__text">
+              {{ hasFilter ? "没有找到匹配的客户" : "还没有注册码客户" }}
+            </div>
+          </div>
+        </template>
+        <el-table-column type="expand" width="48">
           <template #default="{ row }">
             <SubUserPanel :customer-id="customerKey(row)" />
           </template>
         </el-table-column>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="username" label="用户名" width="140" />
-        <el-table-column v-if="isRoot" label="所属父用户" width="160">
+        <el-table-column type="index" label="#" width="48" align="center" />
+        <el-table-column prop="username" label="用户名" min-width="120" />
+        <el-table-column v-if="isRoot" label="所属父用户" min-width="140">
           <template #default="{ row }">
             {{ row.parentNickname || row.parentUsername || "-" }}
           </template>
         </el-table-column>
-        <el-table-column prop="nickname" label="昵称" width="120">
+        <el-table-column v-if="!isNarrow" prop="nickname" label="昵称" min-width="100">
           <template #default="{ row }">{{ row.nickname || "-" }}</template>
         </el-table-column>
-        <el-table-column label="各配置次数（已用 / 上限）" min-width="240">
+        <el-table-column label="各配置次数（已用 / 上限）" min-width="220">
           <template #default="{ row }">
             <el-tag
               v-for="q in rowQuotas(row)"
@@ -80,7 +90,7 @@
             <span v-if="!rowQuotas(row).length">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="子用户" width="100" align="center">
+        <el-table-column label="子用户" width="80" align="center">
           <template #default="{ row }">
             {{ row.subUserCount ?? 0 }} / {{ row.maxSubUsers ?? 0 }}
           </template>
@@ -95,14 +105,14 @@
         <el-table-column
           prop="createTime"
           label="创建时间"
-          width="170"
+          min-width="170"
           align="center"
           :formatter="tableTimeFormatter"
         />
-        <el-table-column label="操作" width="140" align="center" fixed="right">
+        <el-table-column label="操作" width="120" align="right" header-align="right" fixed="right">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="openDialog(row)">编辑</el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button type="primary" link @click="openDialog(row)">编辑</el-button>
+            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -119,7 +129,8 @@
     <el-dialog
       v-model="dialog.visible"
       :title="dialog.title"
-      width="560px"
+      width="480px"
+      align-center
       destroy-on-close
       @closed="resetForm"
     >
@@ -152,7 +163,7 @@
           <el-select
             v-model="formData.configIds"
             multiple
-            collapse-tags
+            :collapse-tags="(formData.configIds?.length ?? 0) > 3"
             collapse-tags-tooltip
             placeholder="仅可生成这些注册码"
             class="w-full"
@@ -175,15 +186,21 @@
                 :max="99999"
                 :step="1"
                 step-strictly
-                size="small"
                 controls-position="right"
+                class="quota-list__input"
               />
-              <span v-if="usedOf(cid)" class="quota-list__hint">已用 {{ usedOf(cid) }}</span>
+              <span class="quota-list__hint">已用 {{ usedOf(cid) }}</span>
             </div>
           </div>
         </el-form-item>
         <el-form-item label="可建子用户数" prop="maxSubUsers">
-          <el-input-number v-model="formData.maxSubUsers" :min="0" :max="99" />
+          <el-input-number
+            v-model="formData.maxSubUsers"
+            :min="0"
+            :max="99"
+            controls-position="right"
+            class="num-input"
+          />
           <span class="form-hint">0 表示不能建子用户；调小后已有子用户保留，只是不能再新建</span>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
@@ -224,6 +241,11 @@ const total = ref(0);
 const configOptions = ref<RegCodeConfigVO[]>([]);
 const parentOptions = ref<UserPageVO[]>([]);
 const userStore = useUserStore();
+/** 1200 以下（含 1024）隐藏昵称列，保证状态列不用横向滚动就能看到 */
+const { width: windowWidth } = useWindowSize();
+const isNarrow = computed(() => windowWidth.value < 1200);
+const hasFilter = computed(() => !!(queryParams.username || queryParams.parentId));
+
 const isRoot = computed(() =>
   isRootRole({ id: userStore.userInfo.roleId, roleName: userStore.userInfo.roleName })
 );
@@ -400,7 +422,7 @@ function resetQuery() {
 function openDialog(row?: RegCodeUserVO) {
   refreshOptions();
   if (row) {
-    dialog.title = "编辑注册码客户";
+    dialog.title = `编辑客户：${row.nickname || row.username || ""}`;
     Object.assign(formData, {
       id: row.id,
       userId: row.userId,
@@ -508,16 +530,17 @@ onActivated(() => {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
-
 .w-full {
   width: 100%;
 }
 
+.num-input {
+  width: 120px;
+}
+
 .form-hint {
-  margin-left: 12px;
+  width: 100%;
+  margin-top: 4px;
   font-size: 12px;
   line-height: 1.4;
   color: var(--el-text-color-secondary);
@@ -543,9 +566,24 @@ onActivated(() => {
     white-space: nowrap;
   }
 
+  &__input {
+    flex: 0 0 120px;
+    width: 120px;
+  }
+
   &__hint {
+    flex: 0 0 56px;
+    width: 56px;
     font-size: 12px;
     color: var(--el-text-color-secondary);
+    text-align: right;
+    white-space: nowrap;
   }
+}
+
+/* 展开的子用户区：浅灰底 + 12/16 内边距 */
+:deep(.el-table__expanded-cell) {
+  padding: 12px 16px !important;
+  background: var(--el-fill-color-light) !important;
 }
 </style>

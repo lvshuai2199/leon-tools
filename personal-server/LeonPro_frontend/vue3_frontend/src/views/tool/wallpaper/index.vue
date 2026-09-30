@@ -4,9 +4,7 @@
     <aside class="group-pane">
       <div class="group-head">
         <span class="pane-title">壁纸组</span>
-        <el-button type="primary" size="small" :icon="Plus" @click="openGroupDialog()">
-          新建组
-        </el-button>
+        <el-button type="primary" :icon="Plus" @click="openGroupDialog()">新建组</el-button>
       </div>
       <el-scrollbar v-loading="groupLoading" class="group-list">
         <div
@@ -66,7 +64,9 @@
               复制接口
             </el-button>
             <el-button :icon="Edit" @click="openGroupDialog(currentGroup)">编辑</el-button>
-            <el-button :icon="Delete" text @click="removeGroup(currentGroup)">删除组</el-button>
+            <el-button :icon="Delete" type="danger" plain @click="removeGroup(currentGroup)">
+              删除组
+            </el-button>
           </div>
         </div>
 
@@ -810,7 +810,7 @@ onMounted(() => loadGroups());
   overflow: hidden;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  border-radius: 12px;
 }
 .group-head {
   display: flex;
@@ -821,6 +821,7 @@ onMounted(() => loadGroups());
   .pane-title {
     font-size: 14px;
     font-weight: 600;
+    color: var(--el-text-color-primary);
   }
 }
 .group-list {
@@ -882,7 +883,7 @@ onMounted(() => loadGroups());
   padding: 16px;
   background: var(--el-bg-color);
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 8px;
+  border-radius: 12px;
 }
 .group-header {
   display: flex;
@@ -900,6 +901,7 @@ onMounted(() => loadGroups());
     align-items: center;
     font-size: 18px;
     font-weight: 600;
+    color: var(--el-text-color-primary);
   }
   .gh-sub {
     display: flex;
@@ -949,7 +951,7 @@ onMounted(() => loadGroups());
 .card-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 12px;
+  gap: 16px;
 }
 .img-card {
   overflow: hidden;
@@ -1007,16 +1009,23 @@ onMounted(() => loadGroups());
     flex: 1;
     overflow: hidden;
     font-size: 13px;
+    color: var(--el-text-color-primary);
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+  /* 「⋯」：16px 图标，点击区 24×24 */
   .more-btn {
+    box-sizing: border-box;
+    flex: 0 0 24px;
+    width: 24px;
+    height: 24px;
     padding: 4px;
+    font-size: 16px;
     color: var(--el-text-color-secondary);
     cursor: pointer;
     border-radius: 4px;
     &:hover {
-      background: var(--el-fill-color);
+      background: var(--el-fill-color-light);
     }
   }
 }

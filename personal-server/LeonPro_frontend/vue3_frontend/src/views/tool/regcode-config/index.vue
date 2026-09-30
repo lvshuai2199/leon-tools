@@ -260,10 +260,6 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
-
 .w-full {
   width: 100%;
 }
