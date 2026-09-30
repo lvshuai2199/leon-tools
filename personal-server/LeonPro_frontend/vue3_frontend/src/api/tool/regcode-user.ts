@@ -151,7 +151,7 @@ export interface RegCodeUserForm {
 }
 
 export interface RegCodeUserDeleteResult {
-  removed?: number;
+  removed?: boolean;
   retiredSubUsers?: number;
   voidedTotal?: number;
 }
