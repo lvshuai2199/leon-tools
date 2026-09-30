@@ -131,8 +131,9 @@ public class AuthController {
         boolean canUseRegCode = this.regCodeAccessService.canUseRegCode(user);
         MeVO.RegCodeInfo regCode = vo.getRegCode();
         regCode.setSubUser(this.regCodeAccessService.isBottomSubUser(user));
-        regCode.setMaxSubUsers(this.regCodeAccessService.maxSubUsersOf(user));
-        regCode.setCreatedCount(this.regCodeAccessService.enabledSubUserCount(user.getId()));
+        // 注册码子用户只能生成注册码：没有子用户管理，名额和已建数一律 0
+        regCode.setMaxSubUsers(regCode.isSubUser() ? 0 : this.regCodeAccessService.maxSubUsersOf(user));
+        regCode.setCreatedCount(regCode.isSubUser() ? 0 : this.regCodeAccessService.enabledSubUserCount(user.getId()));
         regCode.setCanManageSubUsers(canUseRegCode && !regCode.isSubUser());
         regCode.setCanCreateSubUsers(regCode.isCanManageSubUsers() && regCode.getCreatedCount() < regCode.getMaxSubUsers());
         return ApiResponse.success(vo);

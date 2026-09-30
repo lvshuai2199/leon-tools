@@ -262,4 +262,29 @@ class AppMenuAccessConsistencyTest {
         appRows.get("menu_app_regcode").setDisabled(0);
         assertConsistentForAll();
     }
+
+    /** 注册码子用户：appMenus 只有 /regcode，不管自己的角色勾了出货 / 其他菜单；创建人失去注册码权限后什么都没有 */
+    @Test
+    void regCodeSubUserAppMenusAreExactlyRegcode() {
+        user("subAllOfRcTop", "role_sub_all", "rcTop");
+        assertEquals(Set.of("/regcode"), routes("subOfRcTop"));
+        assertEquals(Set.of("/regcode"), routes("subOfRcByOps"));
+        assertEquals(Set.of("/regcode"), routes("subAllOfRcTop"), "角色勾了出货和其他菜单也只有 /regcode");
+        expect("subAllOfRcTop", false, true);
+
+        // 不推荐的组合：出货主账号 both 又有注册码账号，它在注册码页建的 bothR
+        user("both", "role_ops", null);
+        user("bothR", "role_sub_all", "both");
+        user("bothC", "role_none", "both");
+        status.put("both", 1);
+        status.put("bothR", 1);
+        assertEquals(Set.of("/regcode"), routes("bothR"));
+        expect("bothR", false, true);
+        expect("bothC", true, false);
+        grants.put("role_ops", List.of("menu_app_crab"));
+        expect("bothR", false, false);
+        assertEquals(Set.of(), routes("bothR"), "创建人去掉 /regcode：子用户没有任何菜单");
+        grants.put("role_ops", List.of("menu_app_crab", "menu_app_regcode"));
+        assertConsistentForAll();
+    }
 }

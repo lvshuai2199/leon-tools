@@ -297,6 +297,12 @@ public class RegCodeQuotaService {
      */
     @Transactional(rollbackFor = Exception.class)
     public RetireResult retireSubUsers(String creatorId) {
+        return retireSubUsers(creatorId, sub -> true);
+    }
+
+    /** 同 {@link #retireSubUsers(String)}，只处理 which 为 true 的子账号 */
+    @Transactional(rollbackFor = Exception.class)
+    public RetireResult retireSubUsers(String creatorId, java.util.function.Predicate<SysUsers> which) {
         RetireResult result = new RetireResult();
         if (creatorId == null || creatorId.isBlank()) {
             return result;
@@ -304,7 +310,7 @@ public class RegCodeQuotaService {
         List<SysUsers> subs = sysUsersService.list(new LambdaQueryWrapper<SysUsers>().eq(SysUsers::getParentId, creatorId));
         Date now = DateUtils.getNow();
         for (SysUsers sub : subs) {
-            if (sub == null || sub.getId() == null || sub.getId().isBlank()) {
+            if (sub == null || sub.getId() == null || sub.getId().isBlank() || !which.test(sub)) {
                 continue;
             }
             int changed = jdbc.update("UPDATE reg_code_user SET status = ?, update_time = ? WHERE user_id = ?",

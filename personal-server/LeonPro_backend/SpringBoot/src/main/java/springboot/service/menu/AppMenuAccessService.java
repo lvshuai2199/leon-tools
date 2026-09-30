@@ -22,6 +22,8 @@ import java.util.Set;
  *   <li>注册码菜单（route_key = app-regcode-route，默认 /regcode）及其子页：当且仅当
  *       {@link RegCodeAccessService#canUseRegCode}（/common/** 用的同一个判断）为 true 才返回；</li>
  *   <li>其他用户端菜单：按 {@link RegCodeAccessService#appMenuGoverningUser} 的角色授权（子账号看创建人）；</li>
+ *   <li>注册码子用户（{@link RegCodeAccessService#isBottomSubUser}）：只能生成注册码，appMenus 只有 /regcode 这一项
+ *       （创建人仍有注册码权限时），不管它自己的角色勾了什么；</li>
  *   <li>ROOT：本端全部启用的菜单。授权菜单的隐藏子页和祖先目录一并返回（见 {@link MenuQueryService#visibleMenus}）。</li>
  * </ul>
  * 只返回库里存在且未停用的菜单。清单还没同步、库里没有用户端出货 / 注册码菜单时，接口权限会退回看管理端
@@ -58,6 +60,12 @@ public class AppMenuAccessService {
         Set<String> regTree = subtree(available, regRoot);
         boolean crab = access.canUseCrab(user);
         boolean reg = access.canUseRegCode(user);
+        if (access.isBottomSubUser(user)) {
+            // 注册码子用户：独立账号，只能生成注册码；不带 /regcode 的子页，也不看角色的其他授权
+            return reg && regRoot != null
+                    ? available.stream().filter(m -> regRoot.equals(m.getId())).toList()
+                    : Collections.emptyList();
+        }
 
         Set<String> granted = new LinkedHashSet<>();
         if (crab && crabRoot != null) {

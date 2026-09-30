@@ -101,6 +101,11 @@ public class RegCodeUserController {
         }
         // 列表只显示客户（顶层）；客户在注册码页创建的子用户走 /admin/regCodeUser/{customerId}/subUsers
         wrapper.notInSql(RegCodeUser::getUserId, BOTTOM_SUB_USER_IDS_SQL);
+        // SQL 覆盖不到的注册码子用户（创建人能登录管理端又有注册码账号，如出货主账号又被分了次数）也不在客户列表里
+        List<String> webCreatorSubs = regCodeAccessService.bottomSubUserIdsUnderWebAccounts();
+        if (webCreatorSubs != null && !webCreatorSubs.isEmpty()) {
+            wrapper.notIn(RegCodeUser::getUserId, webCreatorSubs);
+        }
         wrapper.orderByDesc(RegCodeUser::getCreateTime);
         Page<RegCodeUser> result = this.regCodeUserService.page(page, wrapper);
 
@@ -229,6 +234,13 @@ public class RegCodeUserController {
             }
             if (!this.regCodeAccessService.isAdminAccount(user)) {
                 RegCodeQuotaService.RetireResult r = this.regCodeQuotaService.retireSubUsers(user.getId());
+                retired.addAll(r.getUserIds());
+                voided += r.getVoidedTotal();
+            } else if (!this.regCodeAccessService.isRootUser(user)) {
+                // 能登录管理端又有注册码账号的（不推荐的组合）：只处理它名下的注册码子用户，出货等其他子账号不动。
+                // 此时它的 reg_code_user 行还在，isBottomSubUser 的判断和删除前一致
+                RegCodeQuotaService.RetireResult r = this.regCodeQuotaService.retireSubUsers(
+                        user.getId(), this.regCodeAccessService::isBottomSubUser);
                 retired.addAll(r.getUserIds());
                 voided += r.getVoidedTotal();
             }

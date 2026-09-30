@@ -136,6 +136,7 @@ public class RegCodeAccessService {
      * <ol>
      *   <li>ROOT：可以</li>
      *   <li>注册码客户角色（role_regcode_client）：永远不可以（自己或创建人是这个角色都不行）</li>
+     *   <li>注册码子用户（{@link #isBottomSubUser}）：永远不可以，不管它自己的角色勾了什么菜单</li>
      *   <li>账号被停用（reg_code_user.status = 0）：不可以</li>
      *   <li>顶层账号（parent_id 为空）：看自己的角色有没有“出货菜单”</li>
      *   <li>子账号：看创建人（parent_id 指向的账号）——创建人存在、是顶层账号、角色未禁用、账号未停用、
@@ -157,6 +158,10 @@ public class RegCodeAccessService {
         }
         String crabMenuId = effectiveCrabMenuId();
         if (crabMenuId == null) {
+            return false;
+        }
+        if (isBottomSubUser(user)) {
+            // 注册码子用户是只能生成注册码的独立账号：角色误勾了出货菜单、创建人有出货菜单都不给
             return false;
         }
         if (!isSubAccount(user)) {
@@ -238,11 +243,12 @@ public class RegCodeAccessService {
      * <ol>
      *   <li>ROOT：可以</li>
      *   <li>自己的注册码账号被停用（reg_code_user.status = 0）：不可以</li>
-     *   <li>顶层账号（parent_id 为空，或父用户是 ROOT / 管理端账号，如管理员在后台建的注册码客户）：
+     *   <li>顶层账号（parent_id 为空，或不是注册码子用户，如 ROOT / 管理员在后台建的注册码客户）：
      *       看自己角色是否分配了“注册码生成”菜单（见 {@link #effectiveRegCodeMenuId()}：菜单同步后是用户端
      *       /regcode 菜单，已停用则除 ROOT 外都不行；同步前退回看管理端 menu_regcode）</li>
-     *   <li>底层子用户（在注册码页由客户创建，父用户是注册码客户）：看创建人——创建人存在、角色未禁用、
-     *       注册码账号未停用、自己是顶层账号且角色有注册码生成菜单，才可以；否则下一次请求就 403</li>
+     *   <li>注册码子用户（{@link #isBottomSubUser}，在注册码页由客户创建）：只看创建人<b>当前</b>的状态——创建人存在、
+     *       角色未禁用、注册码账号未停用、自己是顶层账号且角色<b>现在</b>有注册码生成菜单，才可以；否则下一次请求就 403
+     *       （次数保留）。子用户自己的角色不参与判断；不缓存，每次请求都查库</li>
      * </ol>
      */
     public boolean canUseRegCode(SysUsers user) {
@@ -262,10 +268,11 @@ public class RegCodeAccessService {
         if (parent == null) {
             return false;
         }
-        if (isAdminAccount(parent)) {
+        if (!isBottomSubUnder(user, parent)) {
+            // ROOT / 注册码管理员在后台建的客户：按自己的角色
             return roleHasRegCode(user);
         }
-        // 底层子用户：权限跟着创建人走（只允许一层，创建人自己必须是顶层账号）
+        // 注册码子用户：权限跟着创建人走（只允许一层，创建人自己必须是顶层账号）
         return creatorGrantsAccess(parent);
     }
 
@@ -279,10 +286,11 @@ public class RegCodeAccessService {
         }
         if (isSubAccount(creator)) {
             SysUsers grand = sysUsersService.getById(creator.getParentId().trim());
-            if (grand == null || !isAdminAccount(grand)) {
+            if (grand == null || isBottomSubUnder(creator, grand)) {
                 return false;
             }
         }
+        // 创建人角色“现在”是否有注册码生成菜单（sys_role_menu 实时查询，没有任何缓存）
         return roleHasRegCode(creator);
     }
 
@@ -311,6 +319,10 @@ public class RegCodeAccessService {
         if (!isSubAccount(user)) {
             return isRoleDisabled(user) ? null : user;
         }
+        if (isBottomSubUser(user)) {
+            // 注册码子用户只能生成注册码：没有其他用户端菜单
+            return null;
+        }
         SysUsers creator = sysUsersService.getById(user.getParentId().trim());
         if (creator == null || isRoleDisabled(creator) || isRegCodeDisabled(creator)) {
             return null;
@@ -336,15 +348,63 @@ public class RegCodeAccessService {
     }
 
     /**
-     * 底层子用户：parent_id 指向的不是 ROOT / 管理端账号（即在注册码页由客户创建的子用户）。
-     * 父用户已不存在时也按底层处理（权限会被挡住）。
+     * 注册码子用户（底层子用户）：在注册码页由客户创建、只能生成注册码的独立账号。父用户已不存在时也按底层处理
+     * （权限会被挡住）。判断见 {@link #isBottomSubUnder}。
      */
     public boolean isBottomSubUser(SysUsers user) {
         if (!isSubAccount(user)) {
             return false;
         }
         SysUsers parent = sysUsersService.getById(user.getParentId().trim());
-        return parent == null || !isAdminAccount(parent);
+        return parent == null || isBottomSubUnder(user, parent);
+    }
+
+    /**
+     * 挂在 parent 下的 user 是不是注册码子用户：
+     * <ul>
+     *   <li>父用户不能登录管理端（注册码客户角色 / 子账号）→ 是；</li>
+     *   <li>父用户是 ROOT 或注册码管理员（有注册码用户 / 配置管理菜单）→ 不是（后台建的客户）；</li>
+     *   <li>父用户能登录管理端但不是注册码管理员、自己又有注册码账号（reg_code_user 行，如出货主账号又被分了注册码次数，
+     *       不推荐的组合）→ 它名下的注册码客户角色 / 有注册码账号的子账号是注册码子用户（权限跟着它走），
+     *       出货等其他子账号不是；父用户没有注册码账号 → 不是（管理员建的客户，按自己角色）。</li>
+     * </ul>
+     */
+    private boolean isBottomSubUnder(SysUsers user, SysUsers parent) {
+        if (!isAdminAccount(parent)) {
+            return true;
+        }
+        if (isRootUser(parent) || getAssignment(parent.getId()) == null || hasRegCodeAdminMenus(parent)) {
+            return false;
+        }
+        return isRegCodeRole(user.getRoleId()) || getAssignment(user.getId()) != null;
+    }
+
+    /**
+     * {@code RegCodeUserController.BOTTOM_SUB_USER_IDS_SQL} 覆盖不到的注册码子用户 id：父用户能登录管理端、
+     * 不是 ROOT / 注册码管理员、自己又有注册码账号（见 {@link #isBottomSubUnder} 第三条）。注册码客户列表要排除它们。
+     */
+    public List<String> bottomSubUserIdsUnderWebAccounts() {
+        List<SysUsers> subs = sysUsersService.list(new LambdaQueryWrapper<SysUsers>()
+                .isNotNull(SysUsers::getParentId).ne(SysUsers::getParentId, ""));
+        if (subs == null || subs.isEmpty()) {
+            return Collections.emptyList();
+        }
+        java.util.Map<String, List<SysUsers>> byParent = subs.stream()
+                .filter(u -> u.getId() != null && isSubAccount(u))
+                .collect(Collectors.groupingBy(u -> u.getParentId().trim()));
+        List<String> out = new java.util.ArrayList<>();
+        for (java.util.Map.Entry<String, List<SysUsers>> e : byParent.entrySet()) {
+            SysUsers parent = sysUsersService.getById(e.getKey());
+            if (parent == null || !isAdminAccount(parent)) {
+                continue;   // SQL 已覆盖（父用户已删除的沿用原来的列表行为）
+            }
+            for (SysUsers child : e.getValue()) {
+                if (isBottomSubUnder(child, parent)) {
+                    out.add(child.getId());
+                }
+            }
+        }
+        return out;
     }
 
     /** 能否在注册码页管理（查看 / 新建 / 停用 / 调整）自己的子用户：有注册码权限且是顶层账号 */
