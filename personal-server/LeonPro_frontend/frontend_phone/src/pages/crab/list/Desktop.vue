@@ -106,7 +106,7 @@ function doSearch() {
     <div class="panel">
       <StateBlock v-if="loading && !records.length" type="loading" />
       <StateBlock v-else-if="error" type="error" title="加载失败" :desc="error" @retry="list.load()" />
-      <StateBlock v-else-if="loaded && !records.length" type="empty" :title="list.empty.value">
+      <StateBlock v-else-if="loaded && !records.length" type="empty" icon="list" :title="list.empty.value">
         <el-button type="primary" :icon="Plus" @click="goEntry">录入出货单</el-button>
       </StateBlock>
       <el-table
@@ -156,9 +156,9 @@ function doSearch() {
           </template>
         </el-table-column>
         <el-table-column v-if="filter.mode === 'range'" prop="shipDate" label="日期" width="110" />
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right" align="right">
           <template #default="{ row }">
-            <div class="ops" @click.stop>
+            <div class="ops lp-table-ops" @click.stop>
               <el-button link type="primary" @click="openDetail(row as CrabShipment)">编辑</el-button>
               <el-button link type="primary" @click="share(row as CrabShipment)">分享</el-button>
               <el-button link type="danger" @click="remove(row as CrabShipment)">删除</el-button>
@@ -243,12 +243,5 @@ function doSearch() {
 .export-wrap {
   display: inline-flex;
 }
-.ops {
-  display: flex;
-  align-items: center;
-  gap: lp.$space-3;
-  .el-button + .el-button {
-    margin-left: 0;
-  }
-}
+/* 操作列样式见全局 .lp-table-ops（右对齐、间距 12） */
 </style>

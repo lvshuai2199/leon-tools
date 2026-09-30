@@ -74,9 +74,11 @@ const r = props.row
 .erc__form :deep(.el-form-item) {
   margin-bottom: lp.$space-3;
 }
+/* 字段之间的竖向间距只由表单项的下边距（12）决定：手机上两列变一列时不再叠加网格的行间距 */
 .erc__row {
   display: grid;
-  gap: lp.$space-3;
+  column-gap: lp.$space-3;
+  row-gap: 0;
 }
 .erc__row--2 {
   grid-template-columns: 1fr;

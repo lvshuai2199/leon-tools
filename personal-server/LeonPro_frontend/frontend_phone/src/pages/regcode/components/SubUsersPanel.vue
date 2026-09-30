@@ -131,12 +131,12 @@ async function resetPassword(u: SubUser) {
         <span :class="{ 'is-over': limit.over }">{{ list ? limit.text : '' }}</span>
         <small v-if="list && !canCreate" class="sub__full">已达上限，请联系管理员</small>
       </div>
-      <el-button v-if="!isMobile && list" type="primary" :icon="Plus" :disabled="!canCreate" @click="openCreate">新建子用户</el-button>
+      <el-button v-if="!isMobile && list && users.length" type="primary" :icon="Plus" :disabled="!canCreate" @click="openCreate">新建子用户</el-button>
     </div>
 
     <StateBlock v-if="loading && !list" type="loading" compact />
     <StateBlock v-else-if="error && !list" type="error" title="加载失败" :desc="error" @retry="emit('reload')" />
-    <StateBlock v-else-if="list && !users.length" type="empty" title="还没有子用户" desc="子用户可以用你分给他的次数生成注册码">
+    <StateBlock v-else-if="list && !users.length" type="empty" icon="users" title="还没有子用户" desc="子用户可以用你分给他的次数生成注册码">
       <el-button type="primary" :icon="Plus" :disabled="!canCreate" @click="openCreate">新建子用户</el-button>
     </StateBlock>
 
@@ -168,12 +168,14 @@ async function resetPassword(u: SubUser) {
         </el-table-column>
         <el-table-column label="操作" width="190" align="right">
           <template #default="{ row }">
-            <template v-if="row.status === 1">
-              <el-button link type="primary" :disabled="busyId === row.id" @click="openQuota(row as SubUser)">额度</el-button>
-              <el-button link type="primary" :disabled="busyId === row.id" @click="resetPassword(row as SubUser)">重置密码</el-button>
-              <el-button link type="danger" :disabled="busyId === row.id" @click="disable(row as SubUser)">停用</el-button>
-            </template>
-            <el-button v-else link type="primary" :loading="busyId === row.id" @click="enable(row as SubUser)">启用</el-button>
+            <div class="lp-table-ops">
+              <template v-if="row.status === 1">
+                <el-button link type="primary" :disabled="busyId === row.id" @click="openQuota(row as SubUser)">额度</el-button>
+                <el-button link type="primary" :disabled="busyId === row.id" @click="resetPassword(row as SubUser)">重置密码</el-button>
+                <el-button link type="danger" :disabled="busyId === row.id" @click="disable(row as SubUser)">停用</el-button>
+              </template>
+              <el-button v-else link type="primary" :loading="busyId === row.id" @click="enable(row as SubUser)">启用</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -215,6 +217,7 @@ async function resetPassword(u: SubUser) {
       :sub-user="quotaUser"
       :notice="quotaNotice"
       :creator-unlimited="creatorUnlimited"
+      :configs="data.configs.value"
       @changed="afterChange"
     />
     <PasswordResultDialog v-model="pwdOpen" :username="pwd.username" :password="pwd.password" />

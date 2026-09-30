@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
- * 通用状态块（沿用原展示端 portal 的样式，颜色换成主题变量）
- * - empty：空状态（次要文字色图片图标）
+ * 通用状态块（沿用原展示端 portal 的样式，颜色换成主题变量）。图标统一放在 48×48 的框里、线宽 2、次要文字色。
+ * - empty：空状态。icon 选图标，不用图片图标（去掉拍照以后图片图标容易被当成「上传图片」）：
+ *   inbox 默认（空托盘）、document 文档（还没有识别结果）、list 列表（出货单列表为空）、users 人（还没有子用户）、grid 宫格（没有可用工具）
  * - notfound：不存在 / 未公开（次要文字色，无重试；操作按钮通过默认插槽传入）
  * - error：加载失败（危险红感叹号 + 重试按钮）
  * - loading：加载中
@@ -12,8 +13,9 @@ withDefaults(
     title?: string
     desc?: string
     compact?: boolean
+    icon?: 'inbox' | 'document' | 'list' | 'users' | 'grid'
   }>(),
-  { type: 'empty', compact: false },
+  { type: 'empty', compact: false, icon: 'inbox' },
 )
 defineEmits<{ retry: [] }>()
 </script>
@@ -33,10 +35,33 @@ defineEmits<{ retry: [] }>()
         <path d="M24 15v11" />
         <circle cx="24" cy="32.5" r="1.5" fill="currentColor" stroke="none" />
       </svg>
-      <svg v-else viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
-        <rect x="6" y="9" width="36" height="30" rx="5" />
-        <path d="m11 34 9-10 7 7 4-4 7 7" />
-        <circle cx="32" cy="18" r="3" />
+      <svg v-else-if="icon === 'document'" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M13 6h15l9 9v25a2 2 0 0 1-2 2H13a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2Z" />
+        <path d="M28 6v9h9" />
+        <path d="M17 24h14M17 30h14M17 36h8" />
+      </svg>
+      <svg v-else-if="icon === 'list'" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="7" y="7" width="34" height="34" rx="5" />
+        <path d="M20 17h14M20 24h14M20 31h14" />
+        <circle cx="14.5" cy="17" r="1.5" fill="currentColor" stroke="none" />
+        <circle cx="14.5" cy="24" r="1.5" fill="currentColor" stroke="none" />
+        <circle cx="14.5" cy="31" r="1.5" fill="currentColor" stroke="none" />
+      </svg>
+      <svg v-else-if="icon === 'users'" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="19" cy="17" r="7" />
+        <path d="M6 39c0-7.2 5.8-12 13-12s13 4.8 13 12" />
+        <path d="M31 10.5a7 7 0 0 1 0 13" />
+        <path d="M35 28c4.3 1.6 7 5.4 7 11" />
+      </svg>
+      <svg v-else-if="icon === 'grid'" viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round">
+        <rect x="8" y="8" width="13" height="13" rx="3" />
+        <rect x="27" y="8" width="13" height="13" rx="3" />
+        <rect x="8" y="27" width="13" height="13" rx="3" />
+        <rect x="27" y="27" width="13" height="13" rx="3" />
+      </svg>
+      <svg v-else viewBox="0 0 48 48" width="48" height="48" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 27 12 11a3 3 0 0 1 2.8-2h18.4a3 3 0 0 1 2.8 2L42 27v10a3 3 0 0 1-3 3H9a3 3 0 0 1-3-3V27Z" />
+        <path d="M6 27h10l3 5h10l3-5h10" />
       </svg>
     </div>
     <p v-if="title" class="state__title">{{ title }}</p>

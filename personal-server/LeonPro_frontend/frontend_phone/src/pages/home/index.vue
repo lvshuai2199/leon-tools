@@ -68,7 +68,7 @@ onMounted(async () => {
     <section v-if="isLoggedIn && !tools.length && menusKnown()" class="home__section">
       <h2 class="home__heading">我的工具</h2>
       <div class="home__empty">
-        <StateBlock type="empty" compact title="还没有可用工具，请联系管理员开通" />
+        <StateBlock type="empty" icon="grid" compact title="还没有可用工具，请联系管理员开通" />
       </div>
     </section>
 

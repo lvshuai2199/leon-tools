@@ -3,6 +3,8 @@
  * 单个日期（YYYY-MM-DD）：电脑用 el-date-picker；手机点开底部抽屉里的日历面板，选中即关闭。
  * 手机日历只留切月的 ‹ ›（去掉切年的 « »，避免挨太近点错），箭头可点区 44×44；点标题里的年份可以换年。
  * disabledDate：不能选的日期置灰（区间的结束日期不能早于开始）；showWeek=false 时入口不显示「周几」（区间两个入口并排时用）。
+ * markDate：在日历里标出这一天（区间结束抽屉里标出开始日：#E9EFFD 底、#2563EB 字）。
+ * 手机日历不显示上个月、下个月的日子，只留本月，免得和置灰的日子分不开。
  */
 import { computed, ref } from 'vue'
 import { Calendar } from '@element-plus/icons-vue'
@@ -18,8 +20,18 @@ const props = withDefaults(
     ariaLabel?: string
     disabledDate?: (date: Date) => boolean
     showWeek?: boolean
+    markDate?: string
   }>(),
-  { title: '选择日期', placeholder: '选择日期', clearable: false, disabled: false, ariaLabel: '', disabledDate: undefined, showWeek: true },
+  {
+    title: '选择日期',
+    placeholder: '选择日期',
+    clearable: false,
+    disabled: false,
+    ariaLabel: '',
+    disabledDate: undefined,
+    showWeek: true,
+    markDate: '',
+  },
 )
 const emit = defineEmits<{ change: [value: string] }>()
 const { isMobile } = useBreakpoint()
@@ -32,6 +44,13 @@ const display = computed(() => {
   if (Number.isNaN(d.getTime()) || !props.showWeek) return model.value
   return `${model.value} 周${WEEK[d.getDay()]}`
 })
+
+const pad = (n: number) => String(n).padStart(2, '0')
+/** 日历格子的额外 class：markDate 那天加 is-marked */
+function cellClass(d: Date) {
+  if (!props.markDate) return ''
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}` === props.markDate ? 'is-marked' : ''
+}
 
 function onPanelPick(v: string | null) {
   if (!v) return
@@ -60,6 +79,7 @@ function onPickerChange(v: string | null) {
         value-format="YYYY-MM-DD"
         :border="false"
         :disabled-date="disabledDate"
+        :cell-class-name="cellClass"
         class="df-panel"
         @update:model-value="onPanelPick"
       />
@@ -160,6 +180,18 @@ function onPickerChange(v: string | null) {
   }
   :deep(.el-date-picker__header-label) {
     font-size: lp.$font-size-medium;
+  }
+  /* 只显示本月的日子：上个月、下个月的格子留空、不能点 */
+  :deep(.el-date-table td.prev-month),
+  :deep(.el-date-table td.next-month) {
+    visibility: hidden;
+    pointer-events: none;
+  }
+  /* markDate（区间起点）：浅蓝底、主色字 */
+  :deep(.el-date-table td.is-marked:not(.current) .el-date-table-cell__text) {
+    background: var(--el-color-primary-light-9);
+    color: var(--el-color-primary);
+    font-weight: lp.$font-weight-medium;
   }
   /* 不能选的日期（区间结束早于开始）：置灰 */
   :deep(.el-date-table td.disabled .el-date-table-cell) {

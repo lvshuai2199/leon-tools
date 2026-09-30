@@ -92,11 +92,26 @@ export function createQuotaRows(myQuota, configs = []) {
     }));
   }
   const items = myQuota && Array.isArray(myQuota.items) ? myQuota.items : [];
-  return items.map((i) => ({
-    configId: String(i.configId),
-    configName: i.configName || String(i.configId),
-    remaining: Math.max(0, num(i.remaining ?? num(i.allocated) - num(i.used))),
-  }));
+  return sortByConfigOrder(
+    items.map((i) => ({
+      configId: String(i.configId),
+      configName: i.configName || String(i.configId),
+      remaining: Math.max(0, num(i.remaining ?? num(i.allocated) - num(i.used))),
+    })),
+    configs,
+  );
+}
+
+/**
+ * 配置行按固定顺序排（新建、额度、重新启用后的额度三个窗口一致）：
+ * 按配置列表（GET /common/regCodeConfig/list，生成页下拉的顺序）里的位置；列表里没有的排后面，保持原来的先后。
+ */
+export function sortByConfigOrder(rows, configs = []) {
+  const order = new Map((Array.isArray(configs) ? configs : []).map((c, i) => [String(c.id), i]));
+  return rows
+    .map((r, i) => ({ r, i, o: order.has(String(r.configId)) ? order.get(String(r.configId)) : Infinity }))
+    .sort((a, b) => (a.o === b.o ? a.i - b.i : a.o - b.o))
+    .map((x) => x.r);
 }
 
 /** 新建请求里的 quotas：只带大于 0 的；超过剩余返回错误 */
@@ -125,9 +140,9 @@ export function validateSubUserForm(form) {
 
 /**
  * 额度窗口的行：子用户各配置（已用、分配）+ 创建人各配置剩余，按配置合并。
- * 创建人有、子用户还没有的配置也列出来（分配 0），方便追加。
+ * 创建人有、子用户还没有的配置也列出来（分配 0），方便追加。行按配置列表的顺序排（sortByConfigOrder）。
  */
-export function adjustRows(quota, creatorUnlimited = false) {
+export function adjustRows(quota, creatorUnlimited = false, configs = []) {
   const items = quota && Array.isArray(quota.items) ? quota.items : [];
   const creator = quota && Array.isArray(quota.creatorRemaining) ? quota.creatorRemaining : [];
   const map = new Map();
@@ -147,7 +162,7 @@ export function adjustRows(quota, creatorUnlimited = false) {
     if (row) row.creatorRemaining = creatorUnlimited ? null : remaining;
     else map.set(key, { configId: key, configName: c.configName || key, allocated: 0, used: 0, creatorRemaining: creatorUnlimited ? null : remaining });
   }
-  return [...map.values()];
+  return sortByConfigOrder([...map.values()], configs);
 }
 
 /** 追加上限：创建人该配置的剩余（不限次数为 null） */

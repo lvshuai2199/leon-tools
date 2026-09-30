@@ -1,5 +1,8 @@
 <script setup lang="ts">
-/** 手机：蟹单详情页。删除在表单底部（红色文字），保存/分享固定在底部（不显示底部标签栏）；有没保存的修改时离开先确认 */
+/**
+ * 手机：蟹单详情页，标题「出货单 · 姓名」（和电脑弹窗一致）。删除在表单底部（红色文字），保存/分享固定在底部（不显示底部标签栏）；
+ * 右上角「•••」里是「生成发货图」「复制分享链接」；有没保存的修改时离开先确认
+ */
 import { computed, onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { MoreFilled, Link, Tickets } from '@element-plus/icons-vue'
@@ -28,6 +31,8 @@ const { leave } = useLeaveGuard(() => dirty.value)
 
 onMounted(() => load(id.value))
 
+const title = computed(() => (form.customerName ? `出货单 · ${form.customerName}` : '出货单'))
+
 const moreOpen = ref(false)
 const moreActions = computed<SheetAction[]>(() => [
   { key: 'sheet', label: '生成发货图', icon: Tickets },
@@ -41,7 +46,7 @@ function onMore(key: string) {
 
 <template>
   <div class="crab-edit">
-    <PageBar title="出货单详情" :back="backTo">
+    <PageBar :title="title" :back="backTo">
       <template #actions>
         <IconAction v-if="form.id" :icon="MoreFilled" label="更多" @click="moreOpen = true" />
       </template>

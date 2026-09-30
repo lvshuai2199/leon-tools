@@ -18,6 +18,18 @@ html.lp-mobile {
   }
   // 分段控件（单日/区间、粘贴/手动、追加/收回）：外框和选中块都是 44；
   // 外框加 1px 边框（用内阴影，不占高度），放在灰底页面上也看得出没选中的那一半
+  // 数字步进器（新建子用户、额度）：加减按钮 44 宽、44 高
+  .el-input-number--large {
+    width: 156px;
+    .el-input-number__decrease,
+    .el-input-number__increase {
+      width: #{lp.$component-size-mobile};
+    }
+    .el-input__wrapper {
+      padding-left: #{lp.$component-size-mobile + 6px};
+      padding-right: #{lp.$component-size-mobile + 6px};
+    }
+  }
   .el-segmented {
     --el-segmented-padding: 0px;
     min-height: #{lp.$component-size-mobile};
@@ -50,6 +62,12 @@ html.lp-mobile {
   .el-segmented__item:not(.is-disabled):not(.is-selected):hover:not(:active) {
     color: var(--el-segmented-color);
     background: transparent;
+  }
+  // 点完后按钮还处于 focus（非键盘焦点）时也不显示悬停色
+  .el-button:not(.is-disabled):not(.is-text):not(.is-link):focus:not(:focus-visible):not(:active) {
+    color: var(--el-button-text-color);
+    background-color: var(--el-button-bg-color);
+    border-color: var(--el-button-border-color);
   }
 }
 
@@ -190,9 +208,38 @@ textarea {
     font-size: lp.$font-size-large;
     font-weight: lp.$font-weight-semibold;
   }
+  // 内容区能滚动时：滚动条贴在弹窗右边缘并且一直显示；下面还有内容时，底部按钮上方出现 1px 分割线（#EBEEF5），
+  // 滚到底或内容不需要滚动时分割线自动消失（背景 local / scroll 叠加，纯 CSS）
   .el-dialog__body {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
+    margin: 0 calc(-1 * var(--el-dialog-padding-primary));
+    padding: 0 var(--el-dialog-padding-primary);
+    background:
+      linear-gradient(var(--el-bg-color), var(--el-bg-color)) center bottom / 100% 1px no-repeat local,
+      linear-gradient(var(--el-border-color-lighter), var(--el-border-color-lighter)) center bottom / 100% 1px no-repeat scroll;
+    scrollbar-width: thin;
+    scrollbar-color: var(--el-text-color-placeholder) transparent;
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+      border-radius: 3px;
+      background: var(--el-text-color-placeholder);
+    }
+  }
+}
+
+// 表格操作列（蟹单、子用户）：右对齐，链接之间 12，链接去掉左右内边距，右边缘和表头「操作」对齐
+.lp-table-ops {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: lp.$space-3;
+  .el-button.is-link {
+    margin: 0;
+    padding-left: 0;
+    padding-right: 0;
   }
 }

@@ -132,11 +132,13 @@ async function generate() {
         <el-form-item label="配置">
           <SheetSelect v-model="configId" :options="configOptions" title="选择配置" @change="onConfig" />
         </el-form-item>
-        <div v-if="quotaText" class="gen__quota" :class="{ 'is-empty': exhausted, 'has-hint': exhausted }">
-          <span>当前配置</span>
-          <strong>{{ quotaText }}</strong>
+        <div v-if="quotaText" class="gen__quota" :class="{ 'is-empty': exhausted }">
+          <div class="gen__quota-row">
+            <span>当前配置</span>
+            <strong>{{ quotaText }}</strong>
+          </div>
+          <p v-if="exhausted" class="gen__quota-hint">{{ exhaustedHint }}</p>
         </div>
-        <p v-if="quotaText && exhausted" class="gen__quota-hint">{{ exhaustedHint }}</p>
         <el-form-item label="注册码">
           <el-input
             v-model="regCode"
@@ -203,9 +205,6 @@ async function generate() {
   margin-bottom: lp.$space-4;
 }
 .gen__quota {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
   margin-bottom: lp.$space-4;
   padding: lp.$space-2 lp.$space-3;
   border-radius: lp.$radius-base;
@@ -215,20 +214,24 @@ async function generate() {
     color: var(--el-color-primary);
     font-weight: lp.$font-weight-semibold;
   }
+  /* 次数用完（客户、子用户都一样）：#FEF3C7 底、#B45309 字，说明文字也放在框里 */
   &.is-empty {
     background: var(--lp-color-warning-bg);
+    color: var(--el-color-warning);
     strong {
       color: var(--el-color-warning);
     }
   }
 }
-.gen__quota.has-hint {
-  margin-bottom: lp.$space-1;
+.gen__quota-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 .gen__quota-hint {
-  margin: 0 0 lp.$space-4;
+  margin: 2px 0 0;
   font-size: lp.$font-size-extra-small;
-  color: var(--el-text-color-secondary);
+  color: var(--el-color-warning);
 }
 .gen__code :deep(input) {
   letter-spacing: 2px;

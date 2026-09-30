@@ -34,7 +34,7 @@ const backTo = computed(() => ({ path: '/crab', query: { date: shipDate.value } 
           <h2 class="entry-d__title">识别结果{{ rows.length ? `（${rows.length} 条）` : '' }}</h2>
           <el-button v-if="rows.length" type="danger" text @click="e.clearAll">清空</el-button>
         </div>
-        <StateBlock v-if="!rows.length" type="empty" compact title="还没有识别结果" desc="在左边粘贴文本或手动添加" />
+        <StateBlock v-if="!rows.length" type="empty" icon="document" compact title="还没有识别结果" desc="在左边粘贴文本或手动添加" />
         <template v-else>
           <div class="entry-d__rows">
             <EntryRowCard v-for="(row, i) in rows" :key="row.key" :row="row" :index="i" @remove="e.removeRow(i)" />
@@ -85,7 +85,10 @@ const backTo = computed(() => ({ path: '/crab', query: { date: shipDate.value } 
   display: flex;
   flex-direction: column;
   gap: lp.$space-3;
-  max-height: calc(100vh - 300px);
+  /* 只在识别结果里面滚动，整页不再多出一层滚动：
+     视口 − 结果区上方（顶栏 + 页头 + 面板上边距 + 标题 ≈ 217）− 下方（按钮行 48 + 面板下边距 24 + 页面底部 32）≈ 321，留 3px 余量 */
+  max-height: max(240px, calc(100vh - 324px));
+  max-height: max(240px, calc(100dvh - 324px));
   overflow-y: auto;
   padding: 2px;
   :deep(.erc) {

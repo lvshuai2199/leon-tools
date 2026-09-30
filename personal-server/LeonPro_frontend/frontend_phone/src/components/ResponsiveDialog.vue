@@ -2,14 +2,19 @@
 /**
  * 弹窗：电脑 480 宽居中对话框，手机底部抽屉（顶部两角 12px 圆角）。
  * 插槽：默认（内容）、footer（按钮；手机上按钮等分、44px）。
+ * beforeClose：点关闭、点遮罩、按 Esc 时先调用（例如有没保存的修改时先确认），调用 done() 才真正关闭。
  */
 import { useBreakpoint } from '@/composables/useBreakpoint'
 
 const visible = defineModel<boolean>({ required: true })
-withDefaults(defineProps<{ title: string; width?: string; closeOnClickModal?: boolean }>(), {
-  width: 'var(--lp-dialog-width-desktop)',
-  closeOnClickModal: true,
-})
+withDefaults(
+  defineProps<{ title: string; width?: string; closeOnClickModal?: boolean; beforeClose?: (done: () => void) => void }>(),
+  {
+    width: 'var(--lp-dialog-width-desktop)',
+    closeOnClickModal: true,
+    beforeClose: undefined,
+  },
+)
 const emit = defineEmits<{ closed: []; open: [] }>()
 const { isMobile } = useBreakpoint()
 </script>
@@ -24,6 +29,7 @@ const { isMobile } = useBreakpoint()
     class="lp-rdialog lp-rdialog--sheet"
     append-to-body
     :close-on-click-modal="closeOnClickModal"
+    :before-close="beforeClose"
     @open="emit('open')"
     @closed="emit('closed')"
   >
@@ -41,6 +47,7 @@ const { isMobile } = useBreakpoint()
     class="lp-rdialog"
     append-to-body
     :close-on-click-modal="closeOnClickModal"
+    :before-close="beforeClose"
     @open="emit('open')"
     @closed="emit('closed')"
   >

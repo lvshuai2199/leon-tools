@@ -15,8 +15,14 @@ import { adjustRows, buildDeltas, currentQuota, maxAdd, maxRevoke, type AdjustMo
 
 const visible = defineModel<boolean>({ required: true })
 const props = withDefaults(
-  defineProps<{ subUser: { id: string; username: string; nickname?: string } | null; notice?: string; creatorUnlimited?: boolean }>(),
-  { notice: '', creatorUnlimited: false },
+  defineProps<{
+    subUser: { id: string; username: string; nickname?: string } | null
+    notice?: string
+    creatorUnlimited?: boolean
+    /** 配置列表：配置行按它的顺序排，和新建子用户窗口一致 */
+    configs?: Array<{ id: string | number }>
+  }>(),
+  { notice: '', creatorUnlimited: false, configs: () => [] },
 )
 const emit = defineEmits<{ changed: [] }>()
 const { isMobile } = useBreakpoint()
@@ -29,7 +35,7 @@ const values = reactive<Record<string, number | undefined>>({})
 const saving = ref(false)
 const error = ref('')
 
-const rows = computed(() => adjustRows(quota.value, props.creatorUnlimited))
+const rows = computed(() => adjustRows(quota.value, props.creatorUnlimited, props.configs))
 const modes = [
   { label: '追加', value: 'add' },
   { label: '收回', value: 'revoke' },

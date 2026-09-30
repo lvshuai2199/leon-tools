@@ -14,6 +14,7 @@ import {
   refundableTotal,
   remainingForConfig,
   showSubUserTab,
+  sortByConfigOrder,
   sortSubUsers,
   sumQuota,
   usageText,
@@ -136,4 +137,24 @@ test("额度窗口的当前额度 = 分配 − 已用（重新启用后 3/3 显�
   assert.equal(currentQuota({ allocated: 10, used: 2 }), 8);
   assert.equal(currentQuota({ allocated: 0, used: 0 }), 0);
   assert.equal(currentQuota({ allocated: 1, used: 4 }), 0);
+});
+
+test("配置行固定顺序：新建、额度窗口都按配置列表的顺序，列表里没有的排后面", () => {
+  const configs = [{ id: "cfg1" }, { id: "cfg2" }, { id: "cfg3" }];
+  const quota = {
+    items: [
+      { configId: "cfg3", configName: "标准版", allocated: 5, used: 1 },
+      { configId: "cfg1", configName: "基础版", allocated: 3, used: 3 },
+    ],
+    creatorRemaining: [
+      { configId: "cfg2", configName: "专业版", remaining: 4 },
+      { configId: "x9", configName: "旧配置", remaining: 1 },
+      { configId: "cfg1", configName: "基础版", remaining: 2 },
+    ],
+  };
+  assert.deepEqual(adjustRows(quota, false, configs).map((r) => r.configId), ["cfg1", "cfg2", "cfg3", "x9"]);
+  const my = { items: [{ configId: "cfg3", remaining: 1 }, { configId: "cfg2", remaining: 0 }, { configId: "cfg1", remaining: 9 }] };
+  assert.deepEqual(createQuotaRows(my, configs).map((r) => r.configId), ["cfg1", "cfg2", "cfg3"]);
+  // 没有配置列表时保持原顺序
+  assert.deepEqual(sortByConfigOrder([{ configId: "b" }, { configId: "a" }]).map((r) => r.configId), ["b", "a"]);
 });

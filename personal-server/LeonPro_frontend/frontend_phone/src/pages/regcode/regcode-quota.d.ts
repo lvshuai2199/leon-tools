@@ -36,7 +36,12 @@ export function createQuotaRows(
 ): CreateQuotaRow[]
 export function buildCreateQuotas(rows: CreateQuotaRow[], values: Record<string, number | undefined>): { quotas: Array<{ configId: string; count: number }>; error: string }
 export function validateSubUserForm(form: { username: string; password: string }): string
-export function adjustRows(quota: RegCodeSubUserQuota | null | undefined, creatorUnlimited?: boolean): AdjustRow[]
+export function adjustRows(
+  quota: RegCodeSubUserQuota | null | undefined,
+  creatorUnlimited?: boolean,
+  configs?: Array<{ id: string | number }>,
+): AdjustRow[]
+export function sortByConfigOrder<T extends { configId: string | number }>(rows: T[], configs?: Array<{ id: string | number }>): T[]
 export function maxAdd(row: AdjustRow): number | null
 export function maxRevoke(row: AdjustRow): number
 export function currentQuota(row: Pick<AdjustRow, 'allocated' | 'used'>): number

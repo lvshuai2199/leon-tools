@@ -86,6 +86,7 @@ function doSearch() {
           aria-label="结束日期"
           :show-week="false"
           :disabled-date="beforeStart"
+          :mark-date="filter.start"
           @change="(v) => list.setRange(filter.start, v)"
         />
       </div>
@@ -107,7 +108,7 @@ function doSearch() {
 
     <StateBlock v-if="loading && !records.length" type="loading" compact />
     <StateBlock v-else-if="error" type="error" title="加载失败" :desc="error" @retry="list.load()" />
-    <StateBlock v-else-if="loaded && !records.length" type="empty" :title="list.empty.value">
+    <StateBlock v-else-if="loaded && !records.length" type="empty" icon="list" :title="list.empty.value">
       <el-button type="primary" :icon="Plus" @click="goEntry">录入出货单</el-button>
     </StateBlock>
 
@@ -138,6 +139,7 @@ function doSearch() {
           <p v-if="item.address" class="card__addr">{{ item.address }}</p>
           <p v-else class="card__muted">地址 未填</p>
           <p v-if="item.trackingNo" class="card__muted">单号 {{ item.trackingNo }}</p>
+          <p v-else class="card__muted">单号 未填</p>
           <div v-if="!selecting" class="card__actions" @click.stop>
             <el-button type="primary" plain @click="share(item)">分享</el-button>
             <el-button :icon="MoreFilled" aria-label="更多" @click="openMore(item)">更多</el-button>
