@@ -361,6 +361,7 @@ import WallpaperAPI, {
   type WallpaperId,
   type WallpaperImageVO,
 } from "@/api/tool/wallpaper";
+import { copyText } from "@/utils/clipboard";
 import GroupDialog from "./components/GroupDialog.vue";
 import UploadDrawer from "./components/UploadDrawer.vue";
 import DropZone from "./components/DropZone.vue";
@@ -781,13 +782,6 @@ function onEmptyDrop(files: File[]) {
 }
 function onUploaded() {
   refreshAll();
-}
-
-function copyText(text: string, okMsg = "已复制") {
-  navigator.clipboard.writeText(text).then(
-    () => ElMessage.success(okMsg),
-    () => ElMessageBox.alert(text, "复制失败，请手动复制")
-  );
 }
 
 onMounted(() => loadGroups());

@@ -82,6 +82,7 @@
 
 <script setup lang="ts">
 import RegistrationAPI, { type TempRegCodeVO } from "@/api/registration";
+import { copyText } from "@/utils/clipboard";
 import RegCodeConfigAPI, { type RegCodeConfigVO } from "@/api/tool/regcode-config";
 import RegCodeUserAPI, { type RegCodeQuotaVO } from "@/api/tool/regcode-user";
 import {
@@ -165,12 +166,6 @@ function resetAll() {
   regCode.value = "";
   expanded.value = false;
   resetResult();
-}
-
-function copyText(text: string) {
-  navigator.clipboard.writeText(text).then(() => {
-    ElMessage.success("已复制");
-  });
 }
 
 function loadQuota() {

@@ -146,6 +146,7 @@
 </template>
 
 <script setup lang="ts">
+import { copyText } from "@/utils/clipboard";
 import CrabShipmentAPI, {
   crabShareUrl,
   type CrabShipmentForm,
@@ -330,10 +331,7 @@ function copyShare(row: CrabShipmentVO) {
     ElMessage.warning("暂无分享链接");
     return;
   }
-  navigator.clipboard.writeText(url).then(
-    () => ElMessage.success("已复制分享链接"),
-    () => ElMessage.warning(url)
-  );
+  copyText(url, "已复制分享链接");
 }
 
 function handleDelete(row: CrabShipmentVO) {

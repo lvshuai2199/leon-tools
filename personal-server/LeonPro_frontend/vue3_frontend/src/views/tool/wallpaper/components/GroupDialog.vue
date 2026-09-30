@@ -54,6 +54,7 @@
 <script setup lang="ts">
 import type { FormInstance, FormRules } from "element-plus";
 import WallpaperAPI, { type WallpaperGroupForm, type WallpaperGroupVO } from "@/api/tool/wallpaper";
+import { copyText } from "@/utils/clipboard";
 
 const props = defineProps<{ modelValue: boolean; group?: WallpaperGroupVO | null }>();
 const emit = defineEmits(["update:modelValue", "saved", "token-changed"]);
@@ -157,13 +158,6 @@ async function onRegenerate() {
   } finally {
     regenerating.value = false;
   }
-}
-
-function copyText(text: string) {
-  navigator.clipboard.writeText(text).then(
-    () => ElMessage.success("已复制"),
-    () => ElMessage.error("复制失败，请手动复制")
-  );
 }
 </script>
 

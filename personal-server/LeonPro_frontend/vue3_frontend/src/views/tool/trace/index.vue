@@ -163,6 +163,7 @@
 
 <script setup lang="ts">
 import { ArrowDown, Back } from "@element-plus/icons-vue";
+import { copyText } from "@/utils/clipboard";
 import {
   classifyProjectFile,
   parseProject,
@@ -963,9 +964,7 @@ async function drawCharts() {
 
 function copyData() {
   if (!lastSelectedValue) return;
-  navigator.clipboard.writeText(lastSelectedValue).then(() => {
-    ElMessage.success("复制成功");
-  });
+  copyText(lastSelectedValue, "复制成功");
 }
 
 watch(
