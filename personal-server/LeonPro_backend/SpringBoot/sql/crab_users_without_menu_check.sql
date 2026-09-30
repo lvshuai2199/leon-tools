@@ -12,6 +12,7 @@
 --       等于 username 或 nickname（不区分大小写）匹配，只采用唯一匹配到一个账号的记录（与 crab_operator_id_backfill.sql 一致）。
 -- 注意：出货单没有“来源端”字段，这里统计的是全部出货单（管理端录入的通常来自已有 menu_crab 的角色，不会出现在结果里）。
 -- 兼容：只用一期已有的表和字段（不依赖 sys_menus.client），上线前后都可执行；MySQL 5.7 / 8.0 均可。
+-- 排序规则：生产库 crab_shipment 是 utf8mb4_0900_ai_ci、sys_users 是 utf8mb4_unicode_ci，跨表比较 / UNION 处显式 COLLATE utf8mb4_unicode_ci。
 -- 用法：mysql ... 目标库 < crab_users_without_menu_check.sql
 -- ============================================================
 
@@ -33,7 +34,7 @@ FROM (
            CASE WHEN u.parent_id IS NOT NULL AND u.parent_id <> '' THEN p.role_id ELSE u.role_id END AS effective_role_id,
            u.role_id                                                        AS own_role_id
     FROM (
-        SELECT c.id AS shipment_id, c.create_time, c.operator_id AS user_id
+        SELECT c.id AS shipment_id, c.create_time, c.operator_id COLLATE utf8mb4_unicode_ci AS user_id
         FROM crab_shipment c
         WHERE c.operator_id IS NOT NULL AND c.operator_id <> ''
         UNION ALL
@@ -81,7 +82,7 @@ FROM (
            u.role_id AS own_role_id, u.parent_id, p.username AS parent_username,
            CASE WHEN u.parent_id IS NOT NULL AND u.parent_id <> '' THEN p.role_id ELSE u.role_id END AS effective_role_id
     FROM (
-        SELECT c.id AS shipment_id, c.create_time, c.operator_id AS user_id
+        SELECT c.id AS shipment_id, c.create_time, c.operator_id COLLATE utf8mb4_unicode_ci AS user_id
         FROM crab_shipment c
         WHERE c.operator_id IS NOT NULL AND c.operator_id <> ''
         UNION ALL
@@ -109,4 +110,4 @@ SELECT SUM(CASE WHEN c.operator_id IS NOT NULL AND c.operator_id <> '' AND u.id 
        SUM(CASE WHEN (c.operator_id IS NULL OR c.operator_id = '') THEN 1 ELSE 0 END)                     AS operator_id_empty,
        COUNT(*)                                                                                           AS total
 FROM crab_shipment c
-LEFT JOIN sys_users u ON u.id = c.operator_id;
+LEFT JOIN sys_users u ON u.id = c.operator_id COLLATE utf8mb4_unicode_ci;

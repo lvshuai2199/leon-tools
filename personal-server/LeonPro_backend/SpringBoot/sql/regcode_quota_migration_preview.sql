@@ -9,6 +9,7 @@
 --         · 配置行存在但没有 reg_code_user 记录的：保持 0 / 0。
 -- 本脚本只读旧字段，按上面同样的规则算出“迁移后会是什么样”，方便上线前让管理员核对多配置客户多给了多少次。
 -- 在新后端第一次启动之前执行（旧字段迁移后不会被改，之后执行也能看到当时的迁移结果，可与新字段实际值对照）。
+-- 排序规则：生产库 reg_code_user / reg_code_user_config 是 utf8mb4_0900_ai_ci，sys_users / reg_code_config 是 utf8mb4_unicode_ci，跨表 JOIN 处显式 COLLATE utf8mb4_unicode_ci。
 -- 用法：mysql ... 目标库 < regcode_quota_migration_preview.sql
 -- ============================================================
 
@@ -39,7 +40,7 @@ FROM (
            GREATEST(IFNULL(u.generate_limit, 0) - IFNULL(u.generate_used, 0), 0) AS old_remaining,
            IFNULL(c.cfg_rows, 0)                                                 AS config_count
     FROM reg_code_user u
-    LEFT JOIN sys_users su ON su.id = u.user_id
+    LEFT JOIN sys_users su ON su.id = u.user_id COLLATE utf8mb4_unicode_ci
     LEFT JOIN (SELECT user_id, COUNT(*) AS cfg_rows FROM reg_code_user_config GROUP BY user_id) c ON c.user_id = u.user_id
 ) t
 ORDER BY over_grant DESC, t.old_remaining DESC, t.username;
@@ -66,8 +67,8 @@ SELECT c.user_id,
 FROM reg_code_user_config c
 JOIN (SELECT user_id, COUNT(*) AS cfg_rows FROM reg_code_user_config GROUP BY user_id) n ON n.user_id = c.user_id
 LEFT JOIN reg_code_user u ON u.user_id = c.user_id
-LEFT JOIN sys_users su ON su.id = c.user_id
-LEFT JOIN reg_code_config rc ON rc.id = c.config_id
+LEFT JOIN sys_users su ON su.id = c.user_id COLLATE utf8mb4_unicode_ci
+LEFT JOIN reg_code_config rc ON rc.id = c.config_id COLLATE utf8mb4_unicode_ci
 ORDER BY su.username, c.user_id, config_name;
 
 -- 3) 汇总：多配置客户数、合计多给的次数；无配置但还有剩余次数的客户数（这部分次数不会迁移）
