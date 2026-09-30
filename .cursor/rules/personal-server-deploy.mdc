@@ -1,21 +1,26 @@
 ---
-description: 用户要求部署 personal-server（后端、Vue3 管理端、uni-app H5、展示端 portal）时使用。先提交业务改动，再跑四个 deploy.ps1，最后检查 /、/h5/、/portal/、/prod-api/。
+description: 用户要求部署 personal-server（后端、管理端、用户端、nginx）时使用。先提交业务改动，再按 后端 → 用户端 → 管理端 → nginx 的顺序部署，最后检查 /、/admin/、/prod-api/，并提醒上线后要手动改的三件事。
 alwaysApply: false
 ---
 
 # personal-server 部署顺序
 
+站点结构：用户端在 `/`（`/var/www/leonpro-web`），管理端在 `/admin/`（`/var/www/leonpro-admin`），后端经 nginx 的 `/prod-api/` 转发（后端自身路径没有 `/prod-api` 前缀）。没有 `/h5/`、`/portal/` 了。
+
 用户说部署 `personal-server` 时按这个顺序做：
 
 1. **先整理提交**：看 `git status` / `git diff` / `git log`，把本次业务改动提交。不要提交 `deploy.env`、`bootstrap.env`、`migrate.env`、密码、以及 `node_modules`。
-2. **有数据库脚本变更时先执行 SQL**：例如新增的 `sql/wallpaper_module.sql`（壁纸表和菜单）。后端 `docker-compose.yml` 需带 `./uploads:/app/uploads` 卷再重建，否则上传的文件会在重建时丢失。
-3. **再部署四个**：
-   - `personal-server/LeonPro_backend/SpringBoot/deploy/deploy.ps1`
-   - `personal-server/LeonPro_frontend/vue3_frontend/deploy/deploy.ps1`
-   - `personal-server/LeonPro_frontend/frontend_phone/deploy/deploy.ps1`
-   - `personal-server/LeonPro_frontend/portal/deploy/deploy.ps1`（公开只读展示端，放 `/var/www/leonpro-portal`，访问 `/portal/`）
-4. 对 `http://<主机>/`、`/h5/`、`/portal/`、`/prod-api/` 做一次可达性检查。
+2. **有数据库脚本变更时先执行 SQL**：例如 `sql/wallpaper_module.sql`（壁纸表和菜单）。后端 `docker-compose.yml` 需带 `./uploads:/app/uploads` 卷再重建，否则上传的文件会在重建时丢失。
+3. **后端**：`personal-server/LeonPro_backend/SpringBoot/deploy/deploy.ps1`。必须在完整仓库里打包（jar 要带上两个前端的 `menus.json`，缺了会构建或启动失败）。菜单同步开关写在服务器 `/opt/leonpro/backend/.env`：第一次上新结构先 `MENU_SYNC_MODE=dry-run`，看日志里的计划没问题再改回 `apply` 重启。细节见 `LeonPro_backend/SpringBoot/deploy/README.md`。
+4. **用户端**：`personal-server/LeonPro_frontend/frontend_phone/deploy/deploy.ps1`，固定部署到 `/var/www/leonpro-web`，访问 `/`。
+5. **管理端**：`personal-server/LeonPro_frontend/vue3_frontend/deploy/deploy.ps1`，部署到 `/var/www/leonpro-admin`，访问 `/admin/`。
+6. **nginx**（两个前端都有 `index.html` 之后再做）：站点配置只有一份 `personal-server/bootstrap/nginx-leonpro.conf`，前端部署脚本不再碰 nginx。在 `personal-server/bootstrap` 下先跑 `.\deploy-nginx.ps1 -Check`（上传并 `nginx -t`，不生效），通过后再跑 `.\deploy-nginx.ps1` 正式安装（自动备份，失败回滚；回退用 `-Rollback`）。新增子路径只改这一个文件。
+7. 对 `http://<主机>/`、`/admin/`、`/prod-api/` 做一次可达性检查。
 
-Nginx 站点配置只有一份：`LeonPro_frontend/vue3_frontend/deploy/nginx.conf`。三个前端的 deploy.ps1 都会上传这同一份，新增子路径只改这一个文件。
+## 上线后要手动改的三件事
+
+- **小工具壁纸地址**：小组件 `ui.ini` 里的壁纸地址改成 `https://<域名>/prod-api/public/wallpaper/random`。
+- **公众号回调**：公众号后台的服务器 URL 改成 `https://<域名>/prod-api/public/wechat/oa`（原来是 `/wechat/oa`），Token 不变，要等新后端上线后再改。
+- **蟹单分享链接**：新的分享链接是用户端的 `/s/crab/{publicId}`；以前发出去的 `/h5/` 分享链接会失效，需要的话重新分享。
 
 没有未提交改动时，直接部署并说明工作区是干净的。
