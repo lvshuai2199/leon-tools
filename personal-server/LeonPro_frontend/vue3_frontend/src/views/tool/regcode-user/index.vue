@@ -92,7 +92,13 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="170" align="center" />
+        <el-table-column
+          prop="createTime"
+          label="创建时间"
+          width="170"
+          align="center"
+          :formatter="tableTimeFormatter"
+        />
         <el-table-column label="操作" width="140" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openDialog(row)">编辑</el-button>
@@ -193,6 +199,7 @@
 </template>
 
 <script setup lang="ts">
+import { tableTimeFormatter } from "@/utils";
 import RegCodeUserAPI, {
   customerKey,
   type RegCodeQuotaItem,

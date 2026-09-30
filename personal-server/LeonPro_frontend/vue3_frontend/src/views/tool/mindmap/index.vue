@@ -96,7 +96,12 @@
           </template>
         </el-table-column>
         <el-table-column prop="title" label="标题" min-width="140" show-overflow-tooltip />
-        <el-table-column prop="updateTime" label="更新时间" width="170" />
+        <el-table-column
+          prop="updateTime"
+          label="更新时间"
+          width="170"
+          :formatter="tableTimeFormatter"
+        />
         <el-table-column label="操作" width="200" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="loadStored(row)">编辑</el-button>
@@ -126,6 +131,7 @@
 </template>
 
 <script setup lang="ts">
+import { tableTimeFormatter } from "@/utils";
 import { marked, type Tokens } from "marked";
 import Codemirror from "codemirror-editor-vue3";
 import "codemirror/mode/markdown/markdown.js";

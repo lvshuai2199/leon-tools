@@ -56,3 +56,22 @@ export function formatGrowthRate(growthRate: number) {
     .replace(/\.?0+$/, "");
   return formattedRate + "%";
 }
+
+/**
+ * 后端时间（ISO 字符串，带 Z 的是 UTC）转成本地时间 YYYY-MM-DD HH:mm:ss；空值显示 "-"
+ */
+export function formatDateTime(v?: string | number | Date | null) {
+  if (v == null || v === "") return "-";
+  const d = new Date(v);
+  if (isNaN(d.getTime())) return String(v);
+  const p = (n: number) => String(n).padStart(2, "0");
+  return (
+    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
+    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+  );
+}
+
+/** el-table-column 的 formatter：时间列统一显示本地时间 */
+export function tableTimeFormatter(_row: unknown, _column: unknown, value: unknown) {
+  return formatDateTime(value as string | number | Date | null | undefined);
+}

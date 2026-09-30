@@ -50,7 +50,13 @@
           </template>
         </el-table-column>
 
-        <el-table-column label="创建时间" prop="createTime" width="180" align="center" />
+        <el-table-column
+          label="创建时间"
+          prop="createTime"
+          width="180"
+          align="center"
+          :formatter="tableTimeFormatter"
+        />
 
         <el-table-column fixed="right" label="操作" width="180">
           <template #default="scope">
@@ -169,6 +175,7 @@
 </template>
 
 <script setup lang="ts">
+import { tableTimeFormatter } from "@/utils";
 defineOptions({
   name: "Role",
   inheritAttrs: false,

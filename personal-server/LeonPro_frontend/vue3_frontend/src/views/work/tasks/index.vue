@@ -54,7 +54,13 @@
         <el-table-column prop="customerName" label="客户名称" min-width="110" show-overflow-tooltip />
         <el-table-column prop="scenario" label="场景" min-width="110" show-overflow-tooltip />
         <el-table-column prop="robotType" label="机械臂型号" width="110" align="center" />
-        <el-table-column prop="createTime" label="创建时间" width="160" align="center" />
+        <el-table-column
+          prop="createTime"
+          label="创建时间"
+          width="160"
+          align="center"
+          :formatter="tableTimeFormatter"
+        />
         <el-table-column label="操作" width="160" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openDialog(row)">编辑</el-button>
@@ -161,6 +167,7 @@
 </template>
 
 <script setup lang="ts">
+import { tableTimeFormatter } from "@/utils";
 import TaskAPI, { type TaskPageVO, type TaskForm } from "@/api/tasks";
 import { useUserStore } from "@/store/modules/user";
 

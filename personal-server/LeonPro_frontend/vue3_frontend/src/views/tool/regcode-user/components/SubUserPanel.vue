@@ -24,7 +24,13 @@
           {{ row.usedTotal ?? 0 }} / {{ row.allocatedTotal ?? 0 }}
         </template>
       </el-table-column>
-      <el-table-column prop="createTime" label="创建时间" width="170" align="center" />
+      <el-table-column
+        prop="createTime"
+        label="创建时间"
+        width="170"
+        align="center"
+        :formatter="tableTimeFormatter"
+      />
       <el-table-column label="操作" width="100" align="center">
         <template #default="{ row }">
           <el-button link type="primary" size="small" @click="openQuota(row)">调整次数</el-button>
@@ -38,6 +44,7 @@
 </template>
 
 <script setup lang="ts">
+import { tableTimeFormatter } from "@/utils";
 import RegCodeUserAPI, { type SubUserListVO, type SubUserVO } from "@/api/tool/regcode-user";
 import SubUserQuotaDialog from "./SubUserQuotaDialog.vue";
 
