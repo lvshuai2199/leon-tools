@@ -31,9 +31,14 @@ import java.util.stream.Collectors;
 @RequestMapping("/admin/regCodeUser")
 public class RegCodeUserController {
 
-    /** 底层子用户（父用户是子账号或注册码客户，即客户在注册码页创建的）的 user_id */
+    /**
+     * 底层子用户（父用户是子账号或注册码客户，即客户在注册码页创建的）的 user_id。
+     * <p>c.id 显式 COLLATE：线上 reg_code_user 是 utf8mb4_0900_ai_ci、sys_users 是 utf8mb4_unicode_ci，
+     * 不加会在 {@code user_id NOT IN (...)} 处报 1267 Illegal mix of collations；显式排序规则优先级最高，
+     * 本地两表同为 0900_ai_ci 时也照常可用（只改代码不动表结构）。
+     */
     private static final String BOTTOM_SUB_USER_IDS_SQL =
-            "SELECT c.id FROM sys_users c JOIN sys_users p ON p.id = c.parent_id "
+            "SELECT c.id COLLATE utf8mb4_unicode_ci FROM sys_users c JOIN sys_users p ON p.id = c.parent_id "
                     + "WHERE (p.parent_id IS NOT NULL AND p.parent_id <> '') OR p.role_id = '"
                     + RegCodeAccessService.ROLE_REGCODE_CLIENT_ID + "'";
 
