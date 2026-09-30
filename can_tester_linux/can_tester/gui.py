@@ -83,6 +83,7 @@ from can_tester.bus import (
     CanSession,
     list_can_interfaces,
     is_socketcan_present,
+    is_socketcan_up,
     OCCUPANCY_HINT,
 )
 from can_tester.parse import (
@@ -137,6 +138,7 @@ from can_tester.responder_module import (
     signal_defaults_dict,
     values_from_signals_for_state,
 )
+from can_tester import jasic_nbm as nbm
 from can_tester.goo_combo import (
     COMBO_MEGMEET_GOO,
     INIT_MODULE_NAME,
@@ -175,7 +177,7 @@ BAUD_CHOICES = ("125000", "250000", "500000", "1000000")
 LED_IDLE = BORDER  # #D8DCE1
 LED_TX_ON = "#2F9E5B"
 LED_RX_ON = PRIMARY_BG  # #2F6FED
-LED_DIAMETER = 10
+LED_DIAMETER = 12
 LED_GAP = 6
 LED_ON_MS = 140  # lit time per blink
 LED_GAP_MS = 90  # forced off so a fast stream still blinks instead of staying solid
@@ -2589,8 +2591,8 @@ class CanTesterApp(tk.Tk):
     def __init__(self, initial_iface: str = DEFAULT_IFACE) -> None:
         super().__init__()
         self.title("CAN 通用监听 / 发送")
-        self.geometry("980x620")
-        self.minsize(860, 480)
+        self.geometry("720x580")
+        self.minsize(620, 480)
         self.configure(bg=BG)
         self._style = _apply_app_style(self)
         self.session = CanSession()
@@ -2608,6 +2610,23 @@ class CanTesterApp(tk.Tk):
         self._responder_detail: ResponderDetailDialog | None = None
         self._signal_values: dict = {}
         self._signal_vars: dict = {}
+        self._nbm_given_raw = 0
+        self._nbm_arc_raw = nbm.trim_to_raw(0.0)
+        self._nbm_setup: dict | None = None
+        self._nbm_beat_job = None
+        self._nbm_last_rpdo1 = b""
+        self._nbm_last_rpdo2 = b""
+        self._nbm_asm = {
+            nbm.POLL_ID: nbm.IoReassembler(),
+            nbm.POLL_RSP_ID: nbm.IoReassembler(),
+        }
+        self._combo_slots = {
+            COMBO_MEGMEET_GOO: {"role": ROLE_CLIENT},
+            nbm.COMBO_JASIC_NBM: {"role": ROLE_WELDER, "auto": True},
+        }
+        self._last_combo = CHOICE_NONE
+        self._profile_switching = False
+        self._user_bus_on = False
         self._await_replies = 0
         self._await_deadline = 0.0
         self._await_got = 0
@@ -2645,14 +2664,18 @@ class CanTesterApp(tk.Tk):
             ),
         )
 
-        root = ttk.Frame(self, padding=10)
+        root = ttk.Frame(self, padding=4)
         root.pack(fill=tk.BOTH, expand=True)
 
         # ----- 1. Connection bar -----
         conn_wrap = ttk.Frame(root)
-        conn_wrap.pack(fill=tk.X, pady=(0, 8))
+        conn_wrap.pack(fill=tk.X, pady=(0, 4))
         conn = ttk.Frame(conn_wrap)
         conn.pack(fill=tk.X)
+
+        tools = ttk.Frame(conn)
+        tools.pack(side=tk.RIGHT)
+        self._build_txrx_leds(tools)
 
         ttk.Label(conn, text="接口").pack(side=tk.LEFT)
         ifaces = list_can_interfaces()
@@ -2662,51 +2685,36 @@ class CanTesterApp(tk.Tk):
             value=initial_iface if initial_iface in ifaces else ifaces[0]
         )
         self.iface_combo = ttk.Combobox(
-            conn, textvariable=self.iface_var, values=ifaces, width=12
+            conn, textvariable=self.iface_var, values=ifaces, width=10
         )
-        self.iface_combo.pack(side=tk.LEFT, padx=(6, 4))
+        self.iface_combo.pack(side=tk.LEFT, padx=(4, 2))
         self.iface_combo.bind("<<ComboboxSelected>>", lambda _e: self._refresh_idle_iface_hint())
         ttk.Button(
             conn, text="刷新", style="Toolbar.TButton", command=self._refresh_ifaces
         ).pack(side=tk.LEFT)
 
-        ttk.Label(conn, text="波特率").pack(side=tk.LEFT, padx=(14, 0))
+        ttk.Label(conn, text="波特率").pack(side=tk.LEFT, padx=(8, 0))
         self.baud_var = tk.StringVar(value="125000")
         self.baud_combo = ttk.Combobox(
             conn,
             textvariable=self.baud_var,
             values=BAUD_CHOICES,
-            width=10,
+            width=8,
             state="readonly",
         )
-        self.baud_combo.pack(side=tk.LEFT, padx=(6, 4))
-        # SocketCAN bitrate is OS-configured; UI shows intended rate (layout only).
+        self.baud_combo.pack(side=tk.LEFT, padx=(4, 2))
 
-        self.open_btn = ttk.Button(
-            conn, text="开总线", style="Primary.TButton", command=self._open_conn
+        self.bus_btn = ttk.Button(
+            conn, text="开总线", style="Primary.TButton", command=self._toggle_conn
         )
-        self.open_btn.pack(side=tk.LEFT, padx=(12, 4))
-        self.close_btn = ttk.Button(
-            conn,
-            text="闭总线",
-            style="Secondary.TButton",
-            command=self._close_conn,
-            state=tk.DISABLED,
-        )
-        self.close_btn.pack(side=tk.LEFT, padx=2)
-
-        # Right cluster: settings (rightmost) then TX/RX lights to its left
-        ttk.Button(
-            conn, text="设置", style="Toolbar.TButton", command=self._open_settings
-        ).pack(side=tk.RIGHT)
-        self._build_txrx_leds(conn)
+        self.bus_btn.pack(side=tk.LEFT, padx=(8, 0))
 
         self.status_var = tk.StringVar(value="未连接 — 默认通用监听")
         self._status_full = "未连接 — 默认通用监听"
         self.status_label = ttk.Label(
-            conn, textvariable=self.status_var, style="StatusMuted.TLabel"
+            conn_wrap, textvariable=self.status_var, style="StatusMuted.TLabel"
         )
-        self.status_label.pack(side=tk.LEFT, padx=(12, 0), fill=tk.X, expand=True)
+        self.status_label.pack(fill=tk.X, pady=(2, 0))
         self.status_label.bind("<Enter>", self._on_status_enter)
         self.status_label.bind("<Leave>", self._on_status_leave)
         self.status_label.bind("<Button-1>", self._on_status_click)
@@ -2776,33 +2784,41 @@ class CanTesterApp(tk.Tk):
         self._signal_controls = ttk.Frame(sig_outer)
         self._signal_controls.pack(fill=tk.X, pady=(SIGNAL_GAP, 0))
 
-        # ----- 3. Receive | send, side by side -----
+        # ----- 3. Receive above send -----
         self._mid_row = ttk.Frame(root)
-        self._mid_row.pack(fill=tk.X, pady=(0, 8))
-        self._mid_row.columnconfigure(0, weight=1, uniform="work")
-        self._mid_row.columnconfigure(1, weight=1, uniform="work")
-        self._mid_row.rowconfigure(0, weight=1)
+        self._mid_row.pack(fill=tk.X, pady=(0, 4))
+        self._mid_row.columnconfigure(0, weight=1)
         self._build_rx_signal_panel(self._mid_row)
 
         send_card = CardFrame(self._mid_row)
         self._send_card = send_card
-        send_card.grid(row=0, column=0, columnspan=2, sticky="nsew")
+        send_card.grid(row=0, column=0, sticky="ew")
         # Init summary / signals pack before send when enabled
         self._refresh_init_summary()
         self._refresh_signal_card()
-        mid = ttk.Frame(send_card.body, padding=(8, 6))
+        mid = ttk.Frame(send_card.body, padding=(6, 3))
         mid.pack(fill=tk.BOTH, expand=True)
 
-        ttk.Label(mid, text="发送", style="Header.TLabel").pack(anchor=tk.W)
-
         form = ttk.Frame(mid)
-        form.pack(fill=tk.X, pady=(4, 0))
-        ttk.Label(form, text="配置组合").pack(side=tk.LEFT)
+        form.pack(fill=tk.X)
+        self._send_help_btn = tk.Label(
+            form,
+            text="?",
+            font=FONT_UI,
+            fg=PRIMARY_BG,
+            bg=BG,
+            cursor="hand2",
+            padx=6,
+        )
+        self._send_help_btn.pack(side=tk.RIGHT)
+        self._send_help_btn.bind("<Button-1>", lambda _e: self._show_send_help())
+        ttk.Label(form, text="发送", style="Header.TLabel").pack(side=tk.LEFT)
+        ttk.Label(form, text="配置组合").pack(side=tk.LEFT, padx=(8, 0))
         self.profile_var = tk.StringVar(value=CHOICE_NONE)
         self.profile_combo = ttk.Combobox(
             form,
             textvariable=self.profile_var,
-            values=[CHOICE_NONE, COMBO_MEGMEET_GOO],
+            values=[CHOICE_NONE, COMBO_MEGMEET_GOO, nbm.COMBO_JASIC_NBM],
             state="readonly",
             width=16,
         )
@@ -2827,43 +2843,50 @@ class CanTesterApp(tk.Tk):
             command=self._send_goo_init,
         )
         self._send_init_btn.pack(side=tk.LEFT, padx=(12, 0))
+        self._nbm_setup_btn = ttk.Button(
+            form,
+            text="建立连接",
+            style="Secondary.TButton",
+            command=self._send_nbm_setup,
+        )
+        self._nbm_setup_btn.pack(side=tk.LEFT, padx=(12, 0))
         self._role_label.pack_forget()
         self._role_combo.pack_forget()
         self._send_init_btn.pack_forget()
+        self._nbm_setup_btn.pack_forget()
         self._build_goo_send_panels(mid)
 
         self._hex_row = ttk.Frame(mid)
-        self._hex_row.pack(fill=tk.X, pady=(4, 0))
-        ttk.Label(self._hex_row, text="CAN ID").pack(side=tk.LEFT)
-        self.id_var = tk.StringVar(value="0x123")
-        ttk.Entry(self._hex_row, textvariable=self.id_var, width=12).pack(
-            side=tk.LEFT, padx=(6, 0)
-        )
-        self.ext_var = tk.BooleanVar(value=False)
-        ttk.Checkbutton(self._hex_row, text="扩展帧", variable=self.ext_var).pack(
-            side=tk.LEFT, padx=(8, 0)
-        )
-        ttk.Label(self._hex_row, text="数据").pack(side=tk.LEFT, padx=(8, 0))
-        self.data_var = tk.StringVar(value="01 02 03 04")
-        ttk.Entry(self._hex_row, textvariable=self.data_var).pack(
-            side=tk.LEFT, padx=(6, 0), fill=tk.X, expand=True
-        )
-
-        act = ttk.Frame(mid)
-        act.pack(fill=tk.X, pady=(4, 0))
-        ttk.Button(
-            act, text="单次发送", style="Primary.TButton", command=self._send_once
-        ).pack(side=tk.LEFT)
-        ttk.Label(act, text="周期").pack(side=tk.LEFT, padx=(12, 0))
-        self.period_var = tk.StringVar(value="100")
-        ttk.Entry(act, textvariable=self.period_var, width=6).pack(side=tk.LEFT, padx=(6, 0))
+        self._hex_row.pack(fill=tk.X, pady=(2, 0))
         self.period_btn = ttk.Button(
-            act,
+            self._hex_row,
             text="开始周期",
             style="Secondary.TButton",
             command=self._toggle_period,
         )
-        self.period_btn.pack(side=tk.LEFT, padx=(8, 0))
+        self.period_btn.pack(side=tk.RIGHT)
+        self.period_var = tk.StringVar(value="100")
+        ttk.Entry(self._hex_row, textvariable=self.period_var, width=5).pack(
+            side=tk.RIGHT, padx=(4, 6)
+        )
+        ttk.Label(self._hex_row, text="周期").pack(side=tk.RIGHT)
+        ttk.Button(
+            self._hex_row, text="单次", style="Primary.TButton", command=self._send_once
+        ).pack(side=tk.RIGHT, padx=(0, 8))
+        ttk.Label(self._hex_row, text="CAN ID").pack(side=tk.LEFT)
+        self.id_var = tk.StringVar(value="0x123")
+        ttk.Entry(self._hex_row, textvariable=self.id_var, width=10).pack(
+            side=tk.LEFT, padx=(4, 0)
+        )
+        self.ext_var = tk.BooleanVar(value=False)
+        ttk.Checkbutton(self._hex_row, text="扩展", variable=self.ext_var).pack(
+            side=tk.LEFT, padx=(6, 0)
+        )
+        ttk.Label(self._hex_row, text="数据").pack(side=tk.LEFT, padx=(6, 0))
+        self.data_var = tk.StringVar(value="01 02 03 04")
+        ttk.Entry(self._hex_row, textvariable=self.data_var).pack(
+            side=tk.LEFT, padx=(4, 8), fill=tk.X, expand=True
+        )
 
         # Hidden single-ID filter (kept working; not piled on main — synced empty)
         self.filter_var = tk.StringVar(value="")
@@ -2871,7 +2894,7 @@ class CanTesterApp(tk.Tk):
         # ----- 4. Timeline -----
         log_card = CardFrame(root)
         log_card.pack(fill=tk.BOTH, expand=True)
-        logf = ttk.Frame(log_card.body, padding=(8, 6))
+        logf = ttk.Frame(log_card.body, padding=(6, 3))
         logf.pack(fill=tk.BOTH, expand=True)
 
         head = ttk.Frame(logf)
@@ -2894,22 +2917,22 @@ class CanTesterApp(tk.Tk):
         ).pack(side=tk.RIGHT)
 
         tree_wrap = tk.Frame(logf, bg=BG)
-        tree_wrap.pack(fill=tk.BOTH, expand=True, pady=(6, 0))
+        tree_wrap.pack(fill=tk.BOTH, expand=True, pady=(2, 0))
 
         cols2 = ("time", "dir", "can_id", "data", "note")
         self.tree = ttk.Treeview(
             tree_wrap,
             columns=cols2,
             show="headings",
-            height=8,
+            height=5,
             style="Mono.Treeview",
         )
         headings2 = {
-            "time": ("时间", 90),
-            "dir": ("方向", 56),
-            "can_id": ("ID", 120),
-            "data": ("数据", 240),
-            "note": ("备注", 280),
+            "time": ("时间", 72),
+            "dir": ("方向", 44),
+            "can_id": ("ID", 88),
+            "data": ("数据", 160),
+            "note": ("备注", 140),
         }
         for c, (text, w) in headings2.items():
             self.tree.heading(c, text=text)
@@ -2948,15 +2971,19 @@ class CanTesterApp(tk.Tk):
 
     def _set_conn_buttons(self, connected: bool) -> None:
         if connected:
-            self.open_btn.configure(state=tk.DISABLED)
-            self.close_btn.configure(state=tk.NORMAL)
+            self.bus_btn.configure(text="闭总线", style="Secondary.TButton")
             self.iface_combo.configure(state="disabled")
             self.baud_combo.configure(state="disabled")
         else:
-            self.open_btn.configure(state=tk.NORMAL)
-            self.close_btn.configure(state=tk.DISABLED)
+            self.bus_btn.configure(text="开总线", style="Primary.TButton")
             self.iface_combo.configure(state="normal")
             self.baud_combo.configure(state="readonly")
+
+    def _toggle_conn(self) -> None:
+        if getattr(self, "_user_bus_on", False) or self.session.connected:
+            self._close_conn()
+        else:
+            self._open_conn()
 
     # ----- settings / print filter -----
 
@@ -3630,14 +3657,66 @@ class CanTesterApp(tk.Tk):
         self._start_init_run(only_enabled=True, indices=None, from_connect=True)
 
     def _on_profile(self, _evt=None) -> None:
-        v = (self.profile_var.get() or "").strip()
-        if v != COMBO_MEGMEET_GOO:
-            self._layout_goo_panels()
-            self._drop_saved_responder_for_generic()
-            self.status_var.set("通用模式：仅原始 HEX")
-            self._refresh_init_summary()
+        if getattr(self, "_profile_switching", False):
             return
-        self._apply_goo_combo()
+        self._nbm_setup = None
+        v = (self.profile_var.get() or "").strip()
+        self._capture_combo_slot(getattr(self, "_last_combo", CHOICE_NONE))
+        if v in (COMBO_MEGMEET_GOO, nbm.COMBO_JASIC_NBM):
+            self._apply_combo_slot(v)
+        self._last_combo = v
+        if v == COMBO_MEGMEET_GOO:
+            self._apply_goo_combo()
+            return
+        if v == nbm.COMBO_JASIC_NBM:
+            self._apply_nbm_combo()
+            return
+        self._layout_goo_panels()
+        self._drop_saved_responder_for_generic()
+        self.status_var.set("通用模式：仅原始 HEX")
+        self._refresh_init_summary()
+
+    def _capture_combo_slot(self, key: str) -> None:
+        slots = getattr(self, "_combo_slots", None)
+        if not slots or key not in slots:
+            return
+        slots[key]["role"] = self._goo_role()
+        if key == nbm.COMBO_JASIC_NBM and getattr(self, "_nbm_auto", None) is not None:
+            slots[key]["auto"] = bool(self._nbm_auto.get())
+
+    def _apply_combo_slot(self, key: str) -> None:
+        slot = (getattr(self, "_combo_slots", None) or {}).get(key)
+        if not slot:
+            return
+        role = slot.get("role") or ROLE_CLIENT
+        if role not in (ROLE_CLIENT, ROLE_WELDER):
+            role = ROLE_CLIENT
+        self._profile_switching = True
+        try:
+            if hasattr(self, "_role_var"):
+                self._role_var.set(role)
+            if key == nbm.COMBO_JASIC_NBM and getattr(self, "_nbm_auto", None) is not None:
+                self._nbm_auto.set(bool(slot.get("auto", True)))
+        finally:
+            self._profile_switching = False
+
+    def _sync_protocol_engines(self) -> None:
+        """Each profile keeps its own 模拟焊机 engine. IDs do not overlap."""
+        viewing = self._goo_combo_active() or self._nbm_combo_active()
+        slots = getattr(self, "_combo_slots", {}) or {}
+        megmeet_sim = viewing and slots.get(COMBO_MEGMEET_GOO, {}).get("role") == ROLE_WELDER
+        want = RESPONDER_MODULE_NAME if megmeet_sim else ""
+        if (self.settings.responder_module or "").strip() != want:
+            self.settings.responder_module = want
+            self.settings = self.settings.clamp()
+            try:
+                save_settings(self.settings)
+            except OSError:
+                pass
+            self._reload_responder_profile()
+        elif megmeet_sim and self._responder_module is None:
+            self._reload_responder_profile()
+        self._arm_nbm_beat()
 
     def _goo_combo_active(self) -> bool:
         var = getattr(self, "profile_var", None)
@@ -3645,6 +3724,15 @@ class CanTesterApp(tk.Tk):
             return False
         try:
             return (var.get() or "").strip() == COMBO_MEGMEET_GOO
+        except tk.TclError:
+            return False
+
+    def _nbm_combo_active(self) -> bool:
+        var = getattr(self, "profile_var", None)
+        if var is None:
+            return False
+        try:
+            return (var.get() or "").strip() == nbm.COMBO_JASIC_NBM
         except tk.TclError:
             return False
 
@@ -3659,7 +3747,7 @@ class CanTesterApp(tk.Tk):
         return role if role in (ROLE_CLIENT, ROLE_WELDER) else ROLE_CLIENT
 
     def _build_rx_signal_panel(self, parent: ttk.Frame) -> None:
-        """Received-signal card. Shown in the left column when a combo is on."""
+        """Received-signal card. Shown above send when a combo is on."""
         self._rx_host = ttk.Frame(parent)
         self._rx_card = CardFrame(self._rx_host)
         body = tk.Frame(self._rx_card.body, bg=BG)
@@ -3670,6 +3758,7 @@ class CanTesterApp(tk.Tk):
         )
         brow = tk.Frame(body, bg=BG)
         brow.pack(fill=tk.X, pady=(6, 0))
+        self._rx_byte_row = brow
         self._rx_bytes: list[tk.Label] = []
         for i in range(8):
             lab = tk.Label(
@@ -3686,7 +3775,7 @@ class CanTesterApp(tk.Tk):
             brow.columnconfigure(i, weight=1, uniform="rxbyte")
             self._rx_bytes.append(lab)
         self._rx_chips_row = ttk.Frame(body)
-        self._rx_chips_row.pack(fill=tk.X, pady=(6, 0))
+        self._rx_chips_row.pack(fill=tk.X, pady=(2, 0))
         self._rx_chip_labels: dict[str, tk.Label] = {}
         self._rx_line_var = tk.StringVar(value="等待帧")
         ttk.Label(body, textvariable=self._rx_line_var, style="Muted.TLabel").pack(
@@ -3698,23 +3787,27 @@ class CanTesterApp(tk.Tk):
         self._client_box = ttk.Frame(mid)
         bits = ttk.Frame(self._client_box)
         bits.pack(fill=tk.X, pady=(4, 0))
+        for col in range(3):
+            bits.columnconfigure(col, weight=1)
         self._poll_weld = tk.BooleanVar(value=False)
         self._poll_seek = tk.BooleanVar(value=False)
         self._poll_gas = tk.BooleanVar(value=False)
         self._poll_feed = tk.BooleanVar(value=False)
         self._poll_retract = tk.BooleanVar(value=False)
         self._poll_err = tk.BooleanVar(value=False)
-        for text, var in (
-            ("起焊", self._poll_weld),
-            ("寻位", self._poll_seek),
-            ("检气", self._poll_gas),
-            ("送丝", self._poll_feed),
-            ("回抽", self._poll_retract),
-            ("机故", self._poll_err),
+        for i, (text, var) in enumerate(
+            (
+                ("起焊", self._poll_weld),
+                ("寻位", self._poll_seek),
+                ("检气", self._poll_gas),
+                ("送丝", self._poll_feed),
+                ("回抽", self._poll_retract),
+                ("机故", self._poll_err),
+            )
         ):
             ttk.Checkbutton(
                 bits, text=text, variable=var, command=self._sync_client_poll_fields
-            ).pack(side=tk.LEFT, padx=(0, 8))
+            ).grid(row=i // 3, column=i % 3, sticky="w", padx=(0, 4), pady=1)
         nums = ttk.Frame(self._client_box)
         nums.pack(fill=tk.X, pady=(4, 0))
         ttk.Label(nums, text="模式").pack(side=tk.LEFT)
@@ -3805,62 +3898,29 @@ class CanTesterApp(tk.Tk):
             variable=self._welder_auto_arc,
             command=self._on_welder_auto_arc,
         ).pack(side=tk.LEFT)
+        self._build_nbm_send_panels(mid)
         self._layout_goo_panels()
 
     def _layout_goo_panels(self) -> None:
         """Show RX under the bus bar and the matching send block. Hide the other."""
         client = getattr(self, "_client_box", None)
         welder = getattr(self, "_welder_box", None)
-        role_combo = getattr(self, "_role_combo", None)
         if client is None or welder is None:
             return
+        self._hide_signal_box(getattr(self, "_nbm_client_box", None))
+        self._hide_signal_box(getattr(self, "_nbm_welder_box", None))
         active = self._goo_combo_active()
-        role_label = getattr(self, "_role_label", None)
-        init_btn = getattr(self, "_send_init_btn", None)
-        if role_combo is not None and role_label is not None:
-            try:
-                if active:
-                    if not role_label.winfo_ismapped():
-                        role_label.pack(side=tk.LEFT, padx=(12, 0))
-                    if not role_combo.winfo_ismapped():
-                        role_combo.pack(side=tk.LEFT, padx=(6, 0))
-                else:
-                    role_label.pack_forget()
-                    role_combo.pack_forget()
-                if init_btn is not None:
-                    show_init = active and self._goo_role() == ROLE_CLIENT
-                    if show_init and not init_btn.winfo_ismapped():
-                        init_btn.pack(side=tk.LEFT, padx=(12, 0))
-                    elif not show_init:
-                        init_btn.pack_forget()
-            except tk.TclError:
-                pass
-        client.pack_forget()
-        welder.pack_forget()
+        client_role = self._goo_role() == ROLE_CLIENT
+        self._show_profile_chrome(active, init=active and client_role, setup=False)
+        self._hide_signal_box(client)
+        self._hide_signal_box(welder)
         if not active:
+            self._ensure_rx_byte_slots(8)
             self._place_work(False)
             return
         role = self._goo_role()
-        anchor = None
-        seen_box = False
-        try:
-            for child in client.master.winfo_children():
-                if child in (client, welder):
-                    seen_box = True
-                    continue
-                if seen_box and child.winfo_ismapped():
-                    anchor = child
-                    break
-        except tk.TclError:
-            anchor = None
-        box = client if role == ROLE_CLIENT else welder
-        try:
-            if anchor is not None:
-                box.pack(fill=tk.X, before=anchor)
-            else:
-                box.pack(fill=tk.X)
-        except tk.TclError:
-            box.pack(fill=tk.X)
+        self._pack_signal_box(client if role == ROLE_CLIENT else welder)
+        self._ensure_rx_byte_slots(8)
         if role == ROLE_CLIENT:
             self._rx_title_var.set("接收 · 焊机")
             self._ensure_rx_chips(
@@ -3871,8 +3931,53 @@ class CanTesterApp(tk.Tk):
             self._ensure_rx_chips(["起焊", "寻位", "检气", "送丝", "回抽", "机故"])
         self._place_work(True)
 
+    def _show_profile_chrome(self, active: bool, *, init: bool, setup: bool) -> None:
+        role_combo = getattr(self, "_role_combo", None)
+        role_label = getattr(self, "_role_label", None)
+        if role_combo is None or role_label is None:
+            return
+        try:
+            if active:
+                if not role_label.winfo_ismapped():
+                    role_label.pack(side=tk.LEFT, padx=(12, 0))
+                if not role_combo.winfo_ismapped():
+                    role_combo.pack(side=tk.LEFT, padx=(6, 0))
+            else:
+                role_label.pack_forget()
+                role_combo.pack_forget()
+            self._pack_side_button(getattr(self, "_send_init_btn", None), init)
+            self._pack_side_button(getattr(self, "_nbm_setup_btn", None), setup)
+        except tk.TclError:
+            pass
+
+    def _pack_side_button(self, widget, show: bool) -> None:
+        if widget is None:
+            return
+        if show and not widget.winfo_ismapped():
+            widget.pack(side=tk.LEFT, padx=(12, 0))
+        elif not show:
+            widget.pack_forget()
+
+    def _hide_signal_box(self, widget) -> None:
+        if widget is None:
+            return
+        try:
+            widget.pack_forget()
+        except tk.TclError:
+            pass
+
+    def _pack_signal_box(self, box) -> None:
+        anchor = getattr(self, "_hex_row", None)
+        try:
+            if anchor is not None:
+                box.pack(fill=tk.X, before=anchor)
+            else:
+                box.pack(fill=tk.X)
+        except tk.TclError:
+            box.pack(fill=tk.X)
+
     def _place_work(self, show_rx: bool) -> None:
-        """Left = received signals, right = send. Generic mode uses the full width."""
+        """Receive on top, send below. Generic mode shows send only."""
         rx = getattr(self, "_rx_host", None)
         send = getattr(self, "_send_card", None)
         if rx is None or send is None:
@@ -3885,20 +3990,46 @@ class CanTesterApp(tk.Tk):
         hex_row = getattr(self, "_hex_row", None)
         if show_rx:
             try:
-                self._rx_card.pack(fill=tk.BOTH, expand=True)
+                self._rx_card.pack(fill=tk.X, expand=True)
             except tk.TclError:
                 pass
-            rx.grid(row=0, column=0, sticky="nsew", padx=(0, 6))
-            send.grid(row=0, column=1, sticky="nsew")
+            rx.grid(row=0, column=0, sticky="ew", pady=(0, 6))
+            send.grid(row=1, column=0, sticky="ew")
             if hex_row is not None and not hex_row.winfo_ismapped():
                 hex_row.pack(fill=tk.X, pady=(2, 0))
             return
-        send.grid(row=0, column=0, columnspan=2, sticky="ew")
+        send.grid(row=0, column=0, sticky="ew")
         if hex_row is not None and not hex_row.winfo_ismapped():
             hex_row.pack(fill=tk.X, pady=(2, 0))
 
     def _pack_rx_panel(self) -> None:
         self._place_work(True)
+
+    def _ensure_rx_byte_slots(self, count: int) -> None:
+        count = 13 if int(count) > 8 else 8
+        row = getattr(self, "_rx_byte_row", None)
+        if row is None or len(getattr(self, "_rx_bytes", ())) == count:
+            return
+        for lab in self._rx_bytes:
+            lab.destroy()
+        self._rx_bytes = []
+        width = 2 if count > 8 else 3
+        for i in range(count):
+            lab = tk.Label(
+                row,
+                text="--",
+                width=width,
+                relief="solid",
+                bd=1,
+                font=FONT_MONO,
+                bg="#FFFFFF",
+                fg="#2A2E34",
+            )
+            lab.grid(row=0, column=i, sticky="ew", padx=1)
+            row.columnconfigure(i, weight=1, uniform="rxbyte")
+            self._rx_bytes.append(lab)
+        for i in range(count, 16):
+            row.columnconfigure(i, weight=0)
 
     def _ensure_rx_chips(self, names: list[str]) -> None:
         row = getattr(self, "_rx_chips_row", None)
@@ -3909,21 +4040,17 @@ class CanTesterApp(tk.Tk):
         for w in row.winfo_children():
             w.destroy()
         self._rx_chip_labels = {}
-        cols = len(names) if names and sum(len(n) for n in names) <= 14 else 4
-        cols = max(1, min(cols, len(names) or 1))
-        for c in range(8):
-            row.columnconfigure(c, weight=1 if c < cols else 0)
-        for i, name in enumerate(names):
+        for name in names:
             lab = tk.Label(
                 row,
                 text=name,
                 font=FONT_UI_SM,
                 bg="#EEF0F3",
                 fg=MUTED_FG,
-                padx=6,
-                pady=2,
+                padx=4,
+                pady=1,
             )
-            lab.grid(row=i // cols, column=i % cols, sticky="w", padx=(0, 8), pady=1)
+            lab.pack(side=tk.LEFT, padx=(0, 6))
             self._rx_chip_labels[name] = lab
 
     def _paint_rx_view(self, view: dict) -> None:
@@ -4060,24 +4187,554 @@ class CanTesterApp(tk.Tk):
         self._working_module = mod
         self._start_init_run(only_enabled=True, indices=None)
 
-    def _apply_goo_combo(self) -> None:
-        """Bind init + responder + send fields for the selected role."""
-        role = self._goo_role()
-        if role == ROLE_CLIENT:
-            self.settings.init_module = ""
-            self.settings.responder_module = ""
+    def _build_nbm_send_panels(self, mid: ttk.Frame) -> None:
+        """Robot input / welder output controls for Jasic NBM-500R."""
+        self._nbm_frag_var = tk.StringVar(value="")
+
+        def checks(parent, pairs) -> None:
+            grid = ttk.Frame(parent)
+            grid.pack(fill=tk.X, pady=(2, 0))
+            for text, var in pairs:
+                ttk.Checkbutton(
+                    grid, text=text, variable=var, command=self._sync_nbm_tx_fields
+                ).pack(side=tk.LEFT, padx=(0, 8))
+
+        def entry(parent, text, var, width, handler) -> None:
+            ttk.Label(parent, text=text).pack(side=tk.LEFT)
+            ent = ttk.Entry(parent, textvariable=var, width=width)
+            ent.pack(side=tk.LEFT, padx=(4, 8))
+            ent.bind("<KeyRelease>", handler)
+
+        self._nbm_client_box = ttk.Frame(mid)
+        self._nbm_weld = tk.BooleanVar(value=False)
+        self._nbm_ready = tk.BooleanVar(value=True)
+        self._nbm_gas = tk.BooleanVar(value=False)
+        self._nbm_inch = tk.BooleanVar(value=False)
+        self._nbm_retract = tk.BooleanVar(value=False)
+        self._nbm_reset = tk.BooleanVar(value=False)
+        self._nbm_seek = tk.BooleanVar(value=False)
+        checks(
+            self._nbm_client_box,
+            (
+                ("开始焊接", self._nbm_weld),
+                ("机器人就绪", self._nbm_ready),
+                ("气体检测", self._nbm_gas),
+                ("点动送丝", self._nbm_inch),
+                ("反抽送丝", self._nbm_retract),
+                ("故障复位", self._nbm_reset),
+                ("寻位使能", self._nbm_seek),
+            ),
+        )
+        row1 = ttk.Frame(self._nbm_client_box)
+        row1.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(row1, text="模式").pack(side=tk.LEFT)
+        self._nbm_mode = tk.StringVar(value=nbm.MODE_ORDER[0])
+        mode_box = ttk.Combobox(
+            row1,
+            textvariable=self._nbm_mode,
+            values=nbm.MODE_ORDER,
+            state="readonly",
+            width=10,
+        )
+        mode_box.pack(side=tk.LEFT, padx=(4, 8))
+        mode_box.bind("<<ComboboxSelected>>", lambda _e: self._sync_nbm_tx_fields())
+        self._nbm_job = tk.StringVar(value="1")
+        entry(row1, "JOB", self._nbm_job, 4, lambda _e: self._sync_nbm_tx_fields())
+        row2 = ttk.Frame(self._nbm_client_box)
+        row2.pack(fill=tk.X, pady=(4, 0))
+        self._nbm_i = tk.StringVar(value="0.0")
+        self._nbm_wfs = tk.StringVar(value="0.00")
+        entry(row2, "电流 A", self._nbm_i, 6, lambda _e: self._on_nbm_given("i"))
+        entry(row2, "送丝", self._nbm_wfs, 6, lambda _e: self._on_nbm_given("wfs"))
+        row3 = ttk.Frame(self._nbm_client_box)
+        row3.pack(fill=tk.X, pady=(4, 0))
+        self._nbm_u = tk.StringVar(value="0.0")
+        self._nbm_trim = tk.StringVar(value="0.0")
+        entry(row3, "电压 V", self._nbm_u, 6, lambda _e: self._on_nbm_given("u"))
+        entry(row3, "修正 %", self._nbm_trim, 6, lambda _e: self._on_nbm_given("trim"))
+        self._refresh_nbm_given_labels(None)
+        ttk.Label(
+            self._nbm_client_box, textvariable=self._nbm_frag_var, style="Muted.TLabel"
+        ).pack(anchor=tk.W)
+
+        self._nbm_welder_box = ttk.Frame(mid)
+        self._nbm_arc = tk.BooleanVar(value=False)
+        self._nbm_welding = tk.BooleanVar(value=False)
+        self._nbm_fault = tk.BooleanVar(value=False)
+        self._nbm_comm = tk.BooleanVar(value=True)
+        self._nbm_feeder = tk.BooleanVar(value=True)
+        self._nbm_touch = tk.BooleanVar(value=False)
+        self._nbm_over = tk.BooleanVar(value=False)
+        checks(
+            self._nbm_welder_box,
+            (
+                ("起弧成功", self._nbm_arc),
+                ("焊接状态", self._nbm_welding),
+                ("焊机故障", self._nbm_fault),
+                ("通讯就绪", self._nbm_comm),
+                ("寻位成功", self._nbm_touch),
+                ("送丝机正常", self._nbm_feeder),
+                ("给定超范围", self._nbm_over),
+            ),
+        )
+        nums = ttk.Frame(self._nbm_welder_box)
+        nums.pack(fill=tk.X, pady=(4, 0))
+        self._nbm_alarm = tk.StringVar(value="0")
+        self._nbm_out_i = tk.StringVar(value="0.0")
+        self._nbm_out_u = tk.StringVar(value="0.0")
+        entry(nums, "报警", self._nbm_alarm, 4, lambda _e: self._sync_nbm_tx_fields())
+        entry(nums, "电流 A", self._nbm_out_i, 6, lambda _e: self._sync_nbm_tx_fields())
+        entry(nums, "电压 V", self._nbm_out_u, 6, lambda _e: self._sync_nbm_tx_fields())
+        self._nbm_auto = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            self._nbm_welder_box,
+            text="自动应答",
+            variable=self._nbm_auto,
+            command=self._on_nbm_auto,
+        ).pack(anchor=tk.W, pady=(4, 0))
+        ttk.Label(
+            self._nbm_welder_box, textvariable=self._nbm_frag_var, style="Muted.TLabel"
+        ).pack(anchor=tk.W)
+
+    def _layout_nbm_panels(self) -> None:
+        self._hide_signal_box(getattr(self, "_client_box", None))
+        self._hide_signal_box(getattr(self, "_welder_box", None))
+        client = getattr(self, "_nbm_client_box", None)
+        welder = getattr(self, "_nbm_welder_box", None)
+        if client is None or welder is None:
+            return
+        client_role = self._goo_role() == ROLE_CLIENT
+        self._show_profile_chrome(True, init=False, setup=False)
+        self._hide_signal_box(client)
+        self._hide_signal_box(welder)
+        self._pack_signal_box(client if client_role else welder)
+        self._ensure_rx_byte_slots(8)
+        if client_role:
+            self._rx_title_var.set("接收 · 焊机")
+            self._ensure_rx_chips(list(nbm.JTE_STATUS_CHIPS))
         else:
-            self.settings.init_module = ""
-            self.settings.responder_module = RESPONDER_MODULE_NAME
-        self.settings = self.settings.clamp()
+            self._rx_title_var.set("接收 · 机器人")
+            self._ensure_rx_chips(list(nbm.JTE_ROBOT_CHIPS))
+        self._place_work(True)
+
+    def _reset_nbm_asm(self) -> None:
+        for asm in getattr(self, "_nbm_asm", {}).values():
+            asm.reset()
+
+    def _refresh_nbm_given_labels(self, src: str | None) -> None:
+        self._nbm_lock = True
         try:
-            save_settings(self.settings)
-        except OSError as exc:
-            messagebox.showwarning("保存设置失败", str(exc))
-        self._refresh_modules()
-        self._reload_responder_profile()
+            if src != "i":
+                self._nbm_i.set(f"{nbm.raw_to_current_a(self._nbm_given_raw):.1f}")
+            if src != "wfs":
+                self._nbm_wfs.set(f"{nbm.raw_to_wfs(self._nbm_given_raw):.2f}")
+            if src != "u":
+                self._nbm_u.set(f"{nbm.raw_to_voltage_in(self._nbm_arc_raw):.1f}")
+            if src != "trim":
+                self._nbm_trim.set(nbm.fmt_trim(nbm.raw_to_trim(self._nbm_arc_raw)))
+        finally:
+            self._nbm_lock = False
+
+    def _on_nbm_given(self, src: str, _evt=None) -> None:
+        if getattr(self, "_nbm_lock", False):
+            return
+        try:
+            if src == "i":
+                self._nbm_given_raw = nbm.current_a_to_raw(float(self._nbm_i.get()))
+            elif src == "wfs":
+                self._nbm_given_raw = nbm.wfs_to_raw(float(self._nbm_wfs.get()))
+            elif src == "u":
+                self._nbm_arc_raw = nbm.voltage_in_to_raw(float(self._nbm_u.get()))
+            elif src == "trim":
+                self._nbm_arc_raw = nbm.trim_to_raw(float(self._nbm_trim.get()))
+            else:
+                return
+        except (ValueError, tk.TclError):
+            return
+        self._refresh_nbm_given_labels(src)
+        self._sync_nbm_tx_fields()
+
+    def _nbm_job_value(self) -> int:
+        try:
+            return int(float(self._nbm_job.get() or "0"))
+        except (ValueError, tk.TclError, AttributeError):
+            return 0
+
+    def _nbm_input_payload(self) -> bytes:
+        return nbm.pack_input(
+            weld=bool(self._nbm_weld.get()),
+            robot_ready=bool(self._nbm_ready.get()),
+            mode=nbm.mode_code(self._nbm_mode.get()),
+            gas=bool(self._nbm_gas.get()),
+            inch=bool(self._nbm_inch.get()),
+            retract=bool(self._nbm_retract.get()),
+            fault_reset=bool(self._nbm_reset.get()),
+            touch_enable=bool(self._nbm_seek.get()),
+            given_raw=int(self._nbm_given_raw),
+            arc_raw=int(self._nbm_arc_raw),
+            job=self._nbm_job_value(),
+        )
+
+    def _nbm_output_payload(self) -> bytes:
+        def num(var, default=0.0) -> float:
+            try:
+                return float(var.get() or "0")
+            except (ValueError, tk.TclError):
+                return default
+
+        try:
+            alarm = int(num(self._nbm_alarm))
+        except (TypeError, ValueError):
+            alarm = 0
+        return nbm.pack_output(
+            arc_ok=bool(self._nbm_arc.get()),
+            welding=bool(self._nbm_welding.get()),
+            fault=bool(self._nbm_fault.get()),
+            comm_ready=bool(self._nbm_comm.get()),
+            touch_ok=bool(self._nbm_touch.get()),
+            feeder_ok=bool(self._nbm_feeder.get()),
+            range_over=bool(self._nbm_over.get()),
+            alarm=alarm,
+            current_raw=nbm.current_out_to_raw(num(self._nbm_out_i)),
+            voltage_raw=nbm.voltage_out_to_raw(num(self._nbm_out_u)),
+        )
+
+    def _nbm_number(self, var, default: float = 0.0) -> float:
+        try:
+            return float(var.get() or "0")
+        except (ValueError, tk.TclError, AttributeError):
+            return default
+
+    def _nbm_tx_frames(self) -> list[tuple[int, bytes]]:
+        if self._goo_role() == ROLE_CLIENT:
+            mode = nbm.mode_code(self._nbm_mode.get())
+            current = int(round(self._nbm_number(self._nbm_i)))
+            trim = int(round(self._nbm_number(self._nbm_trim)))
+            if mode == 4:
+                parameter1 = int(round(self._nbm_number(self._nbm_i) * 10))
+                parameter2 = int(round(self._nbm_number(self._nbm_u) * 10))
+            else:
+                parameter1 = current
+                parameter2 = max(-20, min(20, trim))
+            return nbm.jte_robot_cycle(
+                weld=bool(self._nbm_weld.get()),
+                robot_ready=bool(self._nbm_ready.get()),
+                mode=mode,
+                gas=bool(self._nbm_gas.get()),
+                feed=bool(self._nbm_inch.get()),
+                retract=bool(self._nbm_retract.get()),
+                fault_reset=bool(self._nbm_reset.get()),
+                touch=bool(self._nbm_seek.get()),
+                job=self._nbm_job_value(),
+                parameter1=parameter1,
+                parameter2=parameter2,
+            )
+        return self._nbm_tpdo_frames()
+
+    def _nbm_tpdo_frames(self) -> list[tuple[int, bytes]]:
+        return nbm.jte_welder_replies(
+            ready=bool(self._nbm_comm.get()),
+            in_weld=bool(self._nbm_welding.get() or self._nbm_arc.get()),
+            current_a=int(round(self._nbm_number(self._nbm_out_i))),
+            voltage_v=self._nbm_number(self._nbm_out_u),
+            alarm=int(round(self._nbm_number(self._nbm_alarm))),
+        )
+
+    def _nbm_signal_frames(self) -> list[tuple[int, bytes]]:
+        return self._nbm_tx_frames()
+
+    def _sync_nbm_tx_fields(self, *_args) -> None:
+        if not self._nbm_combo_active() or not hasattr(self, "id_var"):
+            return
+        frames = self._nbm_tx_frames()
+        if not frames:
+            return
+        can_id, data = frames[0]
+        self.id_var.set(f"0x{can_id:03X}")
+        self.ext_var.set(False)
+        self.data_var.set(format_data_hex(data))
+        extra = "  ".join(
+            f"0x{fid:03X} {format_data_hex(payload)}" for fid, payload in frames[1:]
+        )
+        self._nbm_frag_var.set(extra)
+
+    def _on_nbm_auto(self) -> None:
+        self._capture_combo_slot(nbm.COMBO_JASIC_NBM)
+        self._sync_nbm_tx_fields()
+        self._sync_protocol_engines()
+
+    def _send_nbm_frames(
+        self, frames: list[tuple[int, bytes]], *, always: bool, arm: bool
+    ) -> None:
+        for can_id, data in frames:
+            fr = self.session.send(int(can_id), bytes(data), False)
+            ts = getattr(fr, "timestamp", None) or time.time()
+            self._append_frame("TX", fr.can_id, False, fr.data, ts, always=always)
+        if arm:
+            self._arm_reply_capture()
+
+    def _send_nbm_signals(self, *, always: bool, arm: bool) -> None:
+        self._send_nbm_frames(self._nbm_tx_frames(), always=always, arm=arm)
+
+    def _send_help_text(self) -> str:
+        combo = ""
+        var = getattr(self, "profile_var", None)
+        if var is not None:
+            try:
+                combo = (var.get() or "").strip()
+            except tk.TclError:
+                combo = ""
+        role = self._goo_role()
+        if combo == COMBO_MEGMEET_GOO:
+            if role == ROLE_CLIENT:
+                return (
+                    "Megmeet - GOO · 给焊机发\n\n"
+                    "按勾选组轮询帧（0x1FD07063）。\n"
+                    "点「发送初始化」发 F0–F5。"
+                )
+            return (
+                "Megmeet - GOO · 模拟焊机\n\n"
+                "看机器人下发，按勾选回帧（0x1FD08063）。\n"
+                "开总线后自动应答。"
+            )
+        if combo == nbm.COMBO_JASIC_NBM:
+            if role == ROLE_CLIENT:
+                return (
+                    "Jasic · 给焊机发\n\n"
+                    "每拍发送标准帧 0x202、0x302、0x080。\n"
+                    "波特率 125 kbit/s。\n"
+                    "和 WeldingTools 对接请改用「模拟焊机」。"
+                )
+            return (
+                "Jasic · 模拟焊机\n\n"
+                "开总线后每 20ms 发标准帧 0x182/0x282。\n"
+                "必须和 WeldingTools 用同一个 canN，不要选 virtual。\n"
+                "插件 Enable 会把口 down 再 up，本工具会自动重连。\n"
+                "勾选「通讯就绪」后插件才认为焊机就绪。"
+            )
+        return (
+            "通用模式\n\n"
+            "填写 CAN ID 和 HEX，点单次或周期发送。\n"
+            "选「Megmeet - GOO」或「Jasic NBM-500R」后按对应协议组帧。"
+        )
+
+    def _show_send_help(self) -> None:
+        messagebox.showinfo("发送说明", self._send_help_text(), parent=self)
+
+    def _apply_nbm_combo(self) -> None:
+        self._layout_nbm_panels()
+        self._refresh_init_summary()
+        self._sync_nbm_tx_fields()
+        self._sync_protocol_engines()
+        iface = (self.iface_var.get() or "").strip()
+        if self._goo_role() == ROLE_CLIENT:
+            self.status_var.set(
+                f"Jasic · 给焊机发 · {iface} · 125 kbit/s（0x202/0x302/0x080）"
+            )
+        else:
+            self.status_var.set(
+                f"Jasic · 模拟焊机 · {iface} · 正在发标准帧 0x182/0x282"
+            )
+
+    def _nbm_want_beat(self) -> bool:
+        if not (self._goo_combo_active() or self._nbm_combo_active()):
+            return False
+        slot = (getattr(self, "_combo_slots", None) or {}).get(nbm.COMBO_JASIC_NBM) or {}
+        auto = bool(slot.get("auto", True))
+        if getattr(self, "_nbm_auto", None) is not None and self._nbm_combo_active():
+            auto = bool(self._nbm_auto.get())
+        return (
+            slot.get("role") == ROLE_WELDER
+            and auto
+            and bool(getattr(self, "_user_bus_on", False))
+            and not bool(self.settings.listen_only_shared)
+        )
+
+    def _nbm_welder_live(self) -> bool:
+        return self._nbm_want_beat() and bool(getattr(self.session, "connected", False))
+
+    def _reopen_socketcan(self) -> bool:
+        if not getattr(self, "_user_bus_on", False):
+            return False
+        name = (self.iface_var.get() or "").strip()
+        if not name or name == VIRTUAL_IFACE:
+            return False
+        try:
+            if self.session.connected:
+                self.session.disconnect()
+        except Exception:
+            pass
+        if not is_socketcan_present(name) or not is_socketcan_up(name):
+            return False
+        try:
+            self.session.connect(
+                name,
+                listen_only_shared=bool(self.settings.listen_only_shared),
+            )
+        except Exception:
+            return False
+        self._set_conn_buttons(True)
+        return True
+
+    def _cancel_nbm_beat(self) -> None:
+        job = getattr(self, "_nbm_beat_job", None)
+        if job is not None:
+            try:
+                self.after_cancel(job)
+            except Exception:
+                pass
+        self._nbm_beat_job = None
+
+    def _arm_nbm_beat(self) -> None:
+        self._cancel_nbm_beat()
+        if self._nbm_want_beat():
+            self._nbm_beat()
+
+    def _nbm_beat(self) -> None:
+        self._nbm_beat_job = None
+        if not self._nbm_want_beat():
+            return
+        delay_ms = 20
+        if not self.session.connected and not self._reopen_socketcan():
+            self.status_var.set("接口被插件重启，正在重连并继续发 0x182…")
+            delay_ms = 200
+        else:
+            try:
+                self._send_nbm_frames(self._nbm_tpdo_frames(), always=False, arm=False)
+            except Exception:
+                if not self._reopen_socketcan():
+                    self.status_var.set("接口被插件重启，正在重连并继续发 0x182…")
+                    delay_ms = 200
+                else:
+                    try:
+                        self._send_nbm_frames(
+                            self._nbm_tpdo_frames(), always=False, arm=False
+                        )
+                    except Exception:
+                        self.status_var.set("接口被插件重启，正在重连并继续发 0x182…")
+                        delay_ms = 200
+        self._nbm_beat_job = self.after(delay_ms, self._nbm_beat)
+
+    def _send_nbm_setup(self) -> None:
+        if not self.session.connected:
+            messagebox.showwarning("未连接", "请先打开总线，再建立连接")
+            return
+        self._nbm_setup = {
+            "frames": list(nbm.MASTER_SETUP_FRAMES),
+            "i": 0,
+            "phase": "send",
+            "got": False,
+            "deadline": 0.0,
+        }
+        self.status_var.set("正在建立 NBM-500R 连接…")
+        self._tick_nbm_setup()
+
+    def _tick_nbm_setup(self) -> None:
+        job = getattr(self, "_nbm_setup", None)
+        if not job:
+            return
+        if not self.session.connected:
+            self._nbm_setup = None
+            return
+        now = time.time()
+        if job["phase"] == "wait":
+            if not job["got"] and now < job["deadline"]:
+                return
+            job["got"] = False
+            job["i"] += 1
+            job["phase"] = "gap"
+            job["deadline"] = now + 0.02
+            return
+        if job["phase"] == "gap" and now < job["deadline"]:
+            return
+        frames = job["frames"]
+        if job["i"] >= len(frames):
+            self._nbm_setup = None
+            self.status_var.set("已发送 NBM-500R 建立连接（手册 V100 主站帧）")
+            return
+        step = frames[job["i"]]
+        try:
+            fr = self.session.send(step.can_id, step.data, False)
+        except Exception as exc:
+            self._nbm_setup = None
+            self.status_var.set(f"建立连接失败：{exc}")
+            return
+        ts = getattr(fr, "timestamp", None) or time.time()
+        self._append_frame("TX", fr.can_id, False, fr.data, ts, always=True)
+        if step.wait_rsp:
+            job["phase"] = "wait"
+            job["got"] = False
+            job["deadline"] = now + 0.35
+            return
+        job["i"] += 1
+        job["phase"] = "gap"
+        job["deadline"] = now + 0.04
+
+    def _note_nbm_rx(self, can_id: int, data: bytes, *, is_echo: bool) -> None:
+        if is_echo:
+            return
+        cid = int(can_id)
+        job = self._nbm_setup
+        if job and job.get("phase") == "wait" and cid == nbm.EXPLICIT_RSP_ID:
+            job["got"] = True
+        show = self._nbm_combo_active()
+        live = self._nbm_welder_live()
+        if show:
+            role = self._goo_role()
+            if role == ROLE_WELDER and cid == nbm.RPDO1_ID:
+                self._nbm_last_rpdo1 = bytes(data)
+                self._paint_rx_view(
+                    nbm.describe_jte_robot(
+                        self._nbm_last_rpdo1, getattr(self, "_nbm_last_rpdo2", b"")
+                    )
+                )
+            elif role == ROLE_WELDER and cid == nbm.RPDO2_ID:
+                self._nbm_last_rpdo2 = bytes(data)
+                if getattr(self, "_nbm_last_rpdo1", b""):
+                    self._paint_rx_view(
+                        nbm.describe_jte_robot(self._nbm_last_rpdo1, self._nbm_last_rpdo2)
+                    )
+            elif role == ROLE_CLIENT and cid == nbm.TPDO1_ID and len(data) >= 8:
+                self._paint_rx_view(nbm.describe_jte_status(data))
+            elif role == ROLE_CLIENT and cid == nbm.POLL_RSP_ID:
+                payload = self._nbm_asm[nbm.POLL_RSP_ID].feed(data)
+                if payload is not None:
+                    self._paint_rx_view(nbm.describe_output(payload))
+        if not live:
+            return
+        if cid in (nbm.SYNC_ID, nbm.RPDO1_ID):
+            try:
+                self._send_nbm_frames(self._nbm_tpdo_frames(), always=False, arm=False)
+            except Exception:
+                pass
+        hit = nbm.explicit_reply(cid, data)
+        if hit is not None:
+            try:
+                self._send_nbm_frames([hit], always=False, arm=False)
+            except Exception as exc:
+                self.status_var.set(f"应答发送失败: {exc}")
+            return
+        if cid == nbm.POLL_ID:
+            payload = self._nbm_asm[nbm.POLL_ID].feed(data)
+            if payload is None:
+                return
+            if show:
+                self._paint_rx_view(nbm.describe_input(payload))
+            try:
+                self._send_nbm_frames(
+                    [(nbm.POLL_RSP_ID, fr) for fr in nbm.fragment_io(self._nbm_output_payload())],
+                    always=False,
+                    arm=False,
+                )
+            except Exception as exc:
+                self.status_var.set(f"应答发送失败: {exc}")
+
+    def _apply_goo_combo(self) -> None:
+        """Show Megmeet controls. Does not disable the Jasic engine."""
         self._layout_goo_panels()
         self._refresh_init_summary()
+        self._sync_protocol_engines()
+        role = self._goo_role()
         if role == ROLE_CLIENT:
             self._sync_client_poll_fields()
             self.status_var.set("Megmeet - GOO · 给焊机发（轮询；点「发送初始化」发 F0–F5）")
@@ -4091,37 +4748,36 @@ class CanTesterApp(tk.Tk):
     def _build_txrx_leds(self, parent: ttk.Frame) -> None:
         """Two Ø10 LEDs left of 设置: TX green / RX blue; idle = border gray."""
         led_fr = ttk.Frame(parent)
-        led_fr.pack(side=tk.RIGHT, padx=(8, 8))
+        led_fr.pack(side=tk.RIGHT, padx=(0, 8))
         d = LED_DIAMETER
-        # TX
+        pad = 2
         ttk.Label(led_fr, text="TX", style="Header.TLabel").pack(side=tk.LEFT)
         self._tx_led_canvas = tk.Canvas(
             led_fr,
-            width=d,
-            height=d,
+            width=d + pad,
+            height=d + pad,
             highlightthickness=0,
             bd=0,
             bg=BG,
         )
         self._tx_led_canvas.pack(side=tk.LEFT, padx=(3, 0))
         self._tx_led_oval = self._tx_led_canvas.create_oval(
-            1, 1, d - 1, d - 1, fill=LED_IDLE, outline=LED_IDLE
+            1, 1, d, d, fill=LED_IDLE, outline=LED_IDLE
         )
-        # RX (padx LED_GAP = 6 between the two Ø10 lights)
         ttk.Label(led_fr, text="RX", style="Header.TLabel").pack(
             side=tk.LEFT, padx=(LED_GAP, 0)
         )
         self._rx_led_canvas = tk.Canvas(
             led_fr,
-            width=d,
-            height=d,
+            width=d + pad,
+            height=d + pad,
             highlightthickness=0,
             bd=0,
             bg=BG,
         )
         self._rx_led_canvas.pack(side=tk.LEFT, padx=(3, 0))
         self._rx_led_oval = self._rx_led_canvas.create_oval(
-            1, 1, d - 1, d - 1, fill=LED_IDLE, outline=LED_IDLE
+            1, 1, d, d, fill=LED_IDLE, outline=LED_IDLE
         )
 
     def _led_prefix(self, which: str) -> str | None:
@@ -4405,16 +5061,19 @@ class CanTesterApp(tk.Tk):
             )
             messagebox.showerror(title, msg)
             return
+        self._user_bus_on = True
         self._set_conn_buttons(True)
         self._update_empty_state()
         self._maybe_auto_init_on_connect()
+        self._sync_protocol_engines()
 
     def _close_conn(self) -> None:
-        if not self.session.connected:
-            return
+        self._user_bus_on = False
         self._stop_period()
+        self._cancel_nbm_beat()
         self._connect_init_count = None
-        self.session.disconnect()
+        if self.session.connected:
+            self.session.disconnect()
         self._set_conn_buttons(False)
         self.status_var.set("未连接")
         self._await_replies = 0
@@ -4464,12 +5123,7 @@ class CanTesterApp(tk.Tk):
         if self.settings.rx_changes_only and not changed and not always:
             return
         t = time.strftime("%H:%M:%S", time.localtime(ts))
-        note = ""
-        # Optional decode helper when用户手选了通用以外文案（无硬编码档位表）
-        pv = (self.profile_var.get() or "")
-        if pv and pv not in (CHOICE_NONE, "通用（仅原始 HEX）", getattr(megmeet, "PROFILE_NONE", "")):
-            if "Megmeet" in pv or "焊机" in pv:
-                note = megmeet.decode_frame(can_id, data)
+        note = megmeet.decode_frame(can_id, data) or nbm.note_for_frame(can_id, data)
         kind = "扩展" if extended else "标准"
         if note:
             note = f"{kind} · {note}"
@@ -4517,6 +5171,9 @@ class CanTesterApp(tk.Tk):
             messagebox.showwarning("未连接", "请先打开总线")
             return
         try:
+            if self._nbm_combo_active():
+                self._send_nbm_signals(always=True, arm=True)
+                return
             can_id, data, extended = self._parse_tx_fields()
             fr = self.session.send(can_id, data, extended)
         except Exception as exc:
@@ -4539,7 +5196,10 @@ class CanTesterApp(tk.Tk):
             if ms < 1:
                 raise ValueError("周期至少 1 ms")
             # Validate fields once up front (bad ID still dialogs once)
-            self._parse_tx_fields()
+            if self._nbm_combo_active():
+                self._nbm_signal_frames()
+            else:
+                self._parse_tx_fields()
         except Exception as exc:
             messagebox.showerror("周期无效", str(exc))
             return
@@ -4556,8 +5216,12 @@ class CanTesterApp(tk.Tk):
             self._period_fail_stop("未连接")
             return
         try:
-            can_id, data, extended = self._parse_tx_fields()
-            fr = self.session.send(can_id, data, extended)
+            if self._nbm_combo_active():
+                self._send_nbm_signals(always=False, arm=True)
+                fr = None
+            else:
+                can_id, data, extended = self._parse_tx_fields()
+                fr = self.session.send(can_id, data, extended)
         except Exception as exc:
             self._period_fail_count += 1
             if self._period_fail_count <= PERIOD_FAIL_SILENT_MAX:
@@ -4567,8 +5231,9 @@ class CanTesterApp(tk.Tk):
             self._period_fail_stop(str(exc))
             return
         self._period_fail_count = 0
-        self._append_frame("TX", fr.can_id, fr.is_extended, fr.data, fr.timestamp)
-        self._arm_reply_capture()
+        if fr is not None:
+            self._append_frame("TX", fr.can_id, fr.is_extended, fr.data, fr.timestamp)
+            self._arm_reply_capture()
         self._period_job = self.after(int(ms), lambda: self._period_tick(ms))
 
     def _period_fail_stop(self, reason: str) -> None:
@@ -4642,7 +5307,7 @@ class CanTesterApp(tk.Tk):
                 relief=tk.SOLID,
                 borderwidth=1,
                 font=FONT_UI_SM,
-                wraplength=420,
+                wraplength=280,
                 padx=8,
                 pady=6,
             )
@@ -4671,6 +5336,8 @@ class CanTesterApp(tk.Tk):
         messagebox.showinfo("状态详情", full)
 
     def _poll(self) -> None:
+        if self._nbm_combo_active():
+            self._tick_nbm_setup()
         self._check_reply_timeout()
         whitelist = parse_rx_id_whitelist(self.settings.rx_id_filter)
         for fr in self.session.drain_rx():
@@ -4683,6 +5350,7 @@ class CanTesterApp(tk.Tk):
             # Activity lamp is independent of timeline filtering.
             self._pulse_led("RX")
             self._note_goo_rx(fr.can_id, fr.data)
+            self._note_nbm_rx(fr.can_id, fr.data, is_echo=is_echo)
             # Auto-reply before display filtering so floods still get answers
             # (skip own echo — do not answer ourselves).
             if self.settings.enable_responder and not is_echo:
@@ -4711,11 +5379,18 @@ class CanTesterApp(tk.Tk):
             except Exception:
                 break
             self._set_status_error(err)
-            # Keep primary open button style — never flip to danger/red on RX errors.
             try:
-                self.open_btn.configure(style="Primary.TButton")
+                if getattr(self, "_user_bus_on", False) or self.session.connected:
+                    self.bus_btn.configure(style="Secondary.TButton")
+                else:
+                    self.bus_btn.configure(style="Primary.TButton")
             except tk.TclError:
                 pass
+            if self._nbm_want_beat() and getattr(self, "_nbm_beat_job", None) is None:
+                self.status_var.set("接口被插件重启，正在重连并继续发 0x182…")
+                self._nbm_beat_job = self.after(50, self._nbm_beat)
+        if self._nbm_combo_active():
+            self._tick_nbm_setup()
         self.after(80, self._poll)
 
     def _responder_choice_keys(self) -> list[str]:
@@ -4839,9 +5514,10 @@ class CanTesterApp(tk.Tk):
             pass
 
     def _drop_saved_responder_for_generic(self) -> None:
-        """未选择 does not keep a saved welder profile running in the background."""
-        if self._goo_combo_active():
+        """未选择 turns both auto engines off. Slot settings stay for the next switch."""
+        if self._goo_combo_active() or self._nbm_combo_active():
             return
+        self._cancel_nbm_beat()
         if not (self.settings.responder_module or "").strip():
             self._refresh_signal_card()
             return
