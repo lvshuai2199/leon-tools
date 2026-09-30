@@ -23,7 +23,32 @@
       </div>
       <template #dropdown>
         <el-dropdown-menu>
-          <el-dropdown-item @click="handleProfileClick">
+          <!-- 窄屏隐藏了顶栏按钮，字号和语言挪进这里 -->
+          <template v-if="!isDesktop">
+            <el-dropdown-item disabled class="navbar__menu-label">
+              {{ $t("sizeSelect.tooltip") }}
+            </el-dropdown-item>
+            <el-dropdown-item
+              v-for="item in sizeOptions"
+              :key="item.value"
+              :class="{ 'navbar__menu-current': appStore.size === item.value }"
+              @click="handleSizeChange(item.value)"
+            >
+              {{ item.label }}
+            </el-dropdown-item>
+            <el-dropdown-item disabled divided class="navbar__menu-label">
+              语言 / Language
+            </el-dropdown-item>
+            <el-dropdown-item
+              v-for="item in langOptions"
+              :key="item.value"
+              :class="{ 'navbar__menu-current': appStore.language === item.value }"
+              @click="handleLanguageChange(item.value)"
+            >
+              {{ item.label }}
+            </el-dropdown-item>
+          </template>
+          <el-dropdown-item :divided="!isDesktop" @click="handleProfileClick">
             {{ $t("navbar.profile") }}
           </el-dropdown-item>
           <el-dropdown-item divided @click="logout">
@@ -45,6 +70,8 @@ import { DeviceEnum } from "@/enums/DeviceEnum";
 import { useAppStore, useSettingsStore, useUserStore, useTagsViewStore } from "@/store";
 
 import { SidebarColorEnum, ThemeEnum } from "@/enums/ThemeEnum";
+import { SizeEnum } from "@/enums/SizeEnum";
+import { LanguageEnum } from "@/enums/LanguageEnum";
 
 const appStore = useAppStore();
 const settingStore = useSettingsStore();
@@ -54,6 +81,28 @@ const tagsViewStore = useTagsViewStore();
 const route = useRoute();
 const router = useRouter();
 const isDesktop = computed(() => appStore.device === DeviceEnum.DESKTOP);
+
+const { locale, t } = useI18n();
+const sizeOptions = computed(() => [
+  { label: t("sizeSelect.default"), value: SizeEnum.DEFAULT },
+  { label: t("sizeSelect.large"), value: SizeEnum.LARGE },
+  { label: t("sizeSelect.small"), value: SizeEnum.SMALL },
+]);
+const langOptions = [
+  { label: "中文", value: LanguageEnum.ZH_CN },
+  { label: "English", value: LanguageEnum.EN },
+];
+
+function handleSizeChange(size: string) {
+  appStore.changeSize(size);
+  ElMessage.success(t("sizeSelect.message.success"));
+}
+
+function handleLanguageChange(lang: string) {
+  locale.value = lang;
+  appStore.changeLanguage(lang);
+  ElMessage.success(t("langSelect.message.success"));
+}
 
 /**
  * 打开个人中心页面

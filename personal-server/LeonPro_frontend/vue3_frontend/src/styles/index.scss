@@ -16,12 +16,13 @@
 }
 
 // 卡片：圆角 12，内边距 16；卡片标题 16/600
-.el-card {
+// Element 的组件样式按需后加载，同样的选择器会把这里盖掉，所以前面加 html 提高优先级
+html .el-card {
   --el-card-border-radius: var(--lp-radius-card);
   --el-card-padding: var(--lp-card-padding);
 }
 
-.el-card__header {
+html .el-card__header {
   font-size: 16px;
   font-weight: 600;
   color: var(--el-text-color-primary);
@@ -37,12 +38,12 @@
 }
 
 // 弹窗：圆角 12，内边距 24，标题 18/600
-.el-dialog {
+html .el-dialog {
   --el-dialog-border-radius: var(--lp-radius-card);
   --el-dialog-padding-primary: 24px;
 }
 
-.el-dialog__title {
+html .el-dialog__title {
   font-size: 18px;
   font-weight: 600;
 }
@@ -57,7 +58,7 @@
 }
 
 // 表格空状态：48×48 图标框 + 14px 说明
-.el-table__empty-text {
+html .el-table__empty-text {
   line-height: 1.5;
 }
 
@@ -95,6 +96,17 @@ html.dark .table-empty {
   &__text {
     color: var(--el-text-color-secondary);
   }
+}
+
+// 窄屏时头像下拉菜单里的分组小标题（字号、语言）
+.el-dropdown-menu__item.navbar__menu-label {
+  font-size: 12px;
+  cursor: default;
+}
+
+.el-dropdown-menu__item.navbar__menu-current {
+  font-weight: 500;
+  color: var(--el-color-primary);
 }
 
 // 浅色下的标签：灰色标签统一色值，成功 / 警告用主题里的浅底，不用 Element 自动混色
