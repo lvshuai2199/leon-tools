@@ -59,14 +59,93 @@ public class MenuQueryService {
         return visibleMenus(enabledMenus(client), granted, root);
     }
 
-    /** 本端启用的目录和菜单（不含按钮） */
+    /** 本端启用的目录和菜单（不含按钮）；每行的 routeKey 都已换成完整路径（见 {@link #fillFullRouteKeys}） */
     public List<SysMenus> enabledMenus(String client) {
         LambdaQueryWrapper<SysMenus> w = new LambdaQueryWrapper<>();
         w.eq(SysMenus::getClient, client)
                 .eq(SysMenus::getDisabled, 0)
                 .ne(SysMenus::getMenuType, 2)
                 .orderByAsc(SysMenus::getSortOrder);
-        return sysMenusService.list(w);
+        List<SysMenus> rows = sysMenusService.list(w);
+        if (rows == null || rows.isEmpty()) {
+            return rows == null ? Collections.emptyList() : rows;
+        }
+        List<SysMenus> lookup = List.of();
+        if (rows.stream().anyMatch(MenuQueryService::needsParentPath)) {
+            // 有还没回填 route_key 的行：父级可能已停用 / 是按钮，按本端全部行拼路径
+            List<SysMenus> all = sysMenusService.list(new LambdaQueryWrapper<SysMenus>().eq(SysMenus::getClient, client));
+            lookup = all == null ? List.of() : all;
+        }
+        fillFullRouteKeys(rows, lookup);
+        return rows;
+    }
+
+    /**
+     * 返回给前端（appMenus / 管理端菜单）的 routeKey 一律是完整路径（/crab/new、/crab/:id），永远不是相对段：
+     * 已有的完整 route_key 只做规范化；还没回填的（手工新建、刚改过路径的菜单）或误存成相对段的，
+     * 按 parent_id 链把 menu_url 拼成完整路径。拼不出（父级不存在、成环、没有 menu_url）时置空，不返回相对路径。
+     *
+     * @param rows   要填的行（原地修改）
+     * @param lookup 用来找父级的其他行（可为空）
+     */
+    public static void fillFullRouteKeys(List<SysMenus> rows, Collection<SysMenus> lookup) {
+        if (rows == null || rows.isEmpty()) {
+            return;
+        }
+        Map<String, SysMenus> byId = new HashMap<>();
+        for (SysMenus m : rows) {
+            if (m.getId() != null) {
+                byId.put(m.getId(), m);
+            }
+        }
+        if (lookup != null) {
+            for (SysMenus m : lookup) {
+                if (m.getId() != null) {
+                    byId.putIfAbsent(m.getId(), m);
+                }
+            }
+        }
+        Map<String, String> memo = new HashMap<>();
+        Map<SysMenus, String> result = new java.util.IdentityHashMap<>();
+        for (SysMenus m : rows) {
+            result.put(m, fullPath(m, byId, memo, 0));
+        }
+        result.forEach(SysMenus::setRouteKey);
+    }
+
+    /** route_key 为空，或不是以 / 开头的相对段（且有父级）：需要按父级拼路径 */
+    private static boolean needsParentPath(SysMenus m) {
+        String key = m.getRouteKey() == null ? "" : m.getRouteKey().trim();
+        return key.isEmpty() || (!key.startsWith("/") && !MenuPaths.isExternal(key) && !isTop(m.getParentId()));
+    }
+
+    private static String fullPath(SysMenus m, Map<String, SysMenus> byId, Map<String, String> memo, int depth) {
+        if (depth > 20) {
+            return null;
+        }
+        if (m.getId() != null && memo.containsKey(m.getId())) {
+            return memo.get(m.getId());
+        }
+        String key = m.getRouteKey() == null ? "" : m.getRouteKey().trim();
+        String url = key.isEmpty() ? (m.getMenuUrl() == null ? "" : m.getMenuUrl().trim()) : key;
+        String result;
+        if (url.isEmpty()) {
+            result = null;
+        } else if (MenuPaths.isExternal(url) || url.startsWith("/") || isTop(m.getParentId())) {
+            result = MenuPaths.normalize(url);
+        } else {
+            SysMenus parent = byId.get(m.getParentId().trim());
+            String parentPath = parent == null || parent == m ? null : fullPath(parent, byId, memo, depth + 1);
+            result = parentPath == null || MenuPaths.isExternal(parentPath) ? null : MenuPaths.join(parentPath, url);
+        }
+        if (m.getId() != null) {
+            memo.put(m.getId(), result);
+        }
+        return result;
+    }
+
+    private static boolean isTop(String parentId) {
+        return parentId == null || parentId.isBlank() || "0".equals(parentId.trim());
     }
 
     /**
