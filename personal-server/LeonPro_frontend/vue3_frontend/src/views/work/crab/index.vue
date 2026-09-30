@@ -115,12 +115,7 @@
           <el-input-number v-model="formData.quantity" :min="0" />
         </el-form-item>
         <el-form-item label="发货单号">
-          <el-input v-model="formData.trackingNo" placeholder="可手动输入、扫码或选图">
-            <template #append>
-              <el-button @click="scanTracking">扫码</el-button>
-              <el-button @click="pickTrackingImage">图片</el-button>
-            </template>
-          </el-input>
+          <el-input v-model="formData.trackingNo" placeholder="请输入快递单号" clearable />
         </el-form-item>
         <el-form-item label="状态">
           <el-checkbox :model-value="!!formData.paid" @change="(v) => (formData.paid = v ? 1 : 0)">已付款</el-checkbox>
@@ -156,7 +151,6 @@ import CrabShipmentAPI, {
   type CrabShipmentForm,
   type CrabShipmentVO,
 } from "@/api/work/crab";
-import { pickTrackingNoFromImage, scanTrackingNo } from "@/utils/barcode-scan";
 
 defineOptions({
   name: "CrabShipment",
@@ -304,39 +298,6 @@ function resetForm() {
   formData.paid = 0;
   formData.shipped = 0;
   formData.shipDate = defaultShipDate();
-}
-
-function applyTracking(code?: string) {
-  if (!code) {
-    ElMessage.warning("没有识别到单号");
-    return;
-  }
-  formData.trackingNo = code;
-  if (!formData.shipped) formData.shipped = 1;
-  ElMessage.success("已填入单号");
-}
-
-function scanTracking() {
-  scanTrackingNo()
-    .then((code) => {
-      if (!code) return;
-      applyTracking(code);
-    })
-    .catch((error) => {
-      if (error && error.name === "AbortError") return;
-      console.error(error);
-      ElMessage.error("扫码失败，可改用图片识别");
-    });
-}
-
-function pickTrackingImage() {
-  ElMessage.info("正在识别图片...");
-  pickTrackingNoFromImage()
-    .then((code) => applyTracking(code))
-    .catch((error) => {
-      console.error(error);
-      ElMessage.error("图片识别失败");
-    });
 }
 
 function handleSubmit() {
