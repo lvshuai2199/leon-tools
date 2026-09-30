@@ -26,6 +26,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.atLeast;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -301,5 +302,54 @@ class RegCodeAccessServiceTest {
         assertEquals("该账号请使用手机端登录", svc.webBlockedMessage(u("adminSub", "role_x", "admin")),
                 "管理员名下的普通子账号：中性提示");
         assertEquals("该账号请使用手机端登录", svc.webBlockedMessage(u("m", "role_admin", null)));
+    }
+
+    /** createdCount（/auth/me）和 max_sub_users 上限（新建 / 重新启用）只数启用中的注册码子用户，螃蟹出货等其他子账号不算 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void enabledSubUserCountOnlyCountsEnabledRegCodeSubUsers() {
+        when(regCodeUsers.list(any(Wrapper.class))).thenAnswer(inv -> {
+            AbstractWrapper<?, ?, ?> w = inv.getArgument(0);
+            w.getSqlSegment();
+            List<RegCodeUser> rows = new java.util.ArrayList<>();
+            for (Object v : w.getParamNameValuePairs().values()) {
+                String id = String.valueOf(v);
+                if (status.containsKey(id)) {
+                    RegCodeUser a = new RegCodeUser();
+                    a.setUserId(id);
+                    a.setStatus(status.get(id));
+                    rows.add(a);
+                }
+            }
+            return rows;
+        });
+        status.put("rcOn", 1);
+        status.put("rcOff", 0);
+        status.put("crabSub", 1);
+        status.put("crabSubOff", 0);
+        List<SysUsers> ownerChildren = List.of(
+                u("rcOn", "role_regcode_client", "owner"),
+                u("rcNoRow", " role_regcode_client ", "owner"),   // 没有 reg_code_user 行 = 启用
+                u("rcOff", "role_regcode_client", "owner"),       // 停用：不算
+                u("crabSub", "role_crab", "owner"),               // 螃蟹出货子账号：不算
+                u("crabSubOff", "role_crab", "owner"),
+                u("plainSub", null, "owner"));                    // 没有角色的子账号：不算
+        when(users.list(any(Wrapper.class))).thenReturn(ownerChildren);
+        assertEquals(2, svc.enabledSubUserCount("owner"));
+
+        // 只有螃蟹 / 其他子账号（如 t_crabMain）：0，而且不用再查 reg_code_user
+        org.mockito.Mockito.clearInvocations(regCodeUsers);
+        List<SysUsers> crabChildren = List.of(
+                u("c1", "role_crab", "crabMain"), u("c2", "role_ops", "crabMain"), u("c3", "role_crab", "crabMain"));
+        when(users.list(any(Wrapper.class))).thenReturn(crabChildren);
+        assertEquals(0, svc.enabledSubUserCount("crabMain"));
+        verify(regCodeUsers, never()).list(any(Wrapper.class));
+
+        when(users.list(any(Wrapper.class))).thenReturn(List.of());
+        assertEquals(0, svc.enabledSubUserCount("nobody"));
+        assertEquals(0, svc.enabledSubUserCount(" "));
+        assertTrue(RegCodeAccessService.isRegCodeRole(" role_regcode_client"));
+        assertFalse(RegCodeAccessService.isRegCodeRole("role_crab"));
+        assertFalse(RegCodeAccessService.isRegCodeRole(null));
     }
 }

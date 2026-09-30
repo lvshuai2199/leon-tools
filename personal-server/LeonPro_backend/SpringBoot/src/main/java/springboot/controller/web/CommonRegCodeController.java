@@ -164,10 +164,14 @@ public class CommonRegCodeController {
         return me;
     }
 
-    /** 必须是 parent_id = 我 的子用户；不存在也按无权限处理（403），不泄露 id 是否存在 */
+    /**
+     * 必须是 parent_id = 我 的注册码子用户（角色 role_regcode_client；螃蟹出货等其他子账号不归这里管）；
+     * 不存在也按无权限处理（403），不泄露 id 是否存在
+     */
     private SysUsers ownSubUser(SysUsers me, String id) {
         SysUsers sub = id == null || id.isBlank() ? null : this.sysUsersService.getById(id.trim());
-        if (sub == null || sub.getParentId() == null || !sub.getParentId().trim().equals(me.getId())) {
+        if (sub == null || sub.getParentId() == null || !sub.getParentId().trim().equals(me.getId())
+                || !RegCodeAccessService.isRegCodeRole(sub.getRoleId())) {
             throw new ForbiddenException("只能管理自己创建的子用户");
         }
         return sub;

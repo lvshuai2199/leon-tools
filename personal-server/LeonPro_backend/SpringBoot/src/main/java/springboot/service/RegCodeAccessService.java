@@ -358,7 +358,10 @@ public class RegCodeAccessService {
         return assignment == null || assignment.getMaxSubUsers() == null ? 0 : Math.max(assignment.getMaxSubUsers(), 0);
     }
 
-    /** 已创建且处于启用状态的子用户数（停用的不计入上限） */
+    /**
+     * 已创建且处于启用状态的注册码子用户数（/auth/me 的 regCode.createdCount 和 max_sub_users 上限都用它）：
+     * 只数 parent_id = userId 且角色是 role_regcode_client 的账号；螃蟹出货等其他子账号不算，停用的也不算。
+     */
     public int enabledSubUserCount(String userId) {
         if (userId == null || userId.isBlank()) {
             return 0;
@@ -368,7 +371,12 @@ public class RegCodeAccessService {
         if (children == null || children.isEmpty()) {
             return 0;
         }
-        List<String> ids = children.stream().map(SysUsers::getId).filter(Objects::nonNull).toList();
+        List<String> ids = children.stream()
+                .filter(c -> isRegCodeRole(c.getRoleId()))
+                .map(SysUsers::getId).filter(Objects::nonNull).toList();
+        if (ids.isEmpty()) {
+            return 0;
+        }
         List<RegCodeUser> rows = regCodeUserService.list(
                 new LambdaQueryWrapper<RegCodeUser>().in(RegCodeUser::getUserId, ids));
         Set<String> disabled = rows == null ? Set.of() : rows.stream()
@@ -467,8 +475,12 @@ public class RegCodeAccessService {
 
     /** 注册码用户：只看角色是否为 role_regcode_client（不再把“挂了父用户”当成注册码用户） */
     public boolean isRegCodeUser(SysUsers user) {
-        return user != null && user.getRoleId() != null
-                && ROLE_REGCODE_CLIENT_ID.equals(user.getRoleId().trim());
+        return user != null && isRegCodeRole(user.getRoleId());
+    }
+
+    /** 角色是否为注册码客户（role_regcode_client，忽略首尾空格） */
+    public static boolean isRegCodeRole(String roleId) {
+        return roleId != null && ROLE_REGCODE_CLIENT_ID.equals(roleId.trim());
     }
 
     /** 子账号：parent_id 非空 */

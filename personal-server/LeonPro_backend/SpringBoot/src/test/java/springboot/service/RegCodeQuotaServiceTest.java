@@ -136,4 +136,36 @@ class RegCodeQuotaServiceTest {
         verify(jdbc, never()).update(startsWith("UPDATE reg_code_user_config SET generate_limit = generate_limit +"), any(Object[].class));
         assertTrue(svc.retireSubUsers(null).getUserIds().isEmpty());
     }
+
+    /** 注册码页的子用户列表只列注册码子用户（role_regcode_client），createdCount 只数其中启用的，螃蟹出货子账号不列不数 */
+    @Test
+    @SuppressWarnings("unchecked")
+    void subUserListOnlyListsRegCodeSubUsers() {
+        org.apache.ibatis.builder.MapperBuilderAssistant assistant =
+                new org.apache.ibatis.builder.MapperBuilderAssistant(new com.baomidou.mybatisplus.core.MybatisConfiguration(), "");
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(assistant, SysUsers.class);
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(assistant, springboot.domain.RegCodeUser.class);
+        com.baomidou.mybatisplus.core.metadata.TableInfoHelper.initTableInfo(assistant, springboot.domain.RegCodeUserConfig.class);
+        SysUsers owner = u("owner");
+        SysUsers rc = u("rc");
+        rc.setRoleId("role_regcode_client");
+        rc.setParentId("owner");
+        SysUsers rcOff = u("rcOff");
+        rcOff.setRoleId("role_regcode_client");
+        rcOff.setParentId("owner");
+        SysUsers crab = u("crabSub");
+        crab.setRoleId("role_crab");
+        crab.setParentId("owner");
+        springboot.domain.RegCodeUser off = new springboot.domain.RegCodeUser();
+        off.setUserId("rcOff");
+        off.setStatus(0);
+        when(users.list(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(List.of(crab, rc, rcOff));
+        when(regUsers.list(any(com.baomidou.mybatisplus.core.conditions.Wrapper.class))).thenReturn(List.of(off));
+        when(access.maxSubUsersOf(owner)).thenReturn(2);
+        when(access.canManageSubUsers(owner)).thenReturn(true);
+        RegCodeSubUser.SubUserList list = svc.subUserList(owner);
+        assertEquals(List.of("rc", "rcOff"), list.getItems().stream().map(RegCodeSubUser.SubUserItem::getId).toList());
+        assertEquals(1, list.getCreatedCount());
+        assertTrue(list.isCanCreate(), "1 个启用 < 上限 2，螃蟹子账号不占名额");
+    }
 }

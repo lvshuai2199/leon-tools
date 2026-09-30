@@ -348,12 +348,17 @@ public class RegCodeQuotaService {
 
     // ------------------------------------------------------------------ 查询（客户接口和管理员接口共用同一返回结构）
 
-    /** 某账号名下的子用户列表（parent_id = owner），带各自已用 / 已分配合计，以及启用数与上限 */
+    /**
+     * 某账号名下的注册码子用户列表（parent_id = owner 且角色 role_regcode_client；螃蟹出货等其他子账号不列出、不计数），
+     * 带各自已用 / 已分配合计，以及启用数与上限
+     */
     public RegCodeSubUser.SubUserList subUserList(SysUsers owner) {
         RegCodeSubUser.SubUserList list = new RegCodeSubUser.SubUserList();
-        List<SysUsers> children = sysUsersService.list(new LambdaQueryWrapper<SysUsers>()
+        List<SysUsers> all = sysUsersService.list(new LambdaQueryWrapper<SysUsers>()
                 .eq(SysUsers::getParentId, owner.getId())
                 .orderByDesc(SysUsers::getCreateTime));
+        List<SysUsers> children = all == null ? List.of()
+                : all.stream().filter(c -> RegCodeAccessService.isRegCodeRole(c.getRoleId())).toList();
         Map<String, RegCodeUser> accounts = new LinkedHashMap<>();
         Map<String, int[]> totals = new LinkedHashMap<>();
         List<String> ids = children == null ? List.of()

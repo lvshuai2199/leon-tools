@@ -200,4 +200,24 @@ class RegCodeSubUserControllersTest {
         assertEquals(200, admin.listSubUsers("mine", req).getStatus());
         assertEquals(404, admin.delete(List.of("nope"), req).getStatus(), "不存在仍是 404");
     }
+
+    /** 注册码页的子用户接口只管注册码子用户：自己名下的螃蟹出货等其他子账号一律 403，不改状态、不重置密码 */
+    @Test
+    void subUserEndpointsRejectNonRegCodeSubAccounts() {
+        SysUsers crabSub = u("crabSub", "role_crab", "cust");
+        when(users.getById("crabSub")).thenReturn(crabSub);
+        when(access.requireRegCode(any())).thenReturn(cust);
+        when(access.canManageSubUsers(cust)).thenReturn(true);
+        RegCodeSubUser.StatusForm on = new RegCodeSubUser.StatusForm();
+        on.setStatus(1);
+        ForbiddenException e = assertThrows(ForbiddenException.class, () -> common.setSubUserStatus("crabSub", on, req));
+        assertEquals("只能管理自己创建的子用户", e.getMessage());
+        assertThrows(ForbiddenException.class, () -> common.resetSubUserPassword("crabSub", req));
+        assertThrows(ForbiddenException.class, () -> common.subUserQuota("crabSub", req));
+        assertThrows(ForbiddenException.class, () -> common.adjustSubUserQuota("crabSub", new RegCodeSubUser.DeltaForm(), req));
+        verify(quota, never()).setStatus(any(), any(), org.mockito.ArgumentMatchers.anyInt());
+        verify(quota, never()).resetPassword(any());
+        verify(quota, never()).adjustByCreator(any(), any(), any());
+        verify(tokens, never()).revokeAllForUser(anyString());
+    }
 }
