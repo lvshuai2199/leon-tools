@@ -7,7 +7,7 @@ export const WEB_SUBUSER_LOGIN_BLOCKED = "子用户请使用手机端登录，�
 export const PHONE_LOGIN_PATH = "/login";
 
 /** 模块子账号：挂了父用户，不走 Web 登录 */
-export function isRegCodeClientUser(user?: { roleId?: string; parentId?: string } | null) {
+export function isSubAccount(user?: { roleId?: string; parentId?: string } | null) {
   if (!user) {
     return false;
   }

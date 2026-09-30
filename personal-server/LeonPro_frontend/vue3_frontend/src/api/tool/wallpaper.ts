@@ -1,7 +1,7 @@
 import request from "@/utils/request";
 import { ResultEnum } from "@/enums/ResultEnum";
 
-const BASE_URL = "/wallpaper";
+const BASE_URL = "/admin/wallpaper";
 
 /** 壁纸管理 API（管理端，需要登录） */
 const WallpaperAPI = {
@@ -304,7 +304,7 @@ export function wallpaperRandomUrl(group: Pick<WallpaperGroupVO, "groupKey" | "t
   const base = import.meta.env.VITE_APP_BASE_API || "";
   const params = new URLSearchParams({ group: group.groupKey });
   if (group.token) params.set("token", group.token);
-  return `${window.location.origin}${base}/extern/wallpaper/random?${params.toString()}`;
+  return `${window.location.origin}${base}/public/wallpaper/random?${params.toString()}`;
 }
 
 /**

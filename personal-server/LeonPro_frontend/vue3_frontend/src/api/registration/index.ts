@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const REG_BASE_URL = "/comRegistration";
+const REG_BASE_URL = "/admin/comRegistration";
 
 /**
  * 注册码操作日志 API（对接 LeonPro_backend ComRegistrationController）
@@ -23,59 +23,13 @@ const RegistrationAPI = {
     });
   },
 
-  /** 获取详情 */
-  getFormData(id: string) {
-    return request<any, RegistrationForm>({
-      url: `${REG_BASE_URL}/${id}`,
-      method: "get",
-    });
-  },
-
-  /** 新增注册申请（后端自动写一条 SysInfo 通知） */
-  add(data: RegistrationForm) {
-    return request<any, string>({
-      url: `${REG_BASE_URL}/add`,
-      method: "post",
-      data,
-    });
-  },
-
-  /** 修改注册申请 */
-  update(data: RegistrationForm) {
-    return request<any, boolean>({
-      url: `${REG_BASE_URL}/update`,
-      method: "post",
-      data,
-    });
-  },
-
-  /** 批量删除 */
-  deleteByIds(ids: string[]) {
-    return request<any, boolean>({
-      url: `${REG_BASE_URL}/del`,
-      method: "post",
-      params: { idList: ids.join(",") },
-    });
-  },
-
-  /**
-   * 根据注册申请生成正式注册码（置 applyStatus=1）
-   */
-  getRegCode(data: RegistrationForm) {
-    return request<any, RegistrationForm>({
-      url: `/auth/getRegCode`,
-      method: "post",
-      data,
-    });
-  },
-
   /**
    * 临时生成多种有效期注册码（1/2/4/6/13个月/永久）
    * applyId 为当前操作人用户 ID，空则后端记为「未知人员」
    */
   genTempRegCode(data: TempRegCodeForm) {
     return request<any, TempRegCodeVO>({
-      url: `/auth/genTempRegCode`,
+      url: `/common/regCode/genTempRegCode`,
       method: "post",
       data,
     });

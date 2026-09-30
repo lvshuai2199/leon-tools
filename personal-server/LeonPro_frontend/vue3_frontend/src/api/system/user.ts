@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const USER_BASE_URL = "/sysUsers";
+const USER_BASE_URL = "/admin/sysUsers";
 
 /**
  * 用户 API（对接 LeonPro_backend SysUserController）
@@ -23,18 +23,6 @@ const UserAPI = {
         username: queryParams.username || undefined,
         parentId: queryParams.parentId || undefined,
       },
-    });
-  },
-
-  /**
-   * 获取当前登录用户信息
-   * 后端按用户名查询，默认 admin
-   */
-  getInfo(username?: string) {
-    return request<any, UserInfo>({
-      url: `${USER_BASE_URL}/getMyInfo`,
-      method: "get",
-      params: username ? { username } : undefined,
     });
   },
 

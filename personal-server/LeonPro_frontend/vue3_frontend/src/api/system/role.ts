@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const ROLE_BASE_URL = "/sysRoles";
+const ROLE_BASE_URL = "/admin/sysRoles";
 
 /**
  * 角色 API（对接 LeonPro_backend SysRolesController）

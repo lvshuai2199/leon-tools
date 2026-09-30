@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const BASE_URL = "/mindmap";
+const BASE_URL = "/admin/mindmap";
 
 /**
  * 思维导图存储 API：保存 PNG 到服务端，换取可外访链接。

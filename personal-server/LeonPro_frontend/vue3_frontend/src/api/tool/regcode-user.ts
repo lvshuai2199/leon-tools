@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const BASE_URL = "/regCodeUser";
+const BASE_URL = "/admin/regCodeUser";
 
 const RegCodeUserAPI = {
   getPage(queryParams: RegCodeUserPageQuery) {
@@ -18,7 +18,7 @@ const RegCodeUserAPI = {
 
   myQuota() {
     return request<any, RegCodeQuotaVO>({
-      url: `${BASE_URL}/myQuota`,
+      url: "/common/regCodeUser/myQuota",
       method: "get",
     });
   },
@@ -90,8 +90,19 @@ export interface RegCodeUserForm {
   configIds?: string[];
 }
 
+/** 某个配置的次数明细 */
+export interface RegCodeQuotaItem {
+  configId?: string;
+  configName?: string;
+  allocated?: number;
+  used?: number;
+  remaining?: number;
+}
+
 export interface RegCodeQuotaVO {
   unlimited?: boolean;
+  /** 各配置次数明细（ROOT 为空） */
+  items?: RegCodeQuotaItem[];
   generateLimit?: number;
   generateUsed?: number;
   remaining?: number;

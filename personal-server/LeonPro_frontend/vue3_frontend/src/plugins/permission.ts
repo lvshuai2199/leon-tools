@@ -4,7 +4,7 @@ import NProgress from "@/utils/nprogress";
 import { getAccessToken, isLegacySessionToken } from "@/utils/auth";
 import router from "@/router";
 import { usePermissionStore, useUserStore } from "@/store";
-import { isRegCodeClientUser, PHONE_LOGIN_PATH, WEB_SUBUSER_LOGIN_BLOCKED } from "@/utils/role";
+import { isSubAccount, PHONE_LOGIN_PATH, WEB_SUBUSER_LOGIN_BLOCKED } from "@/utils/role";
 
 const PUBLIC_PATHS = new Set(["/login", "/trace", "/tool/trace"]);
 
@@ -26,7 +26,7 @@ export function setupPermission() {
       token = "";
     }
     let isLogin = !!token;
-    if (isLogin && isRegCodeClientUser(userStore.userInfo)) {
+    if (isLogin && isSubAccount(userStore.userInfo)) {
       await userStore.clearUserData();
       isLogin = false;
       if (to.path !== "/login" && !isPublicPath(to.path)) {

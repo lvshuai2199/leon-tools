@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const OPLOG_BASE_URL = "/sysOperationLog";
+const OPLOG_BASE_URL = "/admin/sysOperationLog";
 
 const OperationLogAPI = {
   getPage(queryParams: OperationLogPageQuery) {

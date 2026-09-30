@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const BASE_URL = "/systemData";
+const BASE_URL = "/admin/systemData";
 
 const SystemDataAPI = {
   status() {

@@ -2,16 +2,16 @@ import { store } from "@/store";
 import { usePermissionStoreHook } from "@/store/modules/permission";
 
 import AuthAPI, { type LoginFormData } from "@/api/auth";
-import UserAPI, { type UserInfo } from "@/api/system/user";
+import { type UserInfo } from "@/api/system/user";
 
 import { getAccessToken, setAccessToken, clearToken } from "@/utils/auth";
-import { isRegCodeClientUser, resolveLoginRoles, WEB_SUBUSER_LOGIN_BLOCKED } from "@/utils/role";
+import { isSubAccount, resolveLoginRoles, WEB_SUBUSER_LOGIN_BLOCKED } from "@/utils/role";
 
 export const useUserStore = defineStore("user", () => {
   const userInfo = useStorage<UserInfo>("userInfo", {} as UserInfo);
 
   /**
-   * 登录（对接 LeonPro_backend /auth/login2）
+   * 登录（对接 LeonPro_backend POST /auth/login）
    *
    * 后端返回用户对象，其中 token 为登录凭证（Redis 保存 7 天，有效请求自动续期），
    * 之后所有后台接口以 Authorization: Bearer <token> 鉴权；用户信息存入 localStorage
@@ -24,7 +24,7 @@ export const useUserStore = defineStore("user", () => {
             reject("登录失败，请检查用户名或密码");
             return;
           }
-          if (isRegCodeClientUser(data)) {
+          if (isSubAccount(data)) {
             reject(WEB_SUBUSER_LOGIN_BLOCKED);
             return;
           }
@@ -57,8 +57,8 @@ export const useUserStore = defineStore("user", () => {
   /**
    * 获取用户信息
    *
-   * LeonPro_backend 的 getMyInfo 目前硬编码返回 "leon"，
-   * 登录时已将真实用户信息写入本地，这里直接读取本地并回填
+   * 登录时已将用户信息写入本地，这里优先读本地；
+   * 本地没有时调 GET /auth/me（只按 token 取当前用户）
    */
   function getUserInfo() {
     return new Promise<UserInfo>((resolve, reject) => {
@@ -68,7 +68,7 @@ export const useUserStore = defineStore("user", () => {
         return;
       }
       // 兜底：调用后端接口获取
-      UserAPI.getInfo()
+      AuthAPI.getMe()
         .then((data) => {
           if (!data) {
             reject("Verification failed, please Login again.");

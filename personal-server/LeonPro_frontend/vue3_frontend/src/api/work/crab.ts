@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const BASE_URL = "/crabShipment";
+const BASE_URL = "/admin/crabShipment";
 
 const CrabShipmentAPI = {
   getPage(queryParams: CrabShipmentPageQuery) {
@@ -21,13 +21,6 @@ const CrabShipmentAPI = {
         paid: queryParams.paid,
         shipped: queryParams.shipped,
       },
-    });
-  },
-
-  getById(id: string) {
-    return request<any, CrabShipmentVO>({
-      url: `${BASE_URL}/${id}`,
-      method: "get",
     });
   },
 
