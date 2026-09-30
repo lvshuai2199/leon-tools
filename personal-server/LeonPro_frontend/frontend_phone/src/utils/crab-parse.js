@@ -311,11 +311,11 @@ function extractSpecQty(raw) {
   const specA = text.match(SPEC_A);
   const specB = text.match(SPEC_B);
   if (specA) {
-    spec = specA[1] + specA[2];
+    spec = specOf(specA[1], specA[2]);
     specStart = specA.index;
     specEnd = specA.index + specA[0].length;
   } else if (specB) {
-    spec = specB[2] + specB[1];
+    spec = specOf(specB[2], specB[1]);
     specStart = specB.index;
     specEnd = specB.index + specB[0].length;
   }
@@ -413,12 +413,17 @@ function cleanPhone(raw) {
   return match ? match[1] : trimToNull(raw);
 }
 
+/** 规格统一写成「数字 + 两 + 公/母」：「4两公」「2.8两母」；「4公」「公4两」「公蟹 4 两」也都归成这一种（和后端 CrabOrderParser 一致） */
+export function specOf(number, gender) {
+  return `${number}两${gender}`;
+}
+
 function cleanSpec(raw) {
   const value = trimToNull(raw);
   if (!value) return null;
   const extracted = extractSpecQty(value);
   if (extracted.spec) return extracted.spec;
-  return value.replace(/ /g, "").replace(/两/g, "");
+  return value.replace(/ /g, "");
 }
 
 function parseQuantity(raw) {

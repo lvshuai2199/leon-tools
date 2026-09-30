@@ -149,7 +149,11 @@ function onCommand(cmd: string) {
 }
 .user__name {
   max-width: 160px;
+  /* el-dropdown 把行高设成 1，下划线（t_custA）会被裁掉：给够行高，只在横向截断 */
+  line-height: 22px;
   overflow: hidden;
+  overflow-x: clip;
+  overflow-y: visible;
   text-overflow: ellipsis;
   white-space: nowrap;
 }

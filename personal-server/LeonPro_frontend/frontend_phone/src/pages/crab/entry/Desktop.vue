@@ -8,7 +8,7 @@ import EntryRowCard from './EntryRowCard.vue'
 import { useCrabEntry } from './useCrabEntry'
 
 const e = useCrabEntry()
-const { shipDate, tab, rawText, parsing, ocrProgress, saving, rows, manual } = e
+const { shipDate, tab, rawText, parsing, saving, rows, manual } = e
 const backTo = computed(() => ({ path: '/crab', query: { date: shipDate.value } }))
 </script>
 
@@ -23,12 +23,10 @@ const backTo = computed(() => ({ path: '/crab', query: { date: shipDate.value } 
           v-model:tab="tab"
           v-model:raw-text="rawText"
           :parsing="parsing"
-          :ocr-progress="ocrProgress"
-          :manual="manual"
+            :manual="manual"
           @parse="e.parseText"
           @paste="e.onPaste"
-          @photo="e.onPhoto"
-          @add-manual="e.pushManual"
+            @add-manual="e.pushManual"
         />
       </section>
       <section class="entry-d__panel">
@@ -36,7 +34,7 @@ const backTo = computed(() => ({ path: '/crab', query: { date: shipDate.value } 
           <h2 class="entry-d__title">识别结果{{ rows.length ? `（${rows.length} 条）` : '' }}</h2>
           <el-button v-if="rows.length" type="danger" text @click="e.clearAll">清空</el-button>
         </div>
-        <StateBlock v-if="!rows.length" type="empty" compact title="还没有识别结果" desc="在左边粘贴文本、拍照或手动添加" />
+        <StateBlock v-if="!rows.length" type="empty" compact title="还没有识别结果" desc="在左边粘贴文本或手动添加" />
         <template v-else>
           <div class="entry-d__rows">
             <EntryRowCard v-for="(row, i) in rows" :key="row.key" :row="row" :index="i" @remove="e.removeRow(i)" />
@@ -71,6 +69,8 @@ const backTo = computed(() => ({ path: '/crab', query: { date: shipDate.value } 
   display: flex;
   align-items: center;
   justify-content: space-between;
+  min-height: 32px;
+  margin-bottom: lp.$space-3;
 }
 .entry-d__title {
   margin: 0 0 lp.$space-4;
@@ -79,7 +79,7 @@ const backTo = computed(() => ({ path: '/crab', query: { date: shipDate.value } 
   color: var(--el-text-color-primary);
 }
 .entry-d__head .entry-d__title {
-  margin-bottom: lp.$space-3;
+  margin: 0;
 }
 .entry-d__rows {
   display: flex;

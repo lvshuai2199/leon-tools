@@ -164,7 +164,7 @@ onBeforeUnmount(() => {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 36px;
+  height: lp.$component-size-desktop;
   padding: 0 lp.$space-4;
   border-radius: lp.$radius-base;
   background: var(--el-color-primary);

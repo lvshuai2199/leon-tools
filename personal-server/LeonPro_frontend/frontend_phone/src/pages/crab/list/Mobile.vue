@@ -1,7 +1,7 @@
 <script setup lang="ts">
-/** 蟹单列表（手机）：卡片；名字一行里是可点的已付款/已发货标签；按钮「扫单号」「分享」「更多」 */
+/** 蟹单列表（手机）：卡片（点卡片进详情）；名字一行里是可点的已付款/已发货标签；按钮「分享」「更多」（更多里只有删除） */
 import { computed, ref } from 'vue'
-import { ArrowLeft, ArrowRight, Delete, Edit, Finished, MoreFilled, Phone, Picture, Plus, Search } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Delete, Finished, MoreFilled, Phone, Plus, Search } from '@element-plus/icons-vue'
 import type { CrabShipment } from '@/api/types'
 import PageBar from '@/components/PageBar.vue'
 import IconAction from '@/components/IconAction.vue'
@@ -12,7 +12,7 @@ import ActionSheet, { type SheetAction } from '@/components/ActionSheet.vue'
 import CrabStatusTag from '../components/CrabStatusTag.vue'
 import { useCrabListPage } from './useCrabListPage'
 
-const { list, goEntry, openDetail, scan, pickImage, remove, share, exportSelected } = useCrabListPage()
+const { list, goEntry, openDetail, remove, share, exportSelected } = useCrabListPage()
 const { filter, records, loading, loaded, error, summary, selecting, selectedIds, allSelected } = list
 
 const keyword = ref(filter.keyword)
@@ -25,13 +25,14 @@ const mode = computed({
   set: (v) => list.setMode(v),
 })
 
+/** 区间：结束日期不能早于开始，开始日期不能晚于结束（日期面板里置灰、不能点） */
+const ymd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+const beforeStart = (d: Date) => !!filter.start && ymd(d) < filter.start
+const afterEnd = (d: Date) => !!filter.end && ymd(d) > filter.end
+
 const moreOpen = ref(false)
 const moreItem = ref<CrabShipment | null>(null)
-const moreActions: SheetAction[] = [
-  { key: 'image', label: '从图片识别单号', icon: Picture },
-  { key: 'edit', label: '查看 / 编辑', icon: Edit },
-  { key: 'delete', label: '删除', icon: Delete, danger: true },
-]
+const moreActions: SheetAction[] = [{ key: 'delete', label: '删除', icon: Delete, danger: true }]
 function openMore(item: CrabShipment) {
   moreItem.value = item
   moreOpen.value = true
@@ -39,9 +40,7 @@ function openMore(item: CrabShipment) {
 function onMore(key: string) {
   const item = moreItem.value
   if (!item) return
-  if (key === 'image') pickImage(item)
-  else if (key === 'edit') openDetail(item)
-  else if (key === 'delete') remove(item)
+  if (key === 'delete') remove(item)
 }
 
 function onCard(item: CrabShipment) {
@@ -70,9 +69,25 @@ function doSearch() {
         <el-button :icon="ArrowRight" aria-label="后一天" class="filters__shift" @click="list.shift(1)" />
       </div>
       <div v-else class="filters__range">
-        <DateField :model-value="filter.start" title="开始日期" @change="(v) => list.setRange(v, filter.end)" />
+        <DateField
+          :model-value="filter.start"
+          title="选择开始日期"
+          placeholder="开始日期"
+          aria-label="开始日期"
+          :show-week="false"
+          :disabled-date="afterEnd"
+          @change="(v) => list.setRange(v, filter.end)"
+        />
         <span class="filters__to">至</span>
-        <DateField :model-value="filter.end" title="结束日期" @change="(v) => list.setRange(filter.start, v)" />
+        <DateField
+          :model-value="filter.end"
+          title="选择结束日期"
+          placeholder="结束日期"
+          aria-label="结束日期"
+          :show-week="false"
+          :disabled-date="beforeStart"
+          @change="(v) => list.setRange(filter.start, v)"
+        />
       </div>
       <el-input
         v-model="keyword"
@@ -113,17 +128,17 @@ function doSearch() {
             <CrabStatusTag field="shipped" :on="item.shipped" :readonly="selecting" @toggle="list.toggleStatus(item, 'shipped')" />
           </div>
           <p class="card__spec">
-            {{ item.spec || '未填规格' }} · {{ item.quantity || 0 }} 只
+            <span v-if="item.spec">{{ item.spec }}</span><span v-else class="card__missing">规格未填</span> · {{ item.quantity || 0 }} 只
             <span v-if="filter.mode === 'range'" class="card__date">{{ item.shipDate }}</span>
           </p>
           <a v-if="item.phone" :href="`tel:${item.phone}`" class="card__phone" @click.stop>
             <el-icon><Phone /></el-icon>{{ item.phone }}
           </a>
-          <p v-else class="card__muted">无电话</p>
-          <p class="card__addr">{{ item.address || '无地址' }}</p>
+          <p v-else class="card__muted">电话 未填</p>
+          <p v-if="item.address" class="card__addr">{{ item.address }}</p>
+          <p v-else class="card__muted">地址 未填</p>
           <p v-if="item.trackingNo" class="card__muted">单号 {{ item.trackingNo }}</p>
           <div v-if="!selecting" class="card__actions" @click.stop>
-            <el-button type="primary" plain @click="scan(item)">扫单号</el-button>
             <el-button type="primary" plain @click="share(item)">分享</el-button>
             <el-button :icon="MoreFilled" aria-label="更多" @click="openMore(item)">更多</el-button>
           </div>
@@ -165,6 +180,10 @@ function doSearch() {
   flex: none;
   width: lp.$component-size-mobile;
   padding: 0;
+}
+.filters__range > :deep(.df-trigger) {
+  flex: 1;
+  min-width: 0;
 }
 .filters__to {
   flex: none;
@@ -224,6 +243,10 @@ function doSearch() {
   font-weight: lp.$font-weight-medium;
   color: var(--lp-color-crab-text);
 }
+.card__missing {
+  font-weight: lp.$font-weight-regular;
+  color: var(--el-text-color-secondary);
+}
 .card__date {
   margin-left: lp.$space-2;
   font-weight: lp.$font-weight-regular;
@@ -251,7 +274,7 @@ function doSearch() {
 }
 .card__actions {
   display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-columns: 1fr 1fr;
   gap: lp.$space-2;
   margin-top: lp.$space-3;
   .el-button + .el-button {

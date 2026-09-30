@@ -9,6 +9,7 @@ import SheetSelect from '@/components/SheetSelect.vue'
 import StateBlock from '@/components/StateBlock.vue'
 import FixedActionBar from '@/components/FixedActionBar.vue'
 import { useBreakpoint } from '@/composables/useBreakpoint'
+import { userStore } from '@/stores/user'
 import { copyText, showToast } from '@/utils/ui'
 import { remainingForConfig } from '../regcode-quota.js'
 import type { RegcodeData } from '../useRegcodeData'
@@ -55,6 +56,10 @@ const quotaText = computed(() => {
   return remaining.value == null ? '不限次数' : `剩余 ${remaining.value} 次`
 })
 const exhausted = computed(() => remaining.value === 0)
+/** 次数用完时提示块下面的灰字：子用户找创建者，客户找管理员 */
+const exhaustedHint = computed(() =>
+  userStore.regCode.value?.isSubUser ? '次数已用完，请联系创建者分配' : '次数已用完，请联系管理员分配',
+)
 
 // 配置加载完默认选第一个公司、第一个配置
 watch(
@@ -127,10 +132,11 @@ async function generate() {
         <el-form-item label="配置">
           <SheetSelect v-model="configId" :options="configOptions" title="选择配置" @change="onConfig" />
         </el-form-item>
-        <div v-if="quotaText" class="gen__quota" :class="{ 'is-empty': exhausted }">
+        <div v-if="quotaText" class="gen__quota" :class="{ 'is-empty': exhausted, 'has-hint': exhausted }">
           <span>当前配置</span>
           <strong>{{ quotaText }}</strong>
         </div>
+        <p v-if="quotaText && exhausted" class="gen__quota-hint">{{ exhaustedHint }}</p>
         <el-form-item label="注册码">
           <el-input
             v-model="regCode"
@@ -216,8 +222,20 @@ async function generate() {
     }
   }
 }
+.gen__quota.has-hint {
+  margin-bottom: lp.$space-1;
+}
+.gen__quota-hint {
+  margin: 0 0 lp.$space-4;
+  font-size: lp.$font-size-extra-small;
+  color: var(--el-text-color-secondary);
+}
 .gen__code :deep(input) {
   letter-spacing: 2px;
+  /* 只让输入的注册码有字间距，占位字正常 */
+  &::placeholder {
+    letter-spacing: 0;
+  }
 }
 .gen__title {
   margin: 0 0 lp.$space-2;

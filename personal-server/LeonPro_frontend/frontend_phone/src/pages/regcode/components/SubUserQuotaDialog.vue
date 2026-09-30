@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
- * 额度：按配置列出已用、分配，输入框追加（从我的剩余里扣）或收回（最多收回到已用数量，退回给我）。
+ * 额度：按配置列出「当前额度 N」（分配 − 已用，重新启用后后端仍返回历史的已用/分配，所以只显示差值），
+ * 输入框追加（从我的剩余里扣）或收回（最多收回到已用数量，退回给我）。
  * 电脑 480 弹窗，手机底部抽屉。启用后打开时顶部提示「已启用，额度为 0，请分配次数」。
  */
 import { computed, reactive, ref, watch } from 'vue'
@@ -10,7 +11,7 @@ import ResponsiveDialog from '@/components/ResponsiveDialog.vue'
 import StateBlock from '@/components/StateBlock.vue'
 import { useBreakpoint } from '@/composables/useBreakpoint'
 import { showToast } from '@/utils/ui'
-import { adjustRows, buildDeltas, maxAdd, maxRevoke, type AdjustMode } from '../regcode-quota.js'
+import { adjustRows, buildDeltas, currentQuota, maxAdd, maxRevoke, type AdjustMode } from '../regcode-quota.js'
 
 const visible = defineModel<boolean>({ required: true })
 const props = withDefaults(
@@ -110,7 +111,7 @@ async function submit() {
       <div v-for="r in rows" :key="r.configId" class="suq__row">
         <div class="suq__name">
           <span>{{ r.configName }}</span>
-          <small>已用 {{ r.used }} · 分配 {{ r.allocated }} · {{ hintOf(r) }}</small>
+          <small>当前额度 {{ currentQuota(r) }} · {{ hintOf(r) }}</small>
         </div>
         <el-input-number
           v-model="values[r.configId]"

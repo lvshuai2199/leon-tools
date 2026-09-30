@@ -5,6 +5,7 @@ import {
   buildCreateQuotas,
   buildDeltas,
   createQuotaRows,
+  currentQuota,
   isExhausted,
   limitState,
   maxAdd,
@@ -128,4 +129,11 @@ test("停用退回次数", () => {
   assert.equal(refundableTotal({ refundableTotal: 5, items: [] }), 5);
   assert.equal(refundableTotal({ items: [{ allocated: 10, used: 4 }, { allocated: 2, used: 3 }] }), 6);
   assert.equal(refundableTotal(null), 0);
+});
+
+test("额度窗口的当前额度 = 分配 − 已用（重新启用后 3/3 显示 0）", () => {
+  assert.equal(currentQuota({ allocated: 3, used: 3 }), 0);
+  assert.equal(currentQuota({ allocated: 10, used: 2 }), 8);
+  assert.equal(currentQuota({ allocated: 0, used: 0 }), 0);
+  assert.equal(currentQuota({ allocated: 1, used: 4 }), 0);
 });

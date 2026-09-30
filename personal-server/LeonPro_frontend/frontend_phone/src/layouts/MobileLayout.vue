@@ -1,6 +1,7 @@
 <script setup lang="ts">
 /**
  * 手机布局（<768）：44px 标题栏 + 50px 底部标签栏（首页、壁纸、工具、我的），留 iPhone 安全区。
+ * 有底部固定操作条的二级页（路由 meta.hideTabbar）不显示标签栏，操作条贴底并自己留安全区。
  * 「工具」「我的」从底部抽屉弹出；工具列表来自 appMenus（登录后才有）。
  */
 import { computed, ref, watch } from 'vue'
@@ -21,6 +22,7 @@ const meOpen = ref(false)
 
 /** 标签页根页面不显示返回；页面可用 <PageBar :show-back="false"> 关掉 */
 const isTabRoot = computed(() => route.name === 'home' || route.name === 'wallpaper')
+const showTabbar = computed(() => !route.meta.hideTabbar)
 const showBack = computed(() => !isTabRoot.value && pageChrome.showBack)
 const title = computed(() => {
   if (route.name === 'home') return SITE_NAME
@@ -68,7 +70,7 @@ watch(
 </script>
 
 <template>
-  <div class="m-layout">
+  <div class="m-layout" :class="{ 'm-layout--no-tabbar': !showTabbar }">
     <header class="navbar">
       <button v-if="showBack" type="button" class="navbar__back" aria-label="返回" @click="back">
         <el-icon :size="20"><ArrowLeft /></el-icon>
@@ -82,7 +84,7 @@ watch(
       <router-view />
     </main>
 
-    <nav class="tabbar" aria-label="底部导航">
+    <nav v-if="showTabbar" class="tabbar" aria-label="底部导航">
       <router-link to="/" class="tab" :class="{ 'is-active': activeTab === 'home' }">
         <TabIcon name="home" :active="activeTab === 'home'" /><span>首页</span>
       </router-link>
@@ -108,7 +110,7 @@ watch(
             </button>
           </li>
         </ul>
-        <p v-else class="sheet-empty">当前账号还没有可用的工具，请联系管理员分配</p>
+        <p v-else class="sheet-empty">还没有可用工具，请联系管理员开通</p>
       </template>
       <div v-else class="sheet-login">
         <p class="sheet-empty">登录后可使用螃蟹出货、注册码生成等工具</p>
@@ -144,6 +146,13 @@ watch(
   font-size: lp.$font-size-mobile-body;
   /* 页面底部固定操作栏放在标签栏上方（FixedActionBar 用） */
   --lp-fixed-bottom: var(--tabbar-h);
+  --lp-fixed-safe: 0px;
+}
+/* 没有标签栏：操作条贴底，自己加安全区 */
+.m-layout--no-tabbar {
+  padding-bottom: env(safe-area-inset-bottom);
+  --lp-fixed-bottom: 0px;
+  --lp-fixed-safe: env(safe-area-inset-bottom);
 }
 .navbar {
   position: fixed;
@@ -180,6 +189,8 @@ watch(
   bottom: 0;
   display: flex;
   align-items: center;
+  /* 相邻两个 44 可点区之间留 8 */
+  gap: lp.$space-2;
   height: lp.$mobile-topbar-height;
 }
 .navbar__title {

@@ -2,10 +2,11 @@
 /**
  * 蟹单列表（电脑）：表格；名字一格里是可点的已付款/已发货标签；
  * 点某行打开 /crab/:id（同一页面上的 480 宽弹窗，关掉回到列表）。
+ * 「导出发货图」导出勾选的行：没勾选时禁用，悬停提示先勾选。
  */
 import { computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { ArrowDown, ArrowLeft, ArrowRight, Plus, Search } from '@element-plus/icons-vue'
+import { ArrowLeft, ArrowRight, Plus, Search } from '@element-plus/icons-vue'
 import type { CrabShipment } from '@/api/types'
 import PageBar from '@/components/PageBar.vue'
 import StateBlock from '@/components/StateBlock.vue'
@@ -16,7 +17,7 @@ import { useCrabListPage } from './useCrabListPage'
 const props = withDefaults(defineProps<{ detailId?: string | null }>(), { detailId: null })
 
 const router = useRouter()
-const { list, goEntry, openDetail, scan, pickImage, remove, share, exportSelected } = useCrabListPage()
+const { list, goEntry, openDetail, remove, share, exportSelected } = useCrabListPage()
 const { filter, records, loading, loaded, error, summary, selectedIds } = list
 
 const keyword = ref(filter.keyword)
@@ -34,10 +35,6 @@ const range = computed({
 function onSelection(rows: CrabShipment[]) {
   list.setSelected(rows.map((r) => r.id))
 }
-function onMore(cmd: string, row: CrabShipment) {
-  if (cmd === 'image') pickImage(row as CrabShipment)
-  else if (cmd === 'delete') remove(row as CrabShipment)
-}
 function closeDetail() {
   router.push({ path: '/crab', query: list.listQuery() })
 }
@@ -50,9 +47,13 @@ function doSearch() {
   <div class="crab-d">
     <PageBar title="螃蟹出货" back="/">
       <template #actions>
-        <el-button :disabled="!selectedIds.length" @click="exportSelected">
-          导出发货图{{ selectedIds.length ? `（${selectedIds.length}）` : '' }}
-        </el-button>
+        <el-tooltip :disabled="!!selectedIds.length" content="先在表格里勾选要导出的出货单" placement="bottom">
+          <span class="export-wrap">
+            <el-button :disabled="!selectedIds.length" @click="exportSelected">
+              导出发货图{{ selectedIds.length ? `（${selectedIds.length}）` : '' }}
+            </el-button>
+          </span>
+        </el-tooltip>
         <el-button type="primary" :icon="Plus" @click="goEntry">录入出货单</el-button>
       </template>
     </PageBar>
@@ -132,16 +133,22 @@ function doSearch() {
         </el-table-column>
         <el-table-column label="规格 / 数量" width="130">
           <template #default="{ row }">
-            <span class="spec">{{ row.spec || '-' }} · {{ row.quantity || 0 }} 只</span>
+            <span v-if="row.spec" class="spec">{{ row.spec }} · {{ row.quantity || 0 }} 只</span>
+            <span v-else class="muted">未填 · {{ row.quantity || 0 }} 只</span>
           </template>
         </el-table-column>
         <el-table-column label="电话" width="136">
           <template #default="{ row }">
             <a v-if="row.phone" :href="`tel:${row.phone}`" class="phone" @click.stop>{{ row.phone }}</a>
-            <span v-else class="muted">-</span>
+            <span v-else class="muted">未填</span>
           </template>
         </el-table-column>
-        <el-table-column prop="address" label="地址" min-width="220" show-overflow-tooltip />
+        <el-table-column label="地址" min-width="220" show-overflow-tooltip>
+          <template #default="{ row }">
+            <template v-if="row.address">{{ row.address }}</template>
+            <span v-else class="muted">未填</span>
+          </template>
+        </el-table-column>
         <el-table-column label="单号" min-width="150">
           <template #default="{ row }">
             <span v-if="row.trackingNo">{{ row.trackingNo }}</span>
@@ -149,20 +156,12 @@ function doSearch() {
           </template>
         </el-table-column>
         <el-table-column v-if="filter.mode === 'range'" prop="shipDate" label="日期" width="110" />
-        <el-table-column label="操作" width="200" fixed="right">
+        <el-table-column label="操作" width="160" fixed="right">
           <template #default="{ row }">
             <div class="ops" @click.stop>
-              <el-button link type="primary" @click="scan(row as CrabShipment)">扫单号</el-button>
+              <el-button link type="primary" @click="openDetail(row as CrabShipment)">编辑</el-button>
               <el-button link type="primary" @click="share(row as CrabShipment)">分享</el-button>
-              <el-dropdown trigger="click" @command="(c: string) => onMore(c, row as CrabShipment)">
-                <el-button link type="primary">更多<el-icon class="el-icon--right"><ArrowDown /></el-icon></el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="image">从图片识别单号</el-dropdown-item>
-                    <el-dropdown-item command="delete" class="is-danger-item">删除</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <el-button link type="danger" @click="remove(row as CrabShipment)">删除</el-button>
             </div>
           </template>
         </el-table-column>
@@ -239,7 +238,10 @@ function doSearch() {
   color: var(--el-color-primary);
 }
 .muted {
-  color: var(--el-text-color-placeholder);
+  color: var(--el-text-color-secondary);
+}
+.export-wrap {
+  display: inline-flex;
 }
 .ops {
   display: flex;
@@ -248,8 +250,5 @@ function doSearch() {
   .el-button + .el-button {
     margin-left: 0;
   }
-}
-:global(.is-danger-item) {
-  color: var(--el-color-danger);
 }
 </style>

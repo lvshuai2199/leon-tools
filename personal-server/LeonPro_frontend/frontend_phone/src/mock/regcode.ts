@@ -3,7 +3,7 @@
  *
  * 示例账号（密码任意 6 位以上）：
  *   client   顶层客户，最多 3 个子用户，已有 3 个：门店一（正常）、门店二（次数用完）、门店三（已停用）
- *   full     顶层客户，已建满（2 / 2）
+ *   full     顶层客户，已建满（3 / 3）
  *   over     顶层客户，管理员把上限调小了（已建 5 / 最多 3）
  *   sub      客户建的子用户（只有生成页，没有标签页）
  *   noconfig 有注册码权限但一个配置都没分配（「暂无可用配置」）
@@ -52,9 +52,13 @@ const accounts: Record<string, Account> = {
     ],
   },
   full: {
-    maxSubUsers: 2,
+    maxSubUsers: 3,
     quota: { cfg1: { allocated: 30, used: 8 }, cfg3: { allocated: 10, used: 0 } },
-    subs: [sub('full01', '分店 A', 1, { cfg1: { allocated: 10, used: 4 } }, 18), sub('full02', '分店 B', 1, { cfg1: { allocated: 6, used: 1 } }, 19)],
+    subs: [
+      sub('full01', '分店 A', 1, { cfg1: { allocated: 10, used: 4 } }, 18),
+      sub('full02', '分店 B', 1, { cfg1: { allocated: 6, used: 1 } }, 19),
+      sub('full03', '分店 C', 1, { cfg1: { allocated: 3, used: 3 } }, 20),
+    ],
   },
   over: {
     maxSubUsers: 3,

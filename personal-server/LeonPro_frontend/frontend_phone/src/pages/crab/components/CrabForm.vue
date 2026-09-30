@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 蟹单表单（手机详情页、电脑详情弹窗共用）。标签在上；规格、数量一行；单号旁「扫单号」。
+ * 蟹单表单（手机详情页、电脑详情弹窗共用）。标签在上；规格、数量一行；发货单号占满一行。
  * 删除放在表单最底部，红色文字按钮（点了先确认）。
  */
 import { useBreakpoint } from '@/composables/useBreakpoint'
@@ -8,11 +8,10 @@ import DateField from '@/components/DateField.vue'
 import CrabStatusTag from './CrabStatusTag.vue'
 import type { CrabFormModel } from './useCrabForm'
 
-const props = withDefaults(defineProps<{ form: CrabFormModel; showDelete?: boolean; showImage?: boolean }>(), {
+const props = withDefaults(defineProps<{ form: CrabFormModel; showDelete?: boolean }>(), {
   showDelete: true,
-  showImage: false,
 })
-defineEmits<{ scan: []; pickImage: []; delete: [] }>()
+defineEmits<{ delete: [] }>()
 const { isMobile } = useBreakpoint()
 const f = props.form
 </script>
@@ -42,11 +41,7 @@ const f = props.form
       </el-form-item>
     </div>
     <el-form-item label="发货单号">
-      <div class="crab-form__track">
-        <el-input v-model="f.trackingNo" placeholder="快递单号" clearable />
-        <el-button type="primary" plain @click="$emit('scan')">扫单号</el-button>
-        <el-button v-if="showImage" type="primary" plain @click="$emit('pickImage')">图片识别</el-button>
-      </div>
+      <el-input v-model="f.trackingNo" placeholder="快递单号" clearable />
     </el-form-item>
     <el-form-item label="状态">
       <div class="crab-form__status">
@@ -73,18 +68,6 @@ const f = props.form
   display: grid;
   grid-template-columns: minmax(0, 1fr) 132px;
   gap: lp.$space-3;
-}
-.crab-form__track {
-  display: flex;
-  gap: lp.$space-2;
-  width: 100%;
-  .el-input {
-    flex: 1;
-    min-width: 0;
-  }
-  .el-button + .el-button {
-    margin-left: 0;
-  }
 }
 .crab-form__status {
   display: flex;

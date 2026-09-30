@@ -1,7 +1,7 @@
 <script setup lang="ts">
 /**
- * 手机底部固定操作栏（在底部标签栏上方），按钮 44px；会自动在页面末尾留出同样高度的空白
- * （留白 = 按钮 44 + 上下内边距 16，安全区已包含在布局的底部标签栏里）。
+ * 手机底部固定操作栏，按钮 44px；会自动在页面末尾留出同样高度的空白（按钮 44 + 上下内边距 16）。
+ * 有标签栏的页面放在标签栏上方（安全区在标签栏里）；不显示标签栏的页面贴底，底部加安全区（--lp-fixed-safe）。
  * 电脑上按 desktop 属性：inline = 普通一行右对齐；none = 不显示。
  */
 import { useBreakpoint } from '@/composables/useBreakpoint'
@@ -35,7 +35,7 @@ const { isMobile } = useBreakpoint()
   display: flex;
   align-items: center;
   gap: lp.$space-3;
-  padding: lp.$space-2 lp.$page-padding-mobile;
+  padding: lp.$space-2 lp.$page-padding-mobile calc(#{lp.$space-2} + var(--lp-fixed-safe, 0px));
   background: var(--el-bg-color);
   border-top: 1px solid var(--el-border-color-lighter);
   :deep(.el-button) {

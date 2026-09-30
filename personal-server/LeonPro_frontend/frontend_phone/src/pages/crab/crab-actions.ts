@@ -1,10 +1,9 @@
 /**
- * 蟹单各页面共用的动作：分享（系统分享 → 复制链接）、扫单号（BarcodeDetector 相机）、图片识别单号、发货清单图。
+ * 蟹单各页面共用的动作：分享（系统分享 → 复制链接）、发货清单图。
  */
 import type { CrabShipment } from '@/api/types'
 import { copyText, showToast } from '@/utils/ui'
 import { shareUrl } from '@/utils/crab-parse.js'
-import { pickTrackingNoFromImage, scanTrackingNo } from '@/utils/barcode-scan.js'
 import { canvasToBlob, renderShipSheet, showSheetPreview } from '@/utils/crab-ship-sheet.js'
 
 const isAbort = (e: unknown) => !!e && typeof e === 'object' && (e as { name?: string }).name === 'AbortError'
@@ -38,32 +37,6 @@ export async function copyCrabLink(item: Pick<CrabShipment, 'publicId'>) {
   await copyText(url, '分享链接已复制')
 }
 
-/** 相机扫单号；取消返回空字符串 */
-export async function scanTracking(): Promise<string> {
-  try {
-    return (await scanTrackingNo()) || ''
-  } catch (e) {
-    if (isAbort(e)) return ''
-    console.error(e)
-    showToast('扫码失败，可在「更多」里用图片识别', 'error')
-    return ''
-  }
-}
-
-/** 从相册/拍照识别单号；没识别到返回空字符串 */
-export async function pickTrackingImage(): Promise<string> {
-  try {
-    showToast('识别中…')
-    const code = (await pickTrackingNoFromImage()) || ''
-    if (!code) showToast('没有识别到单号，请换张更清晰的面单照片', 'warning')
-    return code
-  } catch (e) {
-    console.error(e)
-    showToast('图片识别失败', 'error')
-    return ''
-  }
-}
-
 /** 生成发货清单图并预览（存相册 / 下载） */
 export async function exportShipSheet(rows: CrabShipment[], label: string) {
   if (!rows.length) {
@@ -85,8 +58,7 @@ export async function exportShipSheet(rows: CrabShipment[], label: string) {
   }
 }
 
-/** 删除确认里用的对象名称，如「1. 张三」 */
-export function crabTitle(item: Pick<CrabShipment, 'seqNo' | 'customerName'>) {
-  const name = item.customerName || '未填姓名'
-  return item.seqNo ? `${item.seqNo}. ${name}` : name
+/** 删除确认里用的对象名称：只写姓名，不带列表序号 */
+export function crabTitle(item: Pick<CrabShipment, 'customerName'>) {
+  return item.customerName || '未填姓名'
 }

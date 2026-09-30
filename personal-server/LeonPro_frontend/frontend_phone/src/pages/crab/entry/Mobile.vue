@@ -8,7 +8,7 @@ import EntryRowCard from './EntryRowCard.vue'
 import { useCrabEntry } from './useCrabEntry'
 
 const e = useCrabEntry()
-const { shipDate, tab, rawText, parsing, ocrProgress, saving, rows, manual } = e
+const { shipDate, tab, rawText, parsing, saving, rows, manual } = e
 const backTo = computed(() => ({ path: '/crab', query: { date: shipDate.value } }))
 </script>
 
@@ -22,11 +22,9 @@ const backTo = computed(() => ({ path: '/crab', query: { date: shipDate.value } 
         v-model:tab="tab"
         v-model:raw-text="rawText"
         :parsing="parsing"
-        :ocr-progress="ocrProgress"
         :manual="manual"
         @parse="e.parseText"
         @paste="e.onPaste"
-        @photo="e.onPhoto"
         @add-manual="e.pushManual"
       />
     </section>

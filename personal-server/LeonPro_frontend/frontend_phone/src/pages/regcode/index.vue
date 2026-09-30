@@ -31,6 +31,10 @@ const listChecked = ref(false)
 
 const regCode = computed(() => userStore.regCode.value)
 const showTabs = computed(() => showSubUserTab(regCode.value, listChecked.value ? (subList.value?.items.length ?? 0) : null))
+/** 实际显示的页：没有「子用户」页（如子用户登录、地址里带着 ?tab=subusers）时一律显示生成页 */
+const activeTab = computed<Tab>(() => (showTabs.value ? tab.value : 'generate'))
+/** 能管理子用户才去查子用户列表（子用户账号查了只会 403） */
+const canListSubUsers = computed(() => showSubUserTab(regCode.value, 1))
 
 async function loadSubUsers(silent = false) {
   subLoading.value = true
@@ -51,7 +55,7 @@ function setTab(v: Tab) {
 }
 
 watch(tab, (v) => {
-  if (v === 'subusers' && !subList.value && !subLoading.value) loadSubUsers()
+  if (v === 'subusers' && canListSubUsers.value && !subList.value && !subLoading.value) loadSubUsers()
 })
 watch(showTabs, (v) => {
   if (!v && tab.value !== 'generate') tab.value = 'generate'
@@ -61,7 +65,7 @@ onMounted(async () => {
   data.loadConfigs()
   data.loadQuota()
   await userStore.loadMe({ silent: true }).catch(() => false)
-  if (tab.value === 'subusers' || needsSubUserListCheck(regCode.value)) loadSubUsers(true)
+  if ((tab.value === 'subusers' && canListSubUsers.value) || needsSubUserListCheck(regCode.value)) loadSubUsers(true)
 })
 </script>
 
@@ -69,14 +73,14 @@ onMounted(async () => {
   <div class="regcode">
     <PageBar title="注册码生成" back="/" />
     <div v-if="showTabs" class="regcode__tabs" :class="{ 'is-mobile': isMobile }">
-      <el-tabs :model-value="tab" @update:model-value="(v: string | number) => setTab(v as Tab)">
+      <el-tabs :model-value="activeTab" @update:model-value="(v: string | number) => setTab(v as Tab)">
         <el-tab-pane label="生成" name="generate" />
         <el-tab-pane label="子用户" name="subusers" />
       </el-tabs>
     </div>
-    <GeneratePanel v-show="tab === 'generate'" :data="data" />
+    <GeneratePanel v-show="activeTab === 'generate'" :data="data" />
     <SubUsersPanel
-      v-if="showTabs && tab === 'subusers'"
+      v-if="activeTab === 'subusers'"
       :data="data"
       :list="subList"
       :loading="subLoading"

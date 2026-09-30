@@ -1,11 +1,11 @@
 /** 编辑一单（手机详情页、电脑详情弹窗共用） */
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import crabApi from '@/api/crab'
 import type { CrabShipment } from '@/api/types'
 import { ApiError, isNotFound } from '@/api/request'
 import { todayStr } from '@/utils/crab-parse.js'
 import { confirmAction, showToast } from '@/utils/ui'
-import { copyCrabLink, crabTitle, exportShipSheet, pickTrackingImage, scanTracking, shareCrab } from '../crab-actions'
+import { copyCrabLink, crabTitle, exportShipSheet, shareCrab } from '../crab-actions'
 
 export interface CrabFormModel {
   id: string
@@ -66,6 +66,10 @@ export function useCrabForm(opts: { onDeleted?: (form: CrabFormModel) => void; o
   const loadError = ref('')
   const notFound = ref(false)
   const saving = ref(false)
+  /** 最近一次加载/保存后的内容，用来判断有没有没保存的修改 */
+  const savedSnap = ref('')
+  const snap = () => JSON.stringify(form)
+  const dirty = computed(() => !!savedSnap.value && !loading.value && snap() !== savedSnap.value)
   let seq = 0
 
   async function load(id: string) {
@@ -77,6 +81,7 @@ export function useCrabForm(opts: { onDeleted?: (form: CrabFormModel) => void; o
       const data = await crabApi.getCrabShipment(id, { silent: true })
       if (my !== seq) return
       Object.assign(form, fromRecord(data))
+      savedSnap.value = snap()
     } catch (e) {
       if (my !== seq) return
       if (isNotFound(e) || (e instanceof ApiError && e.effectiveStatus === 403)) notFound.value = true
@@ -100,6 +105,7 @@ export function useCrabForm(opts: { onDeleted?: (form: CrabFormModel) => void; o
     try {
       const data = await crabApi.saveCrabShipment({ ...form, quantity: qty === '' ? null : Number(qty) })
       if (data) Object.assign(form, fromRecord({ ...form, ...data } as unknown as CrabShipment))
+      savedSnap.value = snap()
       showToast('已保存', 'success')
       opts.onSaved?.(data)
       return true
@@ -127,30 +133,16 @@ export function useCrabForm(opts: { onDeleted?: (form: CrabFormModel) => void; o
     }
   }
 
-  function applyTracking(code: string) {
-    if (!code) return
-    form.trackingNo = code
-    form.shipped = 1
-    showToast('已填入单号，保存后生效', 'success')
-  }
-  async function scan() {
-    applyTracking(await scanTracking())
-  }
-  async function pickImage() {
-    applyTracking(await pickTrackingImage())
-  }
-
   return {
     form,
     loading,
     loadError,
     notFound,
     saving,
+    dirty,
     load,
     save,
     remove,
-    scan,
-    pickImage,
     share: () => shareCrab(form),
     copyLink: () => copyCrabLink(form),
     exportSheet: () =>

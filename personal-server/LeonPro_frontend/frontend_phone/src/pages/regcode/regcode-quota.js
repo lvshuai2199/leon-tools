@@ -155,6 +155,11 @@ export function maxAdd(row) {
   return row.creatorRemaining == null ? null : Math.max(0, num(row.creatorRemaining));
 }
 
+/** 额度窗口里的「当前额度 N」：分配 − 已用（重新启用后后端返回已用 3、分配 3，显示当前额度 0） */
+export function currentQuota(row) {
+  return Math.max(0, num(row && row.allocated) - num(row && row.used));
+}
+
 /** 收回上限：子用户未用的次数（分配不能低于已用） */
 export function maxRevoke(row) {
   return Math.max(0, num(row.allocated) - num(row.used));

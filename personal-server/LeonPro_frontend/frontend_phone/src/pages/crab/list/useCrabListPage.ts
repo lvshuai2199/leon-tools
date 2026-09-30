@@ -5,7 +5,7 @@ import crabApi from '@/api/crab'
 import type { CrabShipment } from '@/api/types'
 import { useCrabList } from './useCrabList.js'
 import { confirmAction, showToast } from '@/utils/ui'
-import { crabTitle, exportShipSheet, pickTrackingImage, scanTracking, shareCrab } from '../crab-actions'
+import { crabTitle, exportShipSheet, shareCrab } from '../crab-actions'
 
 export function useCrabListPage() {
   const route = useRoute()
@@ -39,14 +39,6 @@ export function useCrabListPage() {
     router.push({ path: `/crab/${encodeURIComponent(item.id)}`, query: list.listQuery() })
   }
 
-  async function scan(item: CrabShipment) {
-    const code = await scanTracking()
-    if (code && (await list.applyTracking(item, code).catch(() => false))) showToast('已填入单号，并标记为已发货', 'success')
-  }
-  async function pickImage(item: CrabShipment) {
-    const code = await pickTrackingImage()
-    if (code && (await list.applyTracking(item, code).catch(() => false))) showToast('已填入单号，并标记为已发货', 'success')
-  }
   async function remove(item: CrabShipment) {
     const ok = await confirmAction('删除出货单', `确定删除「${crabTitle(item)}」的出货单？删除后不能恢复。`, {
       confirmText: '删除',
@@ -65,5 +57,5 @@ export function useCrabListPage() {
     if (done) list.toggleSelecting(false)
   }
 
-  return { list, goEntry, openDetail, scan, pickImage, remove, share: shareCrab, exportSelected }
+  return { list, goEntry, openDetail, remove, share: shareCrab, exportSelected }
 }

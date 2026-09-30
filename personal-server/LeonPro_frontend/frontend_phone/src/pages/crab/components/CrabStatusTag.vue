@@ -1,7 +1,8 @@
 <script setup lang="ts">
 /**
  * 已付款 / 已发货 的可点标签：开 = 成功色浅底 + 勾，关 = 灰色（未付款 / 未发货）。
- * 视觉 28px 高，点击区域上下扩到 44px。readonly 时只显示（分享页）。
+ * 标签高：手机 28、电脑 24（圆角 4），点击区域上下各扩 8。readonly 时只显示（分享页）。
+ * size="large" 是编辑表单里的状态选项：手机 44、电脑 32（和按钮一样高）。
  */
 import { computed } from 'vue'
 import { Check } from '@element-plus/icons-vue'
@@ -45,7 +46,7 @@ const label = computed(() => {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  height: 28px;
+  height: 24px;
   padding: 0 lp.$space-2;
   border: 1px solid var(--el-border-color);
   border-radius: lp.$radius-small;
@@ -61,10 +62,21 @@ const label = computed(() => {
     font-weight: lp.$font-weight-medium;
   }
 }
+@include lp.mobile {
+  .cst {
+    height: 28px;
+  }
+}
 .cst--large {
   height: 32px;
   padding: 0 lp.$space-3;
   font-size: lp.$font-size-base;
+  border-radius: lp.$radius-base;
+  @include lp.mobile {
+    height: lp.$component-size-mobile;
+    padding: 0 lp.$space-4;
+    font-size: lp.$font-size-mobile-body;
+  }
 }
 .cst--btn {
   cursor: pointer;

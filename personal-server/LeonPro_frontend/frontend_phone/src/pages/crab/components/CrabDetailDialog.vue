@@ -16,7 +16,7 @@ const visible = computed({
   },
 })
 
-const { form, loading, loadError, notFound, saving, load, save, remove, scan, pickImage, share, exportSheet } = useCrabForm({
+const { form, loading, loadError, notFound, saving, load, save, remove, share, exportSheet } = useCrabForm({
   onDeleted: () => {
     emit('changed')
     emit('close')
@@ -40,7 +40,7 @@ const title = computed(() => (form.customerName ? `出货单 · ${form.customerN
     <StateBlock v-if="loading" type="loading" compact />
     <StateBlock v-else-if="notFound" type="notfound" compact title="出货单不存在或没有权限查看" />
     <StateBlock v-else-if="loadError" type="error" compact title="加载失败" :desc="loadError" @retry="id && load(id)" />
-    <CrabForm v-else :form="form" :show-delete="false" show-image @scan="scan" @pick-image="pickImage" />
+    <CrabForm v-else :form="form" :show-delete="false" />
     <template v-if="!loading && !notFound && !loadError" #footer>
       <el-button type="danger" text class="dlg-delete" @click="remove">删除</el-button>
       <el-button type="primary" plain @click="exportSheet">发货图</el-button>

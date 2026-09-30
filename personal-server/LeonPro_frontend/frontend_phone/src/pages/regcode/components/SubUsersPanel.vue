@@ -3,6 +3,7 @@
  * 子用户页（regcode-subusers-spec.md 第 3–9 条）
  * - 顶行「已建 N / 最多 M 个」，超上限提醒色；建满后「新建子用户」禁用 + 灰字「已达上限，请联系管理员」
  * - 电脑表格；手机卡片（底部三个 44px 按钮）。停用的排最后、变灰、按钮换「启用」
+ * - 状态标签和蟹单标签同一套颜色：启用 = 成功色浅底绿字，停用 = 灰底灰字灰边；高度手机 28、电脑 24
  * - 停用先确认（N 用 quota 接口的 refundableTotal）；启用后直接打开额度窗口并提示
  * - 每次操作后刷新 /auth/me 和我的次数
  */
@@ -136,7 +137,7 @@ async function resetPassword(u: SubUser) {
     <StateBlock v-if="loading && !list" type="loading" compact />
     <StateBlock v-else-if="error && !list" type="error" title="加载失败" :desc="error" @retry="emit('reload')" />
     <StateBlock v-else-if="list && !users.length" type="empty" title="还没有子用户" desc="子用户可以用你分给他的次数生成注册码">
-      <el-button type="primary" :icon="Plus" :disabled="!canCreate" @click="openCreate">新建</el-button>
+      <el-button type="primary" :icon="Plus" :disabled="!canCreate" @click="openCreate">新建子用户</el-button>
     </StateBlock>
 
     <!-- 电脑：表格 -->
@@ -152,7 +153,7 @@ async function resetPassword(u: SubUser) {
         </el-table-column>
         <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" disable-transitions>{{ row.status === 1 ? '启用' : '停用' }}</el-tag>
+            <span class="st" :class="row.status === 1 ? 'st--on' : 'st--off'">{{ row.status === 1 ? '启用' : '停用' }}</span>
           </template>
         </el-table-column>
         <el-table-column label="已用/分配" width="100">
@@ -183,7 +184,7 @@ async function resetPassword(u: SubUser) {
       <li v-for="u in users" :key="u.id" class="sub-card" :class="{ 'is-disabled': u.status !== 1 }">
         <div class="sub-card__top">
           <strong class="sub-card__name">{{ u.username }}</strong>
-          <el-tag :type="u.status === 1 ? 'success' : 'info'" disable-transitions>{{ u.status === 1 ? '启用' : '停用' }}</el-tag>
+          <span class="st" :class="u.status === 1 ? 'st--on' : 'st--off'">{{ u.status === 1 ? '启用' : '停用' }}</span>
         </div>
         <p class="sub-card__meta">{{ u.nickname || '未填昵称' }} · {{ dateOf(u.createTime) }}</p>
         <p class="sub-card__usage">
@@ -204,9 +205,8 @@ async function resetPassword(u: SubUser) {
     </ul>
 
     <FixedActionBar v-if="isMobile && list && users.length">
-      <el-button type="primary" :icon="Plus" :disabled="!canCreate" @click="openCreate">
-        {{ canCreate ? '新建子用户' : '已达上限' }}
-      </el-button>
+      <!-- 建满时文字不变，只是禁用；原因看顶行灰字「已达上限，请联系管理员」 -->
+      <el-button type="primary" :icon="Plus" :disabled="!canCreate" @click="openCreate">新建子用户</el-button>
     </FixedActionBar>
 
     <SubUserCreateDialog v-model="createOpen" :data="data" @created="afterChange" />
@@ -246,6 +246,31 @@ async function resetPassword(u: SubUser) {
 }
 .is-exhausted {
   color: var(--el-color-warning);
+}
+/* 状态标签（和蟹单列表的已付款/未付款标签一致） */
+.st {
+  display: inline-flex;
+  align-items: center;
+  height: 24px;
+  padding: 0 lp.$space-2;
+  border: 1px solid transparent;
+  border-radius: lp.$radius-small;
+  font-size: lp.$font-size-extra-small;
+  line-height: 1;
+  white-space: nowrap;
+  @include lp.mobile {
+    height: 28px;
+  }
+}
+.st--on {
+  background: var(--lp-color-success-bg);
+  color: var(--el-color-success);
+  font-weight: lp.$font-weight-medium;
+}
+.st--off {
+  border-color: var(--el-border-color);
+  background: var(--el-bg-color-page);
+  color: var(--el-text-color-secondary);
 }
 .sub__table-wrap {
   border-radius: lp.$radius-card;

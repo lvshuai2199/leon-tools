@@ -2,6 +2,7 @@
 /**
  * 公开分享页 /s/crab/:publicId（免登录）。电话由后端打码，前端原样显示。
  * 顶部用蟹单橙渐变（主题里蟹单橙只用于图标底色和这里）。
+ * 手机：两边 12、复制按钮 44、标签 28；电脑：复制按钮 32、标签 24（按电脑尺寸）。没填的信息写「未填」（次要文字色）。
  */
 import { onMounted, ref } from 'vue'
 import { useRoute } from 'vue-router'
@@ -51,15 +52,17 @@ onMounted(load)
       <StateBlock v-else-if="error" type="error" compact title="加载失败" :desc="error" @retry="load" />
       <template v-else-if="view">
         <h1 class="share__name">{{ view.customerName || '出货单' }}</h1>
-        <p class="share__spec">{{ view.spec || '-' }} · {{ view.quantity || 0 }} 只</p>
+        <p class="share__spec">
+          <span v-if="view.spec">{{ view.spec }}</span><span v-else class="is-missing">规格未填</span> · {{ view.quantity || 0 }} 只
+        </p>
         <div class="share__tags">
-          <CrabStatusTag field="paid" :on="view.paid" readonly size="large" />
-          <CrabStatusTag field="shipped" :on="view.shipped" readonly size="large" />
+          <CrabStatusTag field="paid" :on="view.paid" readonly />
+          <CrabStatusTag field="shipped" :on="view.shipped" readonly />
         </div>
         <dl class="share__info">
-          <div><dt>出货日期</dt><dd>{{ view.shipDate || '-' }}</dd></div>
-          <div><dt>电话</dt><dd>{{ view.phone || '-' }}</dd></div>
-          <div><dt>地址</dt><dd>{{ view.address || '未填写地址' }}</dd></div>
+          <div><dt>出货日期</dt><dd :class="{ 'is-missing': !view.shipDate }">{{ view.shipDate || '未填' }}</dd></div>
+          <div><dt>电话</dt><dd :class="{ 'is-missing': !view.phone }">{{ view.phone || '未填' }}</dd></div>
+          <div><dt>地址</dt><dd :class="{ 'is-missing': !view.address }">{{ view.address || '未填' }}</dd></div>
         </dl>
         <div class="share__track">
           <div class="share__track-main">
@@ -77,10 +80,13 @@ onMounted(load)
 
 <style scoped lang="scss">
 .share {
-  @include lp.mobile-vars;
   min-height: 100vh;
   min-height: 100dvh;
   padding: calc(28px + env(safe-area-inset-top)) lp.$space-4 calc(#{lp.$space-6} + env(safe-area-inset-bottom));
+  @include lp.mobile {
+    padding-left: lp.$page-padding-mobile;
+    padding-right: lp.$page-padding-mobile;
+  }
   background: linear-gradient(
     180deg,
     var(--lp-color-crab) 0,
@@ -104,7 +110,7 @@ onMounted(load)
 }
 .share__name {
   margin: lp.$space-2 0 0;
-  font-size: 24px;
+  font-size: lp.$font-size-extra-large;
   font-weight: lp.$font-weight-semibold;
   color: var(--el-text-color-primary);
 }
@@ -167,11 +173,18 @@ onMounted(load)
   &.is-empty {
     font-size: lp.$font-size-medium;
     font-weight: lp.$font-weight-regular;
-    color: var(--el-text-color-placeholder);
+    color: var(--el-text-color-secondary);
   }
 }
 .share__copy {
   flex: none;
-  height: lp.$component-size-mobile;
+  @include lp.mobile {
+    height: lp.$component-size-mobile;
+  }
+}
+.share__spec .is-missing,
+.share__info dd.is-missing {
+  font-weight: lp.$font-weight-regular;
+  color: var(--el-text-color-secondary);
 }
 </style>

@@ -1,4 +1,4 @@
-import { parseCrabOrders } from "./crab-parse.js";
+import { parseCrabOrders, specOf } from "./crab-parse.js";
 import assert from "node:assert/strict";
 import test from "node:test";
 
@@ -12,9 +12,9 @@ test("parse tab table with header", () => {
   assert.equal(rows.length, 2);
   assert.equal(rows[0].customerName, "王大姐");
   assert.equal(rows[0].phone, "13800138000");
-  assert.equal(rows[0].spec, "3.5母");
+  assert.equal(rows[0].spec, "3.5两母");
   assert.equal(rows[0].quantity, 20);
-  assert.equal(rows[1].spec, "4公");
+  assert.equal(rows[1].spec, "4两公");
 });
 
 test("parse spaced lines anchored by phone", () => {
@@ -22,7 +22,7 @@ test("parse spaced lines anchored by phone", () => {
   const rows = parseCrabOrders(text);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].customerName, "张三");
-  assert.equal(rows[0].spec, "2.8母");
+  assert.equal(rows[0].spec, "2.8两母");
   assert.equal(rows[1].seqNo, 4);
   assert.equal(rows[1].quantity, 12);
 });
@@ -34,7 +34,7 @@ test("skip header only", () => {
 test("parse liang and zhi", () => {
   const rows = parseCrabOrders("王大姐 13800138000 阳江岗列 3两母 20只");
   assert.equal(rows.length, 1);
-  assert.equal(rows[0].spec, "3母");
+  assert.equal(rows[0].spec, "3两母");
   assert.equal(rows[0].quantity, 20);
 });
 
@@ -53,7 +53,7 @@ test("parse whole block copy", () => {
   const rows = parseCrabOrders(text);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].phone, "18600001111");
-  assert.equal(rows[0].spec, "2.8公");
+  assert.equal(rows[0].spec, "2.8两公");
   assert.equal(rows[0].quantity, 8);
   assert.equal(rows[1].customerName, "李梅");
   assert.equal(rows[1].quantity, 12);
@@ -65,7 +65,7 @@ test("phone first then address then name", () => {
   assert.equal(rows[0].customerName, "张三");
   assert.equal(rows[0].phone, "13800138000");
   assert.equal(rows[0].address, "广东省阳江市江城区岗列街道幸福路12号");
-  assert.equal(rows[0].spec, "2.8母");
+  assert.equal(rows[0].spec, "2.8两母");
 });
 
 test("address phone name", () => {
@@ -91,4 +91,33 @@ test("shareUrl 生成新的分享路径 /s/crab/{publicId}", async () => {
   const { shareUrl } = await import("./crab-parse.js");
   assert.equal(shareUrl("abc 1"), "/s/crab/abc%201");
   assert.equal(shareUrl(""), "");
+});
+
+test("规格一律是 数字 + 两 + 公/母（不再丢「两」）", () => {
+  assert.equal(specOf("4", "公"), "4两公");
+  const cases = [
+    ["4两公", "4两公"],
+    ["2.8两公", "2.8两公"],
+    ["4公", "4两公"],
+    ["公4两", "4两公"],
+    ["公蟹 4 两", "4两公"],
+    ["4 两 母", "4两母"],
+    ["母蟹 3.5 两", "3.5两母"],
+    ["3.5母蟹", "3.5两母"],
+  ];
+  for (const [spec, want] of cases) {
+    const rows = parseCrabOrders(`张三 18600001111 海口美兰蓝天路3号 ${spec} 8只`);
+    assert.equal(rows.length, 1, spec);
+    assert.equal(rows[0].spec, want, spec);
+    assert.equal(rows[0].quantity, 8, spec);
+  }
+  // 表格（有表头，规格一列单独解析）
+  const table = [
+    "姓名\t电话\t地址\t规格\t数量",
+    "王大姐\t13800138000\t阳江市江城区幸福路12号\t4两公\t20只",
+    "陈师傅\t13912345678\t玉林市沙田镇\t公4两\t15只",
+  ].join("\n");
+  const rows = parseCrabOrders(table);
+  assert.equal(rows[0].spec, "4两公");
+  assert.equal(rows[1].spec, "4两公");
 });

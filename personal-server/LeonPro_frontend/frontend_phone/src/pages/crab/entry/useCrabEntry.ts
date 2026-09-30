@@ -1,9 +1,10 @@
-/** 快速录入：粘贴识别 / 拍照识别（tesseract）/ 手动 → 预览可改 → 批量入库 */
-import { nextTick, reactive, ref } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+/** 快速录入：粘贴识别 / 手动 → 预览可改 → 批量入库 */
+import { computed, nextTick, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import crabApi from '@/api/crab'
 import { parseCrabOrders, todayStr } from '@/utils/crab-parse.js'
 import { confirmAction, showToast } from '@/utils/ui'
+import { useLeaveGuard } from '@/composables/useLeaveGuard'
 
 export interface EntryRow {
   key: number
@@ -14,7 +15,7 @@ export interface EntryRow {
   spec: string
   quantity: string
 }
-export type EntryTab = 'paste' | 'photo' | 'manual'
+export type EntryTab = 'paste' | 'manual'
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 let keySeq = 0
@@ -25,14 +26,12 @@ function emptyManual() {
 
 export function useCrabEntry() {
   const route = useRoute()
-  const router = useRouter()
 
   const q = typeof route.query.date === 'string' ? route.query.date : ''
   const shipDate = ref(DATE_RE.test(q) ? q : todayStr())
   const tab = ref<EntryTab>('paste')
   const rawText = ref('')
   const parsing = ref(false)
-  const ocrProgress = ref<number | null>(null)
   const saving = ref(false)
   const rows = ref<EntryRow[]>([])
   const manual = reactive(emptyManual())
@@ -87,25 +86,6 @@ export function useCrabEntry() {
     })
   }
 
-  async function onPhoto(file: File | undefined) {
-    if (!file) return
-    ocrProgress.value = 0
-    try {
-      const { recognizePhoto } = await import('@/utils/crab-ocr.js')
-      const text = await recognizePhoto(file, (p: number) => {
-        ocrProgress.value = p
-      })
-      rawText.value = text
-      tab.value = 'paste'
-      applyRows(parseCrabOrders(text))
-    } catch (e) {
-      console.error(e)
-      showToast('照片识别失败，请改用粘贴', 'error')
-    } finally {
-      ocrProgress.value = null
-    }
-  }
-
   function pushManual() {
     if (!manual.customerName.trim()) {
       showToast('请填写姓名', 'warning')
@@ -123,13 +103,14 @@ export function useCrabEntry() {
   async function removeRow(index: number) {
     const row = rows.value[index]
     if (!row) return
-    const ok = await confirmAction('删除这一条', `确定删除${rowTitle(row, index)}？`, { confirmText: '删除', danger: true })
+    const name = row.customerName.trim()
+    const ok = await confirmAction('删除这一条', name ? `确定删除「${name}」这一条？` : '确定删除这一条？', { confirmText: '删除', danger: true })
     if (ok) rows.value.splice(index, 1)
   }
 
   async function clearAll() {
     if (!rows.value.length) return
-    const ok = await confirmAction('清空识别结果', `将清空全部 ${rows.value.length} 条识别结果，还没入库的内容会丢失。`, {
+    const ok = await confirmAction('清空识别结果', `将清空 ${rows.value.length} 条识别结果，未入库的内容会丢失。`, {
       confirmText: '清空',
       danger: true,
     })
@@ -150,8 +131,17 @@ export function useCrabEntry() {
     return true
   }
 
+  /** 有没入库的内容：识别结果、粘贴框、手动表单里填了东西 */
+  const dirty = computed(
+    () => rows.value.length > 0 || !!rawText.value.trim() || Object.values(manual).some((v) => String(v).trim() !== ''),
+  )
+
+  // 有没入库的内容时，返回 / 后退先确认「有未保存的内容，确定离开？」
+  const { leave } = useLeaveGuard(() => dirty.value)
+
+  /** 入库成功后回列表（不再确认） */
   function goList() {
-    router.replace({ path: '/crab', query: { date: shipDate.value } })
+    return leave({ path: '/crab', query: { date: shipDate.value } })
   }
 
   async function saveAll() {
@@ -178,13 +168,12 @@ export function useCrabEntry() {
     tab,
     rawText,
     parsing,
-    ocrProgress,
     saving,
     rows,
     manual,
+    dirty,
     parseText,
     onPaste,
-    onPhoto,
     pushManual,
     removeRow,
     clearAll,

@@ -2,13 +2,14 @@
 /**
  * 首页（公开）
  * - 未登录：只显示壁纸卡（写死的公开模块）
- * - 登录后：再显示 appMenus 里非 hidden 的工具卡（按 sort）
+ * - 登录后：再显示 appMenus 里非 hidden 的工具卡（按 sort）；一个工具都没有时显示状态块「还没有可用工具，请联系管理员开通」
  */
 import { onMounted, ref } from 'vue'
 import { ArrowRight, Picture } from '@element-plus/icons-vue'
 import { randomGroupCover } from '@/api/wallpaper'
 import { userStore } from '@/stores/user'
 import ToolIcon from '@/components/ToolIcon.vue'
+import StateBlock from '@/components/StateBlock.vue'
 
 /** 工具卡说明文字（菜单里没有描述字段，先写在前端） */
 const TOOL_DESC: Record<string, string> = {
@@ -18,6 +19,8 @@ const TOOL_DESC: Record<string, string> = {
 
 const isLoggedIn = userStore.isLoggedIn
 const tools = userStore.tools
+/** 菜单刷新过（或本地有缓存）才判断「没有工具」，避免登录后闪一下空状态 */
+const menusKnown = () => userStore.state.meLoaded || userStore.state.appMenus.length > 0
 
 const cover = ref<string>()
 const coverLoading = ref(true)
@@ -59,6 +62,13 @@ onMounted(async () => {
             <p class="wcard__desc">精选壁纸合集，在线浏览与下载原图</p>
           </div>
         </router-link>
+      </div>
+    </section>
+
+    <section v-if="isLoggedIn && !tools.length && menusKnown()" class="home__section">
+      <h2 class="home__heading">我的工具</h2>
+      <div class="home__empty">
+        <StateBlock type="empty" compact title="还没有可用工具，请联系管理员开通" />
       </div>
     </section>
 
@@ -113,6 +123,13 @@ onMounted(async () => {
     grid-template-columns: 1fr;
     gap: lp.$space-3;
   }
+}
+
+/* 没有工具 */
+.home__empty {
+  border-radius: lp.$radius-card;
+  background: var(--el-bg-color);
+  box-shadow: var(--lp-shadow-card);
 }
 
 /* 壁纸卡 */

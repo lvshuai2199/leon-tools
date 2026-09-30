@@ -52,7 +52,6 @@ export interface CrabList {
   search(keyword: string): Promise<void>
   syncFromQuery(query: Record<string, unknown>): Promise<void>
   toggleStatus(item: CrabShipment, field: CrabStatusField): Promise<boolean>
-  applyTracking(item: CrabShipment, code: string): Promise<boolean>
   remove(item: CrabShipment): Promise<void>
   selecting: Ref<boolean>
   selectedIds: Ref<string[]>

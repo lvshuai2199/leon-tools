@@ -27,6 +27,8 @@ declare module 'vue-router' {
     layout?: 'blank'
     /** 手机底部标签栏里高亮哪一项 */
     tab?: 'home' | 'wallpaper' | 'tools' | 'me'
+    /** 手机上不显示底部标签栏（有底部固定操作条的二级页，靠顶栏返回） */
+    hideTabbar?: boolean
     /** 电脑上内容区用居中窄栏（表单类页面） */
     narrow?: boolean
     keepAlive?: boolean
@@ -48,6 +50,8 @@ const pages = import.meta.glob('../pages/**/*.vue')
 
 /** 电脑上用居中窄栏的菜单页面 */
 const NARROW_PAGES = new Set(['/regcode'])
+/** 手机上隐藏底部标签栏的页面：快速录入、出货单详情、注册码生成（都有底部固定操作条） */
+const NO_TABBAR_PAGES = new Set(['/crab/new', '/crab/:id', '/regcode'])
 
 /** component 指向单个 .vue 或目录（目录里用 index.vue） */
 function resolvePage(component: string) {
@@ -69,6 +73,7 @@ const menuRoutes: RouteRecordRaw[] = (menus as MenuItem[])
       keepAlive: !!m.keepAlive,
       tab: 'tools',
       narrow: NARROW_PAGES.has(m.path),
+      hideTabbar: NO_TABBAR_PAGES.has(m.path),
     },
   }))
 

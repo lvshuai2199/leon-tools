@@ -39,5 +39,6 @@ export function validateSubUserForm(form: { username: string; password: string }
 export function adjustRows(quota: RegCodeSubUserQuota | null | undefined, creatorUnlimited?: boolean): AdjustRow[]
 export function maxAdd(row: AdjustRow): number | null
 export function maxRevoke(row: AdjustRow): number
+export function currentQuota(row: Pick<AdjustRow, 'allocated' | 'used'>): number
 export function buildDeltas(rows: AdjustRow[], mode: AdjustMode, values: Record<string, number | undefined>): { items: Array<{ configId: string; delta: number }>; error: string }
 export function refundableTotal(quota: Partial<RegCodeSubUserQuota> | null | undefined): number

@@ -204,14 +204,6 @@ export function useCrabList(deps) {
     }
   }
 
-  /** 扫到/识别到单号：写入并标记已发货 */
-  async function applyTracking(item, code) {
-    if (!code) return false;
-    const updated = await api.updateStatus({ id: item.id, trackingNo: code, shipped: 1 });
-    Object.assign(item, updated && typeof updated === "object" ? updated : { trackingNo: code, shipped: 1 });
-    return true;
-  }
-
   async function remove(item) {
     await api.remove([item.id]);
     records.value = records.value.filter((r) => r.id !== item.id);
@@ -254,7 +246,6 @@ export function useCrabList(deps) {
     search,
     syncFromQuery,
     toggleStatus,
-    applyTracking,
     remove,
     selecting,
     selectedIds,

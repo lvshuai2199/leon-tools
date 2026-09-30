@@ -119,14 +119,9 @@ test("useCrabList：切换状态先改界面，失败回滚", async () => {
   assert.equal(item.shipped, 0);
 });
 
-test("useCrabList：写单号自动标记已发货；删除从列表去掉", async () => {
+test("useCrabList：删除从列表去掉，并清掉选中", async () => {
   const { api, list } = setup({}, [{ id: "a", paid: 0, shipped: 0 }, { id: "b", paid: 0, shipped: 0 }]);
   await list.load();
-  const item = list.records.value[0];
-  assert.equal(await list.applyTracking(item, ""), false);
-  assert.equal(await list.applyTracking(item, "SF123"), true);
-  assert.deepEqual(api.calls.status.at(-1), { id: "a", trackingNo: "SF123", shipped: 1 });
-  assert.equal(item.shipped, 1);
   list.toggleSelecting(true);
   list.toggleItem("b");
   await list.remove(list.records.value[1]);
