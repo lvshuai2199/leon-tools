@@ -33,6 +33,7 @@ public class RegCodeAccessService {
     public static final String MENU_REGCODE_CONFIG = "menu_regcode_config";
     public static final String MENU_REGCODE = "menu_regcode";
     public static final String MENU_CRAB = "menu_crab";
+    public static final String MENU_BADMINTON = "menu_badminton";
     public static final String ROLE_REGCODE_CLIENT_ID = "role_regcode_client";
     public static final int STATUS_ENABLED = 1;
     public static final int STATUS_DISABLED = 0;
@@ -48,6 +49,8 @@ public class RegCodeAccessService {
     /** 用户端出货菜单的路由（与菜单同步的首次授权用同一个配置） */
     @Value("${app.menu-sync.first-grant.app-crab-route:/crab}")
     private String appCrabRoute = "/crab";
+    @Value("${app.menu-sync.first-grant.app-badminton-route:/badminton}")
+    private String appBadmintonRoute = "/badminton";
 
     /** 用户端注册码生成菜单的路由（与菜单同步的首次授权用同一个配置） */
     @Value("${app.menu-sync.first-grant.app-regcode-route:/regcode}")
@@ -181,11 +184,54 @@ public class RegCodeAccessService {
     }
 
     /**
+     * 用户端羽毛球计费权限：规则与 {@link #canUseCrab} 相同，菜单换成羽毛球计费。
+     */
+    public boolean canUseBadminton(SysUsers user) {
+        if (user == null) {
+            return false;
+        }
+        if (isRootUser(user)) {
+            return true;
+        }
+        if (isRegCodeUser(user) || isRegCodeDisabled(user)) {
+            return false;
+        }
+        String menuId = effectiveBadmintonMenuId();
+        if (menuId == null) {
+            return false;
+        }
+        if (isBottomSubUser(user)) {
+            return false;
+        }
+        if (!isSubAccount(user)) {
+            return roleHasMenu(user.getRoleId(), menuId);
+        }
+        SysUsers creator = sysUsersService.getById(user.getParentId().trim());
+        if (creator == null) {
+            return false;
+        }
+        if (isRootUser(creator)) {
+            return !isRoleDisabled(creator);
+        }
+        if (isSubAccount(creator) || isRegCodeUser(creator) || isRoleDisabled(creator) || isRegCodeDisabled(creator)) {
+            return false;
+        }
+        return roleHasMenu(creator.getRoleId(), menuId);
+    }
+
+    /**
      * 判断用户端出货权限时要看的菜单 id：
      * 有用户端出货菜单且未停用 → 它的 id；有但已停用 → null（谁都没有）；没有 → 管理端 menu_crab（同步前的兜底）。
      */
     public String effectiveCrabMenuId() {
         return effectiveAppMenuId(appCrabRoute, MENU_CRAB);
+    }
+
+    /**
+     * 判断用户端羽毛球计费权限时要看的菜单 id：规则同 {@link #effectiveCrabMenuId()}。
+     */
+    public String effectiveBadmintonMenuId() {
+        return effectiveAppMenuId(appBadmintonRoute, MENU_BADMINTON);
     }
 
     /**
@@ -199,6 +245,11 @@ public class RegCodeAccessService {
     /** 用户端出货菜单的路由（默认 /crab） */
     public String appCrabRoute() {
         return appCrabRoute;
+    }
+
+    /** 用户端羽毛球计费菜单的路由（默认 /badminton） */
+    public String appBadmintonRoute() {
+        return appBadmintonRoute;
     }
 
     /** 用户端注册码生成菜单的路由（默认 /regcode） */
@@ -479,6 +530,18 @@ public class RegCodeAccessService {
         }
         if (!canUseCrab(user)) {
             throw new ForbiddenException("无螃蟹出货权限");
+        }
+        return user;
+    }
+
+    /** 当前登录人必须能用羽毛球计费，否则 403；返回当前用户 */
+    public SysUsers requireBadminton(HttpServletRequest request) {
+        SysUsers user = currentUser(request);
+        if (user == null) {
+            throw new ForbiddenException("请先登录");
+        }
+        if (!canUseBadminton(user)) {
+            throw new ForbiddenException("无羽毛球计费权限");
         }
         return user;
     }

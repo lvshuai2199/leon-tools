@@ -19,6 +19,8 @@ import java.util.Set;
  * <ul>
  *   <li>出货菜单（route_key = app-crab-route，默认 /crab）及其子页：当且仅当
  *       {@link RegCodeAccessService#canUseCrab}（/app/crabShipment/** 用的同一个判断）为 true 才返回；</li>
+ *   <li>羽毛球计费菜单（route_key = app-badminton-route，默认 /badminton）及其子页：当且仅当
+ *       {@link RegCodeAccessService#canUseBadminton}（/app/badmintonBill/** 用的同一个判断）为 true 才返回；</li>
  *   <li>注册码菜单（route_key = app-regcode-route，默认 /regcode）及其子页：当且仅当
  *       {@link RegCodeAccessService#canUseRegCode}（/common/** 用的同一个判断）为 true 才返回；</li>
  *   <li>其他用户端菜单：按 {@link RegCodeAccessService#appMenuGoverningUser} 的角色授权（子账号看创建人）；</li>
@@ -55,10 +57,13 @@ public class AppMenuAccessService {
             return dropOrphans(MenuQueryService.visibleMenus(available, List.of(), true));
         }
         String crabRoot = idOfRoute(available, access.appCrabRoute());
+        String badmintonRoot = idOfRoute(available, access.appBadmintonRoute());
         String regRoot = idOfRoute(available, access.appRegCodeRoute());
         Set<String> crabTree = subtree(available, crabRoot);
+        Set<String> badmintonTree = subtree(available, badmintonRoot);
         Set<String> regTree = subtree(available, regRoot);
         boolean crab = access.canUseCrab(user);
+        boolean badminton = access.canUseBadminton(user);
         boolean reg = access.canUseRegCode(user);
         if (access.isBottomSubUser(user)) {
             // 注册码子用户：独立账号，只能生成注册码；不带 /regcode 的子页，也不看角色的其他授权
@@ -70,6 +75,9 @@ public class AppMenuAccessService {
         Set<String> granted = new LinkedHashSet<>();
         if (crab && crabRoot != null) {
             granted.add(crabRoot);
+        }
+        if (badminton && badmintonRoot != null) {
+            granted.add(badmintonRoot);
         }
         if (reg && regRoot != null) {
             granted.add(regRoot);
@@ -88,7 +96,9 @@ public class AppMenuAccessService {
                     if (id == null) {
                         continue;
                     }
-                    if (crabTree.contains(id) ? crab : regTree.contains(id) ? reg : true) {
+                    if (crabTree.contains(id) ? crab
+                            : badmintonTree.contains(id) ? badminton
+                            : regTree.contains(id) ? reg : true) {
                         granted.add(id);
                     }
                 }
@@ -99,7 +109,9 @@ public class AppMenuAccessService {
         }
         // 最后再按权限过滤一次：其他菜单的隐藏子页 / 祖先补全不能把出货、注册码的页面带进来
         return dropOrphans(MenuQueryService.visibleMenus(available, granted, false).stream()
-                .filter(m -> crabTree.contains(m.getId()) ? crab : !regTree.contains(m.getId()) || reg)
+                .filter(m -> crabTree.contains(m.getId()) ? crab
+                        : badmintonTree.contains(m.getId()) ? badminton
+                        : !regTree.contains(m.getId()) || reg)
                 .toList());
     }
 

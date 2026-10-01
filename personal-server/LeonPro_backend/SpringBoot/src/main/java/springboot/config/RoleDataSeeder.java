@@ -85,7 +85,8 @@ public class RoleDataSeeder implements CommandLineRunner {
                 MenuDataSeeder.MENU_REGCODE_CONFIG,
                 MenuDataSeeder.MENU_REGCODE_USER,
                 MenuDataSeeder.MENU_REGISTRATION,
-                MenuDataSeeder.MENU_CRAB));
+                MenuDataSeeder.MENU_CRAB,
+                MenuDataSeeder.MENU_BADMINTON));
         long removed = sysRoleMenuService.count(extra);
         if (removed > 0) {
             sysRoleMenuService.remove(extra);

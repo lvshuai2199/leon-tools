@@ -1,13 +1,13 @@
 <script setup lang="ts">
 /** 工具图标：按菜单 icon 取 Element Plus 图标，螃蟹用蟹单橙底，其余用主色底 */
 import { computed } from 'vue'
-import { Grid, Key, Ship } from '@element-plus/icons-vue'
+import { Grid, Key, Ship, Trophy } from '@element-plus/icons-vue'
 
 const props = withDefaults(defineProps<{ icon?: string; size?: number }>(), { icon: '', size: 44 })
 
-const ICONS = { crab: Ship, key: Key } as const
+const ICONS = { crab: Ship, key: Key, trophy: Trophy } as const
 const comp = computed(() => ICONS[props.icon as keyof typeof ICONS] || Grid)
-const tone = computed(() => (props.icon === 'crab' ? 'crab' : 'primary'))
+const tone = computed(() => (props.icon === 'crab' ? 'crab' : props.icon === 'trophy' ? 'trophy' : 'primary'))
 </script>
 
 <template>
@@ -27,6 +27,9 @@ const tone = computed(() => (props.icon === 'crab' ? 'crab' : 'primary'))
 }
 .ti--crab {
   background: var(--lp-color-crab);
+}
+.ti--trophy {
+  background: #0d9488;
 }
 .ti--primary {
   background: var(--el-color-primary);

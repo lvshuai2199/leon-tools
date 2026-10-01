@@ -113,18 +113,19 @@ class AppMenuAccessConsistencyTest {
         menu("menu_app_crab", "/crab", null, 1);
         menu("menu_app_crab_new", "/crab/new", "menu_app_crab", 0);
         menu("menu_app_crab_id", "/crab/:id", "menu_app_crab", 0);
+        menu("menu_app_badminton", "/badminton", null, 1);
+        menu("menu_app_badminton_new", "/badminton/new", "menu_app_badminton", 0);
+        menu("menu_app_badminton_id", "/badminton/:id", "menu_app_badminton", 0);
         menu("menu_app_regcode", "/regcode", null, 1);
         menu("menu_app_other", "/other", null, 1);
 
-        grants.put("role_ops", List.of("menu_app_crab", "menu_app_regcode"));
-        grants.put("role_crab", List.of("menu_app_crab"));
+        grants.put("role_ops", List.of("menu_app_crab", "menu_app_badminton", "menu_app_regcode"));
+        grants.put("role_crab", List.of("menu_app_crab", "menu_app_badminton"));
         grants.put("role_gen", List.of("menu_app_regcode", "menu_app_other"));
-        // 注册码客户角色即使误勾了出货菜单，也永远不能用出货
-        grants.put("role_regcode_client", List.of("menu_app_regcode", "menu_app_crab"));
-        // 子账号自己的角色什么都有，但出货只看创建人
-        grants.put("role_sub_all", List.of("menu_app_crab", "menu_app_regcode", "menu_app_other"));
+        grants.put("role_regcode_client", List.of("menu_app_regcode", "menu_app_crab", "menu_app_badminton"));
+        grants.put("role_sub_all", List.of("menu_app_crab", "menu_app_badminton", "menu_app_regcode", "menu_app_other"));
         grants.put("role_none", List.of());
-        grants.put("role_admin_legacy", List.of("menu_crab", "menu_regcode", "menu_user"));
+        grants.put("role_admin_legacy", List.of("menu_crab", "menu_badminton", "menu_regcode", "menu_user"));
 
         user("root", "role_root", null);
         user("ops", "role_ops", null);
@@ -177,9 +178,14 @@ class AppMenuAccessConsistencyTest {
         for (SysUsers u : userRows.values()) {
             Set<String> r = routes(u.getId());
             boolean crab = access.canUseCrab(u);
+            boolean badminton = access.canUseBadminton(u);
             boolean reg = access.canUseRegCode(u);
             if (r.contains("/crab") != crab || r.contains("/crab/new") != crab || r.contains("/crab/:id") != crab) {
                 problems.add(u.getId() + " 出货: canUseCrab=" + crab + " appMenus=" + r);
+            }
+            if (r.contains("/badminton") != badminton || r.contains("/badminton/new") != badminton
+                    || r.contains("/badminton/:id") != badminton) {
+                problems.add(u.getId() + " 羽毛球: canUseBadminton=" + badminton + " appMenus=" + r);
             }
             if (r.contains("/regcode") != reg) {
                 problems.add(u.getId() + " 注册码: canUseRegCode=" + reg + " appMenus=" + r);
@@ -188,33 +194,35 @@ class AppMenuAccessConsistencyTest {
         assertEquals(List.of(), problems);
     }
 
-    private void expect(String userId, boolean crab, boolean reg) {
+    private void expect(String userId, boolean crab, boolean badminton, boolean reg) {
         SysUsers u = userRows.get(userId);
         assertEquals(crab, access.canUseCrab(u), userId + " 出货权限");
+        assertEquals(badminton, access.canUseBadminton(u), userId + " 羽毛球权限");
         assertEquals(reg, access.canUseRegCode(u), userId + " 注册码权限");
         Set<String> r = routes(userId);
         assertEquals(crab, r.contains("/crab"), userId + " appMenus 出货入口 " + r);
+        assertEquals(badminton, r.contains("/badminton"), userId + " appMenus 羽毛球入口 " + r);
         assertEquals(reg, r.contains("/regcode"), userId + " appMenus 注册码入口 " + r);
     }
 
     @Test
     void representativeRolesMatchPermissionChecks() {
-        expect("root", true, true);
-        expect("ops", true, true);
-        expect("crabber", true, false);
-        expect("gen", false, true);
-        expect("legacy", false, false);          // 同步后只有管理端 menu_crab / menu_regcode 不算
-        expect("rcTop", false, true);            // 注册码客户：误勾了出货菜单也不能出货
-        expect("rcByOps", false, true);          // 管理员建的客户：注册码按自己角色，出货永远不行
-        expect("rcByRoot", false, true);
-        expect("subOfOps", true, false);         // 管理员名下的子账号：出货跟创建人；注册码按自己角色（没有）
-        expect("subOfCrabber", true, true);      // 出货跟创建人（有）；注册码按自己角色（有）
-        expect("subOfGen", false, false);        // 创建人没有出货；自己角色没有注册码
-        expect("subOfRcTop", false, true);       // 客户建的子用户：注册码跟创建人，出货永远不行
-        expect("subOfRcByOps", false, true);     // 同上（创建人是管理员建的客户）
-        expect("subOfRoot", true, false);        // ROOT 建的子账号：出货可以；注册码按自己角色（没有）
-        expect("orphan", false, false);          // 创建人已删除
-        expect("nobody", false, false);
+        expect("root", true, true, true);
+        expect("ops", true, true, true);
+        expect("crabber", true, true, false);
+        expect("gen", false, false, true);
+        expect("legacy", false, false, false);
+        expect("rcTop", false, false, true);
+        expect("rcByOps", false, false, true);
+        expect("rcByRoot", false, false, true);
+        expect("subOfOps", true, true, false);
+        expect("subOfCrabber", true, true, true);
+        expect("subOfGen", false, false, false);
+        expect("subOfRcTop", false, false, true);
+        expect("subOfRcByOps", false, false, true);
+        expect("subOfRoot", true, true, false);
+        expect("orphan", false, false, false);
+        expect("nobody", false, false, false);
         assertConsistentForAll();
     }
 
@@ -223,33 +231,35 @@ class AppMenuAccessConsistencyTest {
         assertEquals(Set.of("/regcode", "/other"), routes("gen"));
         assertEquals(Set.of("/other"), routes("subOfGen"), "子账号的其他菜单看创建人的角色，创建人的注册码授权不会带过来");
         assertEquals(Set.of(), routes("orphan"), "创建人已删除：自己角色有也不给");
-        assertEquals(Set.of("/crab", "/crab/new", "/crab/:id", "/regcode", "/other"), routes("root"));
+        assertEquals(Set.of("/crab", "/crab/new", "/crab/:id", "/badminton", "/badminton/new", "/badminton/:id",
+                "/regcode", "/other"), routes("root"));
     }
 
     @Test
     void stateChangesKeepMenusAndChecksInStep() {
         // 创建人失去出货菜单
         grants.put("role_crab", List.of());
-        expect("subOfCrabber", false, true);
-        grants.put("role_crab", List.of("menu_app_crab"));
+        expect("subOfCrabber", false, false, true);
+        grants.put("role_crab", List.of("menu_app_crab", "menu_app_badminton"));
         // 创建人账号被停用
         status.put("rcTop", 0);
-        expect("subOfRcTop", false, false);
+        expect("subOfRcTop", false, false, false);
         status.remove("rcTop");
         // 创建人角色被禁用
         SysRoles off = new SysRoles();
         off.setId("role_ops");
         off.setIsDisabled(1);
         when(roles.getById("role_ops")).thenReturn(off);
-        expect("subOfOps", false, false);
+        expect("subOfOps", false, false, false);
         when(roles.getById("role_ops")).thenReturn(null);
         // 用户端出货菜单停用：除 ROOT 外都没有出货，也没有入口
         appRows.get("menu_app_crab").setDisabled(1);
-        expect("ops", false, true);
-        expect("subOfOps", false, false);
+        expect("ops", false, true, true);
+        expect("subOfOps", false, true, false);
         // ROOT 的接口权限不受菜单停用影响（ROOT 拥有全部权限），但停用的菜单不会出现在任何人的 appMenus 里
         assertEquals(true, access.canUseCrab(userRows.get("root")));
-        assertEquals(Set.of("/regcode", "/other"), routes("root"), "出货菜单停用后它的隐藏子页也不返回");
+        assertEquals(Set.of("/badminton", "/badminton/new", "/badminton/:id", "/regcode", "/other"), routes("root"),
+                "出货菜单停用后它的隐藏子页也不返回");
         // 角色直接勾了子页（/crab/new）也不能在出货菜单停用时单独出现
         grants.put("role_gen", List.of("menu_app_regcode", "menu_app_other", "menu_app_crab_new"));
         assertEquals(Set.of("/regcode", "/other"), routes("gen"));
@@ -257,8 +267,8 @@ class AppMenuAccessConsistencyTest {
         appRows.get("menu_app_crab").setDisabled(0);
         // 用户端注册码菜单停用
         appRows.get("menu_app_regcode").setDisabled(1);
-        expect("gen", false, false);
-        expect("subOfRcTop", false, false);
+        expect("gen", false, false, false);
+        expect("subOfRcTop", false, false, false);
         appRows.get("menu_app_regcode").setDisabled(0);
         assertConsistentForAll();
     }
@@ -270,7 +280,7 @@ class AppMenuAccessConsistencyTest {
         assertEquals(Set.of("/regcode"), routes("subOfRcTop"));
         assertEquals(Set.of("/regcode"), routes("subOfRcByOps"));
         assertEquals(Set.of("/regcode"), routes("subAllOfRcTop"), "角色勾了出货和其他菜单也只有 /regcode");
-        expect("subAllOfRcTop", false, true);
+        expect("subAllOfRcTop", false, false, true);
 
         // 不推荐的组合：出货主账号 both 又有注册码账号，它在注册码页建的 bothR
         user("both", "role_ops", null);
@@ -279,12 +289,12 @@ class AppMenuAccessConsistencyTest {
         status.put("both", 1);
         status.put("bothR", 1);
         assertEquals(Set.of("/regcode"), routes("bothR"));
-        expect("bothR", false, true);
-        expect("bothC", true, false);
-        grants.put("role_ops", List.of("menu_app_crab"));
-        expect("bothR", false, false);
+        expect("bothR", false, false, true);
+        expect("bothC", true, true, false);
+        grants.put("role_ops", List.of("menu_app_crab", "menu_app_badminton"));
+        expect("bothR", false, false, false);
         assertEquals(Set.of(), routes("bothR"), "创建人去掉 /regcode：子用户没有任何菜单");
-        grants.put("role_ops", List.of("menu_app_crab", "menu_app_regcode"));
+        grants.put("role_ops", List.of("menu_app_crab", "menu_app_badminton", "menu_app_regcode"));
         assertConsistentForAll();
     }
 }

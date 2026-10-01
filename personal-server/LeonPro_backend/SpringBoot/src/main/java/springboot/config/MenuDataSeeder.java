@@ -18,7 +18,7 @@ import java.util.Set;
  * 菜单相关的角色补授权（原菜单种子）。
  * <p>
  * 菜单行本身已改由页面清单同步（{@link MenuManifestSync}，清单 menus.json 打进 jar）负责插入和更新，
- * 这里不再插入任何菜单；只保留原来的两段补授权，并且只授予确实存在的菜单，避免产生指向不存在菜单的授权行。
+ * 这里不再插入任何菜单；只保留原来的补授权，并且只授予确实存在的菜单，避免产生指向不存在菜单的授权行。
  * 菜单 id 常量仍在这里定义，供权限判断引用（这些 id 必须保持不变）。
  * <p>
  * 顺序：放在菜单清单同步（Order 5）之前执行，这样首次授权（按“已有 menu_regcode / menu_crab 的角色”授用户端菜单）
@@ -35,7 +35,9 @@ public class MenuDataSeeder implements CommandLineRunner {
     public static final String MENU_REGCODE_USER = "menu_regcode_user";
     public static final String MENU_REGISTRATION = "menu_registration";
     public static final String MENU_CRAB = "menu_crab";
+    public static final String MENU_BADMINTON = "menu_badminton";
     public static final String MENU_TASKS = "menu_tasks";
+    public static final String MENU_MINDMAP = "menu_mindmap";
 
     private static final List<String> REGCODE_MENU_IDS = List.of(
             MENU_REGCODE_CENTER,
@@ -57,6 +59,7 @@ public class MenuDataSeeder implements CommandLineRunner {
     public void run(String... args) {
         grantRegCodeMenusToManagers();
         grantCrabMenuToBusinessRoles();
+        grantBadmintonMenuToBusinessRoles();
     }
 
     private boolean menuExists(String menuId) {
@@ -90,6 +93,36 @@ public class MenuDataSeeder implements CommandLineRunner {
             extra.setMenuId(MENU_CRAB);
             sysRoleMenuService.save(extra);
             log.info("已为角色 {} 补齐菜单 {}。", roleId, MENU_CRAB);
+        }
+    }
+
+    /** 已有任务管理、螃蟹出货或思维导图的业务角色，补插羽毛球计费；注册码客户除外。 */
+    private void grantBadmintonMenuToBusinessRoles() {
+        if (!menuExists(MENU_BADMINTON)) {
+            return;
+        }
+        LambdaQueryWrapper<SysRoleMenu> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(SysRoleMenu::getMenuId, List.of(MENU_TASKS, MENU_CRAB, MENU_MINDMAP));
+        Set<String> roleIds = new HashSet<>();
+        for (SysRoleMenu row : sysRoleMenuService.list(wrapper)) {
+            if (row.getRoldId() != null) {
+                roleIds.add(row.getRoldId());
+            }
+        }
+        for (String roleId : roleIds) {
+            if (RegCodeAccessService.ROLE_REGCODE_CLIENT_ID.equals(roleId)) {
+                continue;
+            }
+            List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(roleId);
+            Set<String> owned = menuIds == null ? new HashSet<>() : new HashSet<>(menuIds);
+            if (owned.contains(MENU_BADMINTON)) {
+                continue;
+            }
+            SysRoleMenu extra = new SysRoleMenu();
+            extra.setRoldId(roleId);
+            extra.setMenuId(MENU_BADMINTON);
+            sysRoleMenuService.save(extra);
+            log.info("已为角色 {} 补齐菜单 {}。", roleId, MENU_BADMINTON);
         }
     }
 

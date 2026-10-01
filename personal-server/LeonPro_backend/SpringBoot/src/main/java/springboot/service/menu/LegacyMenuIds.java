@@ -14,6 +14,7 @@ public final class LegacyMenuIds {
             Map.entry("/tool/files", "menu_files"),
             Map.entry("/tool/documents", "menu_documents"),
             Map.entry("/tool/mindmap", "menu_mindmap"),
+            Map.entry("/tool/badminton", "menu_badminton"),
             Map.entry("/tool/wallpaper", "menu_wallpaper"),
             Map.entry("/regcode", "menu_regcode_center"),
             Map.entry("/regcode/generate", "menu_regcode"),

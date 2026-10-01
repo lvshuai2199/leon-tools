@@ -139,10 +139,10 @@ export function canvasToBlob(canvas) {
   });
 }
 
-export async function saveSheetToAlbum(blob, filename) {
+export async function saveSheetToAlbum(blob, filename, shareTitle = "发货清单") {
   const file = new File([blob], filename, { type: "image/png" });
   if (navigator.canShare && navigator.canShare({ files: [file] })) {
-    await navigator.share({ files: [file], title: "发货清单", text: "存入相册或发给仓库" });
+    await navigator.share({ files: [file], title: shareTitle, text: shareTitle });
     return "share";
   }
   downloadBlob(blob, filename);
@@ -164,14 +164,18 @@ export function showSheetPreview(blob, options = {}) {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(blob);
     const filename = options.filename || "螃蟹发货清单.png";
+    const title = options.title || "发货清单预览";
+    const hint = options.hint || "存入相册：手机可走系统分享里的「存储图像」。也可长按图片保存。";
+    const alt = options.alt || "发货清单";
+    const shareTitle = options.shareTitle || "发货清单";
     const root = document.createElement("div");
     root.className = "ship-sheet-root";
     root.innerHTML = `
       <div class="ship-sheet-mask">
         <div class="ship-sheet-panel">
-          <div class="ship-sheet-title">发货清单预览</div>
-          <p class="ship-sheet-hint">存入相册：手机可走系统分享里的「存储图像」。也可长按图片保存。</p>
-          <div class="ship-sheet-scroll"><img class="ship-sheet-img" alt="发货清单" /></div>
+          <div class="ship-sheet-title">${title}</div>
+          <p class="ship-sheet-hint">${hint}</p>
+          <div class="ship-sheet-scroll"><img class="ship-sheet-img" alt="${alt}" /></div>
           <div class="ship-sheet-actions">
             <button type="button" data-album>存入相册</button>
             <button type="button" class="ghost" data-down>下载图片</button>
@@ -194,7 +198,7 @@ export function showSheetPreview(blob, options = {}) {
     root.querySelector("[data-down]").addEventListener("click", () => downloadBlob(blob, filename));
     root.querySelector("[data-album]").addEventListener("click", async () => {
       try {
-        const mode = await saveSheetToAlbum(blob, filename);
+        const mode = await saveSheetToAlbum(blob, filename, shareTitle);
         if (mode === "download" && typeof options.onDownloadFallback === "function") {
           options.onDownloadFallback();
         }

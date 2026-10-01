@@ -14,6 +14,7 @@ import StateBlock from '@/components/StateBlock.vue'
 /** 工具卡说明文字（菜单里没有描述字段，先写在前端） */
 const TOOL_DESC: Record<string, string> = {
   '/crab': '录入、查看出货单，导出发货图',
+  '/badminton': '场地费、用球费按人数分摊',
   '/regcode': '为客户生成对应注册码',
 }
 

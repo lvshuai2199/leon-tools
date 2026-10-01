@@ -39,7 +39,8 @@ import java.util.UUID;
  * mode=dry-run 只打印计划不写库；mode=off 完全跳过。每端一个事务，任何异常只记日志、不影响启动。
  * <p>
  * 同步后执行一次性授权（各自记录标记，只执行一次）：用户端注册码菜单授予已有 menu_regcode 的角色；
- * 用户端出货菜单授予已有 menu_crab 的角色（注册码客户角色除外）。目标菜单还不存在时不执行、不记标记。
+ * 用户端出货菜单授予已有 menu_crab 的角色（注册码客户角色除外）；
+ * 用户端羽毛球计费菜单授予已有 menu_badminton 的角色（注册码客户角色除外）。目标菜单还不存在时不执行、不记标记。
  * 另外按配置 app.menu-sync.first-grant.app-crab-extra-roles 的显式名单补授用户端出货菜单（每个角色一个标记）。
  */
 @Slf4j
@@ -54,6 +55,7 @@ public class MenuManifestSync implements CommandLineRunner {
     static final String LOCK_NAME = "leonpro_menu_sync";
     static final String MARKER_APP_REGCODE = "menu_first_grant_app_regcode";
     static final String MARKER_APP_CRAB = "menu_first_grant_app_crab";
+    static final String MARKER_APP_BADMINTON = "menu_first_grant_app_badminton";
     /** 按名单补授用户端出货菜单：每个角色一个标记，后缀是角色 id */
     static final String MARKER_APP_CRAB_ROLE_PREFIX = "menu_grant_app_crab_role:";
 
@@ -75,6 +77,8 @@ public class MenuManifestSync implements CommandLineRunner {
     String appRegCodeRoute = "/regcode";
     @Value("${app.menu-sync.first-grant.app-crab-route:/crab}")
     String appCrabRoute = "/crab";
+    @Value("${app.menu-sync.first-grant.app-badminton-route:/badminton}")
+    String appBadmintonRoute = "/badminton";
     /**
      * 额外要授予用户端出货菜单的角色 id（逗号分隔），由管理员先跑 sql/crab_users_without_menu_check.sql 核对后填写：
      * 在手机端录过出货单、但角色没有出货菜单的账号，避免上线后失去出货权限。每个角色只授予一次（记标记）。
@@ -123,6 +127,11 @@ public class MenuManifestSync implements CommandLineRunner {
             grantOnce(MARKER_APP_REGCODE, appRegCodeRoute, MenuDataSeeder.MENU_REGCODE,
                     Set.of(RoleUtils.ROOT_ROLE_ID), apply, plannedAppKeys);
             grantOnce(MARKER_APP_CRAB, appCrabRoute, MenuDataSeeder.MENU_CRAB,
+                    Set.of(RoleUtils.ROOT_ROLE_ID, RegCodeAccessService.ROLE_REGCODE_CLIENT_ID), apply, plannedAppKeys);
+            grantAdminMenuToRolesWith(MenuDataSeeder.MENU_BADMINTON,
+                    List.of(MenuDataSeeder.MENU_TASKS, MenuDataSeeder.MENU_CRAB, MenuDataSeeder.MENU_MINDMAP),
+                    Set.of(RoleUtils.ROOT_ROLE_ID, RegCodeAccessService.ROLE_REGCODE_CLIENT_ID), apply);
+            grantOnce(MARKER_APP_BADMINTON, appBadmintonRoute, MenuDataSeeder.MENU_BADMINTON,
                     Set.of(RoleUtils.ROOT_ROLE_ID, RegCodeAccessService.ROLE_REGCODE_CLIENT_ID), apply, plannedAppKeys);
             grantToListedRoles(appCrabRoute, appCrabExtraRoles,
                     Set.of(RoleUtils.ROOT_ROLE_ID, RegCodeAccessService.ROLE_REGCODE_CLIENT_ID), apply, plannedAppKeys);
@@ -261,6 +270,55 @@ public class MenuManifestSync implements CommandLineRunner {
         }
         for (MenuSyncPlan.Disable d : plan.getDisables()) {
             jdbc.update("UPDATE sys_menus SET disabled = 1, update_time = ? WHERE id = ? AND managed = 1", now, d.id());
+        }
+    }
+
+    /**
+     * 清单刚插入管理端菜单时，把该菜单补授给已有任一 sourceMenuId 的角色，再执行 grantOnce 才能授用户端菜单。
+     * 目标管理端菜单还不存在时什么都不做。
+     */
+    void grantAdminMenuToRolesWith(String targetMenuId, List<String> sourceMenuIds, Set<String> excluded, boolean apply) {
+        if (targetMenuId == null || sourceMenuIds == null || sourceMenuIds.isEmpty()) {
+            return;
+        }
+        String tag = "管理端菜单补授权[" + targetMenuId + "]" + (apply ? "" : "[dry-run]");
+        try {
+            tx.executeWithoutResult(status -> {
+                Integer exists = jdbc.queryForObject("SELECT COUNT(*) FROM sys_menus WHERE id = ?",
+                        Integer.class, targetMenuId);
+                if (exists == null || exists == 0) {
+                    log.info("{} 菜单还不存在，暂不执行", tag);
+                    return;
+                }
+                Set<String> excludedLower = new HashSet<>();
+                excluded.forEach(r -> excludedLower.add(r.toLowerCase(Locale.ROOT)));
+                Set<String> roles = new LinkedHashSet<>();
+                for (String source : sourceMenuIds) {
+                    for (String r : jdbc.queryForList(
+                            "SELECT DISTINCT rold_id FROM sys_role_menu WHERE menu_id = ? AND rold_id IS NOT NULL",
+                            String.class, source)) {
+                        String role = r.trim();
+                        if (!role.isEmpty() && !excludedLower.contains(role.toLowerCase(Locale.ROOT))) {
+                            roles.add(role);
+                        }
+                    }
+                }
+                roles.removeAll(new HashSet<>(jdbc.queryForList(
+                        "SELECT rold_id FROM sys_role_menu WHERE menu_id = ?", String.class, targetMenuId)));
+                if (!apply) {
+                    log.info("{} 计划授予角色：{}", tag, roles);
+                    return;
+                }
+                for (String role : roles) {
+                    jdbc.update("INSERT INTO sys_role_menu (id, rold_id, menu_id) VALUES (?, ?, ?)",
+                            UUID.randomUUID().toString().replace("-", ""), role, targetMenuId);
+                }
+                if (!roles.isEmpty()) {
+                    log.info("{} 已授予 {} 个角色：{}", tag, roles.size(), roles);
+                }
+            });
+        } catch (Exception e) {
+            log.error("{} 执行失败，已回滚：{}", tag, e.getMessage(), e);
         }
     }
 

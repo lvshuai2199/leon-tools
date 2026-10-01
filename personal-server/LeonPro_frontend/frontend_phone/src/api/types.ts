@@ -153,3 +153,36 @@ export interface CrabShipment {
 
 /** 公开分享页返回（手机号由后端打码） */
 export type CrabShipmentPublic = Omit<CrabShipment, 'id'>
+
+/** 羽毛球计费（/app/badmintonBill/*） */
+export interface BadmintonCourtFeeItem {
+  id?: string
+  courtCount?: number | null
+  hours?: number | null
+  unitPrice?: number | null
+  amount?: number | null
+  remark?: string
+}
+
+export interface BadmintonBallFeeItem {
+  id?: string
+  brand?: string
+  quantity?: number | null
+  unitPrice?: number | null
+  amount?: number | null
+}
+
+export interface BadmintonBill {
+  id?: string
+  playDate?: string
+  title?: string
+  participantCount?: number
+  courtTotal?: number
+  ballTotal?: number
+  grandTotal?: number
+  perPerson?: number
+  remark?: string
+  operatorName?: string
+  courtItems?: BadmintonCourtFeeItem[]
+  ballItems?: BadmintonBallFeeItem[]
+}

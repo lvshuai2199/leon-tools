@@ -77,6 +77,19 @@
     "routeName": "Wallpaper"
   },
   {
+    "path": "/tool/badminton",
+    "name": "羽毛球计费",
+    "parent": "/tool",
+    "type": "page",
+    "component": "tool/badminton/index",
+    "icon": "el-icon-Trophy",
+    "sort": 6,
+    "hidden": false,
+    "keepAlive": false,
+    "client": "admin",
+    "routeName": "BadmintonBill"
+  },
+  {
     "path": "/regcode",
     "name": "注册码",
     "parent": null,

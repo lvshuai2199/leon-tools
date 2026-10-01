@@ -51,6 +51,8 @@ class AdminAccessRulesTest {
         assertTrue(allowed("POST", "/admin/regCodeUser/save", "menu_regcode_user"));
         assertTrue(allowed("GET", "/admin/crabShipment/getAll", "menu_crab"));
         assertFalse(allowed("GET", "/admin/crabShipment/getAll", "menu_mindmap"));
+        assertTrue(allowed("GET", "/admin/badmintonBill/getAll", "menu_badminton"));
+        assertFalse(allowed("GET", "/admin/badmintonBill/getAll", "menu_crab"));
         assertTrue(allowed("POST", "/admin/mindmap/save", "menu_mindmap"));
     }
 

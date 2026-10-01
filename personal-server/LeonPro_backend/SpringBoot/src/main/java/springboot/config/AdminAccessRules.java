@@ -71,6 +71,7 @@ public final class AdminAccessRules {
             menu(null, "/admin/regCodeConfig/**", "menu_regcode_config"),
             menu(null, "/admin/regCodeUser/**", "menu_regcode_user"),
             menu(null, "/admin/crabShipment/**", "menu_crab"),
+            menu(null, "/admin/badmintonBill/**", "menu_badminton"),
             menu(null, "/admin/mindmap/**", "menu_mindmap"),
             new Rule(null, "/admin/wallpaper/**", Kind.COMPONENT, Set.of(), WALLPAPER_COMPONENT)
     );
