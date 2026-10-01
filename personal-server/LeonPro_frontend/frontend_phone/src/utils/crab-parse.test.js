@@ -1,0 +1,123 @@
+import { parseCrabOrders, specOf } from "./crab-parse.js";
+import assert from "node:assert/strict";
+import test from "node:test";
+
+test("parse tab table with header", () => {
+  const text = [
+    "序号\t姓名\t电话\t地址\t规格\t数量",
+    "1\t王大姐\t13800138000\t广东省阳江市江城区岗列街道幸福路12号\t3.5母\t20只",
+    "2\t陈师傅\t13912345678\t广西玉林市福绵区沙田镇东风村\t4公\t15只",
+  ].join("\n");
+  const rows = parseCrabOrders(text);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].customerName, "王大姐");
+  assert.equal(rows[0].phone, "13800138000");
+  assert.equal(rows[0].spec, "3.5两母");
+  assert.equal(rows[0].quantity, 20);
+  assert.equal(rows[1].spec, "4两公");
+});
+
+test("parse spaced lines anchored by phone", () => {
+  const text = "张三 18600001111 海南省海口市美兰区蓝天路3号 2.8母 8只\n4 李梅 13700002222 广东省湛江市霞山区人民大道88号 3母 12";
+  const rows = parseCrabOrders(text);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].customerName, "张三");
+  assert.equal(rows[0].spec, "2.8两母");
+  assert.equal(rows[1].seqNo, 4);
+  assert.equal(rows[1].quantity, 12);
+});
+
+test("skip header only", () => {
+  assert.equal(parseCrabOrders("序号 姓名 电话 地址 规格 数量").length, 0);
+});
+
+test("parse liang and zhi", () => {
+  const rows = parseCrabOrders("王大姐 13800138000 阳江岗列 3两母 20只");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].spec, "3两母");
+  assert.equal(rows[0].quantity, 20);
+});
+
+test("parse whole block copy", () => {
+  const text = [
+    "收件人：张三",
+    "电话：186 0000 1111",
+    "地址：海口美兰蓝天路3号",
+    "规格：2.8两公 数量：8只",
+    "",
+    "李梅",
+    "13700002222",
+    "湛江霞山人民大道88号",
+    "3母 *12",
+  ].join("\n");
+  const rows = parseCrabOrders(text);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].phone, "18600001111");
+  assert.equal(rows[0].spec, "2.8两公");
+  assert.equal(rows[0].quantity, 8);
+  assert.equal(rows[1].customerName, "李梅");
+  assert.equal(rows[1].quantity, 12);
+});
+
+test("phone first then address then name", () => {
+  const rows = parseCrabOrders("13800138000广东省阳江市江城区岗列街道幸福路12号张三 2.8母 8只");
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].customerName, "张三");
+  assert.equal(rows[0].phone, "13800138000");
+  assert.equal(rows[0].address, "广东省阳江市江城区岗列街道幸福路12号");
+  assert.equal(rows[0].spec, "2.8两母");
+});
+
+test("address phone name", () => {
+  const rows = parseCrabOrders("广东省湛江市霞山区人民大道88号 13700002222 李梅 3母 12");
+  assert.equal(rows[0].customerName, "李梅");
+  assert.equal(rows[0].address, "广东省湛江市霞山区人民大道88号");
+});
+
+test("glued address name phone", () => {
+  const rows = parseCrabOrders("海南省海口市美兰区蓝天路3号张三18600001111 2.8母 8只");
+  assert.equal(rows[0].customerName, "张三");
+  assert.equal(rows[0].phone, "18600001111");
+  assert.equal(rows[0].address, "海南省海口市美兰区蓝天路3号");
+});
+
+test("name at head when phone at end", () => {
+  const rows = parseCrabOrders("王大姐阳江市江城区岗列街道幸福路12号13800138000 3两母 20只");
+  assert.equal(rows[0].customerName, "王大姐");
+  assert.equal(rows[0].address, "阳江市江城区岗列街道幸福路12号");
+});
+
+test("shareUrl 生成新的分享路径 /s/crab/{publicId}", async () => {
+  const { shareUrl } = await import("./crab-parse.js");
+  assert.equal(shareUrl("abc 1"), "/s/crab/abc%201");
+  assert.equal(shareUrl(""), "");
+});
+
+test("规格一律是 数字 + 两 + 公/母（不再丢「两」）", () => {
+  assert.equal(specOf("4", "公"), "4两公");
+  const cases = [
+    ["4两公", "4两公"],
+    ["2.8两公", "2.8两公"],
+    ["4公", "4两公"],
+    ["公4两", "4两公"],
+    ["公蟹 4 两", "4两公"],
+    ["4 两 母", "4两母"],
+    ["母蟹 3.5 两", "3.5两母"],
+    ["3.5母蟹", "3.5两母"],
+  ];
+  for (const [spec, want] of cases) {
+    const rows = parseCrabOrders(`张三 18600001111 海口美兰蓝天路3号 ${spec} 8只`);
+    assert.equal(rows.length, 1, spec);
+    assert.equal(rows[0].spec, want, spec);
+    assert.equal(rows[0].quantity, 8, spec);
+  }
+  // 表格（有表头，规格一列单独解析）
+  const table = [
+    "姓名\t电话\t地址\t规格\t数量",
+    "王大姐\t13800138000\t阳江市江城区幸福路12号\t4两公\t20只",
+    "陈师傅\t13912345678\t玉林市沙田镇\t公4两\t15只",
+  ].join("\n");
+  const rows = parseCrabOrders(table);
+  assert.equal(rows[0].spec, "4两公");
+  assert.equal(rows[1].spec, "4两公");
+});

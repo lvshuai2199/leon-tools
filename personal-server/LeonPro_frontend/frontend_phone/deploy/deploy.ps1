@@ -4,7 +4,9 @@ $DeployDir = $PSScriptRoot
 $FrontendDir = Split-Path $DeployDir -Parent
 $EnvFile = Join-Path $DeployDir "deploy.env"
 $DistDir = Join-Path $FrontendDir "dist"
-$NginxConf = Join-Path $FrontendDir "..\vue3_frontend\deploy\nginx.conf"
+
+# 用户端固定部署到这个目录（nginx 站点配置由服务器侧统一维护，本脚本不再改 nginx，也不再有 /h5）
+$RemoteDir = "/var/www/leonpro-web"
 
 if (-not (Test-Path $EnvFile)) {
     Write-Error "Missing deploy.env. Copy deploy.env.example first."
@@ -20,8 +22,14 @@ Get-Content $EnvFile | ForEach-Object {
     Set-Variable -Name $key -Value $value -Scope Script
 }
 
-if (-not $DEPLOY_HOST -or -not $DEPLOY_USER -or -not $DEPLOY_REMOTE_DIR) {
-    Write-Error "deploy.env needs DEPLOY_HOST / DEPLOY_USER / DEPLOY_REMOTE_DIR"
+if (-not $DEPLOY_HOST -or -not $DEPLOY_USER) {
+    Write-Error "deploy.env needs DEPLOY_HOST / DEPLOY_USER"
+}
+if ($DEPLOY_REMOTE_DIR -and $DEPLOY_REMOTE_DIR -ne $RemoteDir) {
+    Write-Warning "DEPLOY_REMOTE_DIR=$DEPLOY_REMOTE_DIR is ignored; the user site always deploys to $RemoteDir"
+}
+if ($NGINX_RELOAD -or $DEPLOY_NGINX_CONF) {
+    Write-Warning "NGINX_RELOAD / DEPLOY_NGINX_CONF are no longer used; this script does not touch nginx"
 }
 
 if (-not $DEPLOY_PASSWORD -and -not $DEPLOY_SSH_KEY) {
@@ -51,10 +59,8 @@ if (-not $DEPLOY_PASSWORD -and -not $DEPLOY_SSH_KEY) {
 if (-not $DEPLOY_PORT) { $DEPLOY_PORT = "22" }
 if (-not $SKIP_BUILD) { $SKIP_BUILD = "0" }
 if ($env:HUB_SKIP_BUILD -eq "0" -or $env:HUB_SKIP_BUILD -eq "1") { $SKIP_BUILD = $env:HUB_SKIP_BUILD }
-if (-not $NGINX_RELOAD) { $NGINX_RELOAD = "1" }
 if (-not $DEPLOY_PASSWORD) { $DEPLOY_PASSWORD = "" }
 if (-not $DEPLOY_SSH_KEY) { $DEPLOY_SSH_KEY = "" }
-if (-not $DEPLOY_NGINX_CONF) { $DEPLOY_NGINX_CONF = "/etc/nginx/sites-available/default" }
 
 $commonOpts = @(
     "-o", "StrictHostKeyChecking=accept-new"
@@ -79,12 +85,12 @@ $remote = "${DEPLOY_USER}@${DEPLOY_HOST}"
 $sudo = if ($DEPLOY_USER -eq "root") { "" } else { "sudo " }
 
 if ($SKIP_BUILD -ne "1") {
-    Write-Host "Building phone H5..."
+    Write-Host "Building user web (frontend_phone)..."
     Push-Location $FrontendDir
     try {
         $env:NODE_OPTIONS = "--max-old-space-size=1536"
         npm run build
-        if ($LASTEXITCODE -ne 0) { throw "phone H5 build failed" }
+        if ($LASTEXITCODE -ne 0) { throw "frontend_phone build failed" }
     } finally {
         Pop-Location
     }
@@ -94,37 +100,18 @@ if (-not (Test-Path (Join-Path $DistDir "index.html"))) {
     Write-Error "dist/index.html not found. Run npm run build first."
 }
 
-if (-not (Test-Path $NginxConf)) {
-    Write-Error "nginx.conf not found: $NginxConf"
-}
-
-Write-Host "Preparing $DEPLOY_REMOTE_DIR ..."
+Write-Host "Preparing $RemoteDir ..."
 $tarPath = Join-Path $DeployDir "dist-upload.tar"
 if (Test-Path $tarPath) { Remove-Item $tarPath -Force }
 & tar -cf $tarPath -C $DistDir .
 if ($LASTEXITCODE -ne 0) { throw "tar dist failed" }
 
 Write-Host "Uploading archive ..."
-& scp @scpArgs $tarPath "${remote}:/tmp/leonpro-h5.tar"
+& scp @scpArgs $tarPath "${remote}:/tmp/leonpro-web.tar"
 if ($LASTEXITCODE -ne 0) { throw "scp archive failed" }
 Remove-Item $tarPath -Force
 
-& ssh @sshArgs $remote "${sudo}mkdir -p '$DEPLOY_REMOTE_DIR' && ${sudo}rm -rf '$DEPLOY_REMOTE_DIR'/* && ${sudo}tar -xf /tmp/leonpro-h5.tar -C '$DEPLOY_REMOTE_DIR' && rm -f /tmp/leonpro-h5.tar"
+& ssh @sshArgs $remote "${sudo}mkdir -p '$RemoteDir' && ${sudo}rm -rf '$RemoteDir'/* && ${sudo}tar -xf /tmp/leonpro-web.tar -C '$RemoteDir' && rm -f /tmp/leonpro-web.tar"
 if ($LASTEXITCODE -ne 0) { throw "extract dist failed" }
 
-Write-Host "Writing nginx config $DEPLOY_NGINX_CONF ..."
-& scp @scpArgs $NginxConf "${remote}:/tmp/leonpro-nginx.conf"
-if ($LASTEXITCODE -ne 0) { throw "scp nginx.conf failed" }
-
-$installNginx = "set -e; if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then ${sudo}cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi; ${sudo}cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'; ${sudo}sed -i 's/\r`$//' '$DEPLOY_NGINX_CONF'; ${sudo}nginx -t"
-& ssh @sshArgs $remote $installNginx
-if ($LASTEXITCODE -ne 0) { throw "nginx -t failed" }
-
-if ($NGINX_RELOAD -eq "1") {
-    Write-Host "Reloading nginx ..."
-    & ssh @sshArgs $remote "${sudo}systemctl reload nginx"
-    if ($LASTEXITCODE -ne 0) { throw "nginx reload failed" }
-}
-
-Write-Host "Done. H5 is at ${DEPLOY_HOST}:$DEPLOY_REMOTE_DIR"
-Write-Host "Open http://${DEPLOY_HOST}/h5/"
+Write-Host "Done. Uploaded dist to ${DEPLOY_HOST}:$RemoteDir (nginx not touched)"

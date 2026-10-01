@@ -9,7 +9,9 @@
         <el-descriptions-item label="用户名">{{ user.username || "-" }}</el-descriptions-item>
         <el-descriptions-item label="昵称">{{ user.nickname || "-" }}</el-descriptions-item>
         <el-descriptions-item label="邮箱">{{ user.email || "-" }}</el-descriptions-item>
-        <el-descriptions-item label="角色">{{ user.roleName || user.roles?.join(" / ") || "-" }}</el-descriptions-item>
+        <el-descriptions-item label="角色">
+          {{ user.roleName || user.roles?.join(" / ") || "-" }}
+        </el-descriptions-item>
       </el-descriptions>
 
       <div class="profile-actions">
@@ -34,9 +36,19 @@
     </el-dialog>
 
     <el-dialog v-model="passwordDialog.visible" title="修改密码" width="420px" destroy-on-close>
-      <el-form ref="passwordFormRef" :model="passwordForm" :rules="passwordRules" label-width="90px">
+      <el-form
+        ref="passwordFormRef"
+        :model="passwordForm"
+        :rules="passwordRules"
+        label-width="90px"
+      >
         <el-form-item label="新密码" prop="password">
-          <el-input v-model="passwordForm.password" type="password" show-password placeholder="至少 6 位" />
+          <el-input
+            v-model="passwordForm.password"
+            type="password"
+            show-password
+            placeholder="至少 6 位"
+          />
         </el-form-item>
         <el-form-item label="确认密码" prop="confirmPassword">
           <el-input
@@ -57,7 +69,7 @@
 
 <script setup lang="ts">
 import type { FormInstance, FormRules } from "element-plus";
-import UserAPI, { type UserForm } from "@/api/system/user";
+import AuthAPI from "@/api/auth";
 import { useUserStore } from "@/store";
 
 defineOptions({
@@ -120,22 +132,11 @@ function openPasswordDialog() {
   passwordDialog.visible = true;
 }
 
-function buildSavePayload(extra: Partial<UserForm> = {}): UserForm {
-  return {
-    id: user.value.id,
-    username: user.value.username || "",
-    nickname: extra.nickname ?? user.value.nickname,
-    email: extra.email ?? user.value.email,
-    roleId: user.value.roleId,
-    ...extra,
-  };
-}
-
 function submitProfile() {
   profileFormRef.value?.validate((valid) => {
     if (!valid) return;
     submitLoading.value = true;
-    UserAPI.saveOrUpdate(buildSavePayload({ nickname: profileForm.nickname, email: profileForm.email }))
+    AuthAPI.updateMe({ nickname: profileForm.nickname, email: profileForm.email })
       .then((msg) => {
         ElMessage.success(typeof msg === "string" && msg ? msg : "资料已更新");
         profileDialog.visible = false;
@@ -152,7 +153,7 @@ function submitPassword() {
   passwordFormRef.value?.validate((valid) => {
     if (!valid) return;
     submitLoading.value = true;
-    UserAPI.saveOrUpdate(buildSavePayload({ password: passwordForm.password }))
+    AuthAPI.updateMe({ password: passwordForm.password })
       .then((msg) => {
         ElMessage.success(typeof msg === "string" && msg ? msg : "密码已更新");
         passwordDialog.visible = false;
@@ -165,10 +166,6 @@ function submitPassword() {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
-
 .profile-card {
   max-width: 640px;
 }

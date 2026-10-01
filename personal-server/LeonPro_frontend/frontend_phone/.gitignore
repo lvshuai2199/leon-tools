@@ -5,3 +5,4 @@ deploy/deploy.env
 deploy/dist-upload.tar
 .DS_Store
 *.local
+*.tsbuildinfo

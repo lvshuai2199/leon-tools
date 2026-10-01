@@ -54,7 +54,6 @@ export default {
     theme: "主题设置",
     interface: "界面设置",
     navigation: "导航设置",
-    themeColor: "主题颜色",
     tagsView: "开启 Tags-View",
     sidebarLogo: "侧边栏 Logo",
     sidebarColorScheme: "侧边栏配色",

@@ -22,6 +22,8 @@ import org.springframework.web.servlet.config.annotation.EnableWebMvc;
 import springboot.domain.SysRoles;
 import springboot.domain.SysUsers;
 import springboot.service.AuthTokenService;
+import springboot.service.RegCodeAccessService;
+import springboot.service.SysMenusService;
 import springboot.service.SysRolesService;
 import springboot.service.SysUsersService;
 import springboot.utils.ApiResponse;
@@ -59,13 +61,25 @@ class AuthInterceptorTest {
     SysUsersService users;
     @Autowired
     SysRolesService roles;
+    @Autowired
+    RegCodeAccessService access;
 
     MockMvc mvc;
 
     @BeforeEach
     void setUp() {
         REDIS.clear();
-        reset(users, roles);
+        reset(users, roles, access);
+        when(access.currentUser(any())).thenAnswer(inv ->
+                users.getById(RequestUserUtils.currentUserId(inv.getArgument(0))));
+        when(access.isWebBlocked(any())).thenAnswer(inv -> {
+            SysUsers u = inv.getArgument(0);
+            return u != null && "u-sub".equals(u.getId());
+        });
+        when(access.isRootUser(any(SysUsers.class))).thenAnswer(inv -> {
+            SysUsers u = inv.getArgument(0);
+            return u != null && "role_root".equals(u.getRoleId());
+        });
         when(users.getById("u-admin")).thenReturn(user("u-admin", "admin", "role_root"));
         when(users.getById("u-sub")).thenReturn(user("u-sub", "sub", "role_sub"));
         when(users.getById("u-off")).thenReturn(user("u-off", "off", "role_off"));
@@ -93,36 +107,36 @@ class AuthInterceptorTest {
 
     @Test
     void noTokenIs401WithWrapperBody() throws Exception {
-        expect401(mvc.perform(get("/wallpaper/group/list")));
+        expect401(mvc.perform(get("/app/crabShipment/getAll")));
     }
 
     @Test
     void forgedOrMalformedTokenIs401() throws Exception {
-        expect401(mvc.perform(get("/wallpaper/group/list").header("Authorization", "Bearer forged-token-123")));
-        expect401(mvc.perform(get("/wallpaper/group/list").header("Authorization", "Bearer ")));
-        expect401(mvc.perform(get("/wallpaper/group/list").header("Authorization", "Token " + tokens.issue("u-admin"))));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer forged-token-123")));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer ")));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Token " + tokens.issue("u-admin"))));
     }
 
     @Test
     void headerOnlySpoofIs401() throws Exception {
-        expect401(mvc.perform(get("/wallpaper/group/list").header("X-Username", "admin")));
-        expect401(mvc.perform(get("/wallpaper/group/list").header("X-User-Id", "u-admin").header("X-Username", "admin")));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("X-Username", "admin")));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("X-User-Id", "u-admin").header("X-Username", "admin")));
     }
 
     @Test
     void revokedTokenIs401() throws Exception {
         String t = tokens.issue("u-admin");
-        mvc.perform(get("/wallpaper/group/list").header("Authorization", "Bearer " + t))
+        mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer " + t))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.data.userId").value("u-admin"));
         tokens.revoke(t);
-        expect401(mvc.perform(get("/wallpaper/group/list").header("Authorization", "Bearer " + t)));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer " + t)));
     }
 
     @Test
     void validTokenWithSpoofedHeadersResolvesToTokenOwner() throws Exception {
         String t = tokens.issue("u-sub");
-        mvc.perform(get("/wallpaper/group/list")
+        mvc.perform(get("/app/crabShipment/getAll")
                         .header("Authorization", "Bearer " + t)
                         .header("X-User-Id", "u-admin")
                         .header("X-Username", "admin"))
@@ -133,32 +147,70 @@ class AuthInterceptorTest {
 
     @Test
     void tokenOfDeletedUserOrDisabledRoleIs401() throws Exception {
-        expect401(mvc.perform(get("/wallpaper/group/list").header("Authorization", "Bearer " + tokens.issue("u-gone"))));
-        expect401(mvc.perform(get("/wallpaper/group/list").header("Authorization", "Bearer " + tokens.issue("u-off"))));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer " + tokens.issue("u-gone"))));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer " + tokens.issue("u-off"))));
     }
 
     @Test
-    void otherAdminModulesIncludingExternAccountsAreProtected() throws Exception {
-        expect401(mvc.perform(get("/sysUsers/getAllUsers")));
-        expect401(mvc.perform(get("/externAccounts/getAll")));
-        expect401(mvc.perform(get("/externWallet/getAll").header("X-Username", "admin")));
+    void disabledAccountTokenIs401EverywhereAndIsDropped() throws Exception {
+        when(users.getById("u-dis")).thenReturn(user("u-dis", "dis", "role_sub"));
+        when(access.isRegCodeDisabled(any())).thenAnswer(inv -> {
+            SysUsers u = inv.getArgument(0);
+            return u != null && "u-dis".equals(u.getId());
+        });
+        String t = tokens.issue("u-dis");
+        expect401(mvc.perform(get("/auth/me").header("Authorization", "Bearer " + t)));
+        org.junit.jupiter.api.Assertions.assertNull(tokens.resolve(t), "停用账号的 token 被删除");
+        String t2 = tokens.issue("u-dis");
+        expect401(mvc.perform(get("/common/regCodeUser/myQuota").header("Authorization", "Bearer " + t2)));
+        expect401(mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer " + tokens.issue("u-dis"))));
+        // 其他账号不受影响
+        mvc.perform(get("/auth/me").header("Authorization", "Bearer " + tokens.issue("u-sub"))).andExpect(status().isOk());
+    }
+
+    @Test
+    void adminAppCommonAndRemovedLegacyPathsRequireToken() throws Exception {
+        expect401(mvc.perform(get("/admin/sysUsers/getUsers")));
+        expect401(mvc.perform(get("/admin/wallpaper/group/list").header("X-Username", "admin")));
+        expect401(mvc.perform(get("/common/regCodeUser/myQuota")));
+        expect401(mvc.perform(get("/auth/me")));
+        expect401(mvc.perform(get("/auth/menus")));
         expect401(mvc.perform(post("/auth/logout")));
+        // 已下线 / 已迁移的旧免登录路径不再放行（进入拦截器，无 token 即 401）
+        expect401(mvc.perform(post("/auth/login2")));
+        expect401(mvc.perform(post("/auth/captcha")));
+        expect401(mvc.perform(get("/extern/wallpaper/random")));
+        expect401(mvc.perform(get("/externAccounts/getAll")));
+        expect401(mvc.perform(get("/wechat/oa")));
+    }
+
+    @Test
+    void adminPathsGoThroughRoleCheckAfterToken() throws Exception {
+        mvc.perform(get("/admin/sysUsers/getUsers").header("Authorization", "Bearer " + tokens.issue("u-admin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.data.userId").value("u-admin"));
+        mvc.perform(get("/admin/sysUsers/getUsers").header("Authorization", "Bearer " + tokens.issue("u-sub")))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.status").value(403))
+                .andExpect(jsonPath("$.message").value(AdminAuthInterceptor.WEB_BLOCKED_MESSAGE))
+                .andExpect(jsonPath("$.data").doesNotExist());
+        // 子账号不走 /admin 时（用户端接口）不受影响
+        mvc.perform(get("/app/crabShipment/getAll").header("Authorization", "Bearer " + tokens.issue("u-sub")))
+                .andExpect(status().isOk());
     }
 
     @Test
     void exemptPathsNeedNoToken() throws Exception {
-        for (String p : new String[]{"/auth/login", "/auth/login2", "/auth/captcha"}) {
-            mvc.perform(post(p)).andExpect(status().isOk()).andExpect(jsonPath("$.data").value("open"));
-        }
-        for (String p : new String[]{"/extern/wallpaper/random", "/public/crabShipment/abc",
-                "/public/mindmap/abc.png", "/uploads/wallpaper/g/a.jpg", "/wechat/oa"}) {
+        mvc.perform(post("/auth/login")).andExpect(status().isOk()).andExpect(jsonPath("$.data").value("open"));
+        for (String p : new String[]{"/public/wallpaper/random", "/public/crabShipment/abc",
+                "/public/mindmap/abc.png", "/uploads/wallpaper/g/a.jpg", "/public/wechat/oa"}) {
             mvc.perform(get(p)).andExpect(status().isOk()).andExpect(jsonPath("$.data").value("open"));
         }
     }
 
     @Test
     void optionsPreflightIsNotBlocked() throws Exception {
-        mvc.perform(options("/wallpaper/group/list")
+        mvc.perform(options("/app/crabShipment/getAll")
                         .header("Origin", "http://example.com")
                         .header("Access-Control-Request-Method", "GET"))
                 .andExpect(status().is(not(401)));
@@ -166,7 +218,9 @@ class AuthInterceptorTest {
 
     @RestController
     static class ProbeController {
-        @GetMapping({"/wallpaper/group/list", "/sysUsers/getAllUsers", "/externAccounts/getAll", "/externWallet/getAll"})
+        @GetMapping({"/app/crabShipment/getAll", "/admin/sysUsers/getUsers", "/admin/wallpaper/group/list",
+                "/common/regCodeUser/myQuota", "/auth/me", "/auth/menus",
+                "/extern/wallpaper/random", "/externAccounts/getAll", "/wechat/oa"})
         ApiResponse<Map<String, Object>> me(HttpServletRequest request) {
             Map<String, Object> m = new HashMap<>();
             m.put("userId", RequestUserUtils.currentUserId(request));
@@ -179,8 +233,8 @@ class AuthInterceptorTest {
             return ApiResponse.success("open");
         }
 
-        @GetMapping({"/extern/wallpaper/random", "/public/crabShipment/abc", "/public/mindmap/abc.png",
-                "/uploads/wallpaper/g/a.jpg", "/wechat/oa"})
+        @GetMapping({"/public/wallpaper/random", "/public/crabShipment/abc", "/public/mindmap/abc.png",
+                "/uploads/wallpaper/g/a.jpg", "/public/wechat/oa"})
         ApiResponse<String> openGet() {
             return ApiResponse.success("open");
         }
@@ -188,7 +242,7 @@ class AuthInterceptorTest {
 
     @Configuration
     @EnableWebMvc
-    @Import({AuthWebConfig.class, AuthInterceptor.class, ProbeController.class})
+    @Import({AuthWebConfig.class, AuthInterceptor.class, AdminAuthInterceptor.class, ProbeController.class})
     static class TestConfig {
 
         @Bean
@@ -220,6 +274,16 @@ class AuthInterceptorTest {
         @Bean
         SysRolesService sysRolesService() {
             return mock(SysRolesService.class);
+        }
+
+        @Bean
+        RegCodeAccessService regCodeAccessService() {
+            return mock(RegCodeAccessService.class);
+        }
+
+        @Bean
+        SysMenusService sysMenusService() {
+            return mock(SysMenusService.class);
         }
 
         @Bean

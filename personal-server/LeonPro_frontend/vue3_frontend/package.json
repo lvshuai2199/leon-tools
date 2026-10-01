@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vue-tsc --noEmit && vite build",
+    "build": "pnpm run check-menus && vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "build-only": "vite build",
+    "build-only": "pnpm run check-menus && vite build",
+    "check-menus": "node ../shared/scripts/check-menus.mjs --client admin --no-dir",
     "type-check": "vue-tsc --noEmit",
     "lint:eslint": "eslint --cache \"src/**/*.{vue,ts}\" --fix",
     "lint:prettier": "prettier --write \"**/*.{js,cjs,ts,json,css,scss,vue,html,md}\"",

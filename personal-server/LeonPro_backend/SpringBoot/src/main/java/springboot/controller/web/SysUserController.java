@@ -1,6 +1,5 @@
 package springboot.controller.web;
 
-
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.core.conditions.query.QueryWrapper;
 import com.baomidou.mybatisplus.core.metadata.IPage;
@@ -10,15 +9,24 @@ import springboot.DTO.UsersDelDto;
 import springboot.DTO.UserDto;
 import springboot.domain.SysRoles;
 import springboot.domain.SysUsers;
+import jakarta.servlet.http.HttpServletRequest;
+import springboot.service.AuthTokenService;
+import springboot.service.RegCodeAccessService;
+import springboot.service.RegCodeQuotaService;
+import springboot.service.SysRoleMenuService;
 import springboot.service.SysRolesService;
 import springboot.service.SysUsersService;
 import springboot.utils.ApiResponse;
+import springboot.utils.ForbiddenException;
+import springboot.utils.RoleUtils;
 import jakarta.annotation.Resource;
 import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.HashSet;
 import java.util.List;
-
+import java.util.Objects;
+import java.util.Set;
 
 /**
  * (User)表控制层
@@ -27,7 +35,7 @@ import java.util.List;
  * @since 2023-05-14 10:40:35
  */
 @RestController
-@RequestMapping("sysUsers")
+@RequestMapping("/admin/sysUsers")
 
 public class SysUserController {
     /**
@@ -39,6 +47,17 @@ public class SysUserController {
     @Autowired
     private SysRolesService sysRolesService;
 
+    @Autowired
+    private SysRoleMenuService sysRoleMenuService;
+
+    @Autowired
+    private RegCodeAccessService regCodeAccessService;
+
+    @Autowired
+    private RegCodeQuotaService regCodeQuotaService;
+
+    @Autowired
+    private AuthTokenService authTokenService;
 
     /**
      * 分页查询所有数据
@@ -75,7 +94,8 @@ public class SysUserController {
 
     @PostMapping("userSaveOrUpdate")
     @Validated
-    public ApiResponse sysUserRegister(@RequestBody UserDto userDto) {
+    public ApiResponse sysUserRegister(@RequestBody UserDto userDto, HttpServletRequest request) {
+        checkSavePrivilege(userDto, request);
         // 创建或更新用户
         SysUsers sysUsers = new SysUsers();
         sysUsers.setUsername(userDto.getUsername());
@@ -104,6 +124,10 @@ public class SysUserController {
                 sysUsers.setPassword(userDto.getPassword());
             }
             boolean updated = this.sysUsersService.updateById(sysUsers);
+            if (updated && sysUsers.getPassword() != null) {
+                // 管理员改了密码：该用户已登录的 token 全部作废
+                this.authTokenService.revokeAllForUser(sysUsers.getId());
+            }
             return ApiResponse.success(updated ? "User updated successfully." : "User update failed.");
         }
 
@@ -129,50 +153,43 @@ public class SysUserController {
         return ApiResponse.success(saved ? "User registered successfully." : "User registration failed.");
     }
 
-    @GetMapping("getAllUsers")
-    public ApiResponse getAllUsers(
-            @RequestParam(defaultValue = "1") int currentPage,
-            @RequestParam(defaultValue = "10") int pageSize,
-            SysUsers sysUsers // 假设 sysUsers 包含查询条件
-    ) {
-        // 创建分页对象
-        Page<SysUsers> page = new Page<>(currentPage, pageSize);
-
-        // 创建 QueryWrapper 实例
-        LambdaQueryWrapper<SysUsers> queryWrapper = new LambdaQueryWrapper<>();
-
-        // 添加条件
-        if (sysUsers.getUsername() != null) {
-            queryWrapper.eq(SysUsers::getUsername, sysUsers.getUsername());
-        }
-        // 其他条件可以继续添加，例如:
-        // if (sysUsers.getEmail() != null) {
-        //     queryWrapper.eq("email", sysUsers.getEmail());
-        // }
-
-        // 执行分页查询
-        IPage<SysUsers> userPage = this.sysUsersService.page(page, queryWrapper);
-
-        return ApiResponse.success(userPage);
-    }
-
     @PostMapping("delUsers")
-    public ApiResponse delUsers(@RequestBody UsersDelDto request) {
+    public ApiResponse delUsers(@RequestBody UsersDelDto request, HttpServletRequest httpRequest) {
         List<String> userIds = request.getUserIds();
 
         if (userIds == null || userIds.isEmpty()) {
             return ApiResponse.failure("User ID list cannot be empty");
         }
+        checkDeletePrivilege(userIds, httpRequest);
 
-        LambdaQueryWrapper<SysUsers> children = new LambdaQueryWrapper<>();
-        children.in(SysUsers::getParentId, userIds);
-        List<String> childIds = this.sysUsersService.list(children).stream()
-                .map(SysUsers::getId)
-                .filter(id -> id != null && !id.isBlank())
-                .toList();
+        // 子账号的处理：
+        //  · 被删的是注册码客户（或其它不能登录管理端的账号）时，它在注册码页创建的子用户不删除：
+        //    保留账号（以后可转给别的客户），自动停用、未用次数作废、吊销 token；
+        //  · 被删的是管理端账号时，挂在它下面的子账号照旧一并删除。
         java.util.LinkedHashSet<String> allIds = new java.util.LinkedHashSet<>(userIds);
-        allIds.addAll(childIds);
+        List<String> retired = new java.util.ArrayList<>();
+        for (String id : userIds) {
+            SysUsers parent = this.sysUsersService.getById(id);
+            if (parent != null && !this.regCodeAccessService.isAdminAccount(parent)) {
+                retired.addAll(this.regCodeQuotaService.retireSubUsers(parent.getId()).getUserIds());
+                continue;
+            }
+            LambdaQueryWrapper<SysUsers> children = new LambdaQueryWrapper<>();
+            children.eq(SysUsers::getParentId, id);
+            this.sysUsersService.list(children).stream()
+                    .map(SysUsers::getId)
+                    .filter(cid -> cid != null && !cid.isBlank())
+                    .forEach(allIds::add);
+        }
+        // 同时被勾选删除的子用户按删除处理
+        retired.removeIf(userIds::contains);
         boolean result = sysUsersService.removeByIds(allIds);
+        for (String id : allIds) {
+            this.authTokenService.revokeAllForUser(id);
+        }
+        for (String id : retired) {
+            this.authTokenService.revokeAllForUser(id);
+        }
 
         if (result) {
             return ApiResponse.success("Users deleted successfully");
@@ -181,21 +198,73 @@ public class SysUserController {
         }
     }
 
-    @GetMapping("getMyInfo")
-    public ApiResponse getMyInfo(@RequestParam(required = false) String username) {
-        String name = (username == null || username.isEmpty()) ? "admin" : username;
-
-        // 通过用户名检索数据库中是否存在对应的数据项
-        LambdaQueryWrapper<SysUsers> lambdaQueryWrapper = new LambdaQueryWrapper<>();
-        lambdaQueryWrapper.eq(SysUsers::getUsername, name);
-        SysUsers user = this.sysUsersService.getOne(lambdaQueryWrapper);
-        if (user != null && user.getRoleId() != null && !user.getRoleId().isEmpty()) {
-            SysRoles role = this.sysRolesService.getById(user.getRoleId());
-            if (role != null) {
-                user.setRoleName(role.getRoleName());
+    /**
+     * 非 ROOT 操作者新增 / 编辑用户的限制（不满足抛 403）：
+     * 不能编辑 ROOT 用户；不能授予 ROOT 角色；不能改自己的角色；只能授予菜单是自己菜单子集的角色。
+     */
+    private void checkSavePrivilege(UserDto dto, HttpServletRequest request) {
+        SysUsers operator = this.regCodeAccessService.currentUser(request);
+        if (operator == null) {
+            throw new ForbiddenException();
+        }
+        if (this.regCodeAccessService.isRootUser(operator)) {
+            return;
+        }
+        SysUsers target = null;
+        if (dto.getId() != null && !dto.getId().isBlank()) {
+            target = this.sysUsersService.getById(dto.getId());
+            if (target != null && this.regCodeAccessService.isRootUser(target)) {
+                throw new ForbiddenException("不能修改 ROOT 用户");
             }
         }
-        return ApiResponse.success(user);
+        String roleId = dto.getRoleId() == null ? null : dto.getRoleId().trim();
+        if (roleId == null || roleId.isEmpty()) {
+            if (dto.getParentId() != null && !dto.getParentId().isBlank()
+                    && (target == null || target.getRoleId() == null || target.getRoleId().isBlank())) {
+                // 挂父用户且没选角色时，保存逻辑会默认授予注册码客户角色，同样要过子集校验
+                roleId = RegCodeAccessService.ROLE_REGCODE_CLIENT_ID;
+            } else {
+                return;
+            }
+        }
+        boolean roleChanged = target == null || !roleId.equals(target.getRoleId() == null ? null : target.getRoleId().trim());
+        if (!roleChanged) {
+            return;
+        }
+        if (target != null && Objects.equals(target.getId(), operator.getId())) {
+            throw new ForbiddenException("不能修改自己的角色");
+        }
+        SysRoles role = this.sysRolesService.getById(roleId);
+        if (RoleUtils.isRoot(roleId, null) || RoleUtils.isRoot(role)) {
+            throw new ForbiddenException("不能授予 ROOT 角色");
+        }
+        if (role == null) {
+            throw new ForbiddenException("角色不存在");
+        }
+        List<String> roleMenus = this.sysRoleMenuService.getMenuIdsByRole(roleId);
+        List<String> ownMenus = this.regCodeAccessService.menuIdsOf(operator);
+        Set<String> own = new HashSet<>(ownMenus == null ? List.of() : ownMenus);
+        if (roleMenus != null && !own.containsAll(roleMenus)) {
+            throw new ForbiddenException("只能授予权限不超过自己的角色");
+        }
+    }
+
+    /** 非 ROOT 操作者不能删除 ROOT 用户，也不能删除自己（不满足抛 403） */
+    private void checkDeletePrivilege(List<String> userIds, HttpServletRequest request) {
+        SysUsers operator = this.regCodeAccessService.currentUser(request);
+        if (operator == null) {
+            throw new ForbiddenException();
+        }
+        if (this.regCodeAccessService.isRootUser(operator)) {
+            return;
+        }
+        if (userIds.contains(operator.getId())) {
+            throw new ForbiddenException("不能删除自己");
+        }
+        List<SysUsers> targets = this.sysUsersService.listByIds(userIds);
+        if (targets != null && targets.stream().anyMatch(this.regCodeAccessService::isRootUser)) {
+            throw new ForbiddenException("不能删除 ROOT 用户");
+        }
     }
 
     private void fillChildCounts(List<SysUsers> records) {

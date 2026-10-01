@@ -1,0 +1,245 @@
+// 全局样式。lp（shared/theme.scss）已由 vite additionalData 注入，这里不用再 @use。
+
+// 输出 Element Plus 变量和 --lp-*（全局只 include 一次）
+@include lp.css-vars;
+
+// 手机布局：44px 控件、15px 正文。useBreakpoint 给 <html> 加 lp-mobile，
+// 抽屉、消息框等挂到 body 下的组件也能拿到
+html.lp-mobile {
+  @include lp.mobile-vars;
+  // Element Plus 的 large 按钮把高度写死成 40px，手机上统一改成 44（登录、404、确认抽屉等）
+  .el-button--large {
+    --el-button-size: #{lp.$component-size-mobile};
+  }
+  // 手机输入框、多行输入框的字 16px（iOS 小于 16 聚焦时会放大页面）
+  .el-input__inner,
+  .el-textarea__inner {
+    font-size: lp.$font-size-medium;
+  }
+  // 分段控件（单日/区间、粘贴/手动、追加/收回）：外框和选中块都是 44；
+  // 外框加 1px 边框（用内阴影，不占高度），放在灰底页面上也看得出没选中的那一半
+  // 数字步进器（新建子用户、额度）：加减按钮 44 宽、44 高
+  .el-input-number--large {
+    width: 156px;
+    .el-input-number__decrease,
+    .el-input-number__increase {
+      width: #{lp.$component-size-mobile};
+    }
+    .el-input__wrapper {
+      padding-left: #{lp.$component-size-mobile + 6px};
+      padding-right: #{lp.$component-size-mobile + 6px};
+    }
+  }
+  .el-segmented {
+    --el-segmented-padding: 0px;
+    min-height: #{lp.$component-size-mobile};
+    box-shadow: inset 0 0 0 1px var(--el-border-color);
+    .el-segmented__item,
+    .el-segmented__item-selected {
+      border-radius: var(--el-border-radius-base);
+    }
+  }
+}
+
+// 多行输入框不显示拖动把手
+.el-textarea__inner {
+  resize: none;
+}
+
+// 触屏上点过的按钮不停在悬停色（例如「我已记下」点完一直是浅蓝）：没有悬停能力的设备把悬停样式还原，按下反馈保留
+@media (hover: none) {
+  .el-button:not(.is-disabled):not(.is-text):not(.is-link):hover:not(:active) {
+    color: var(--el-button-text-color);
+    background-color: var(--el-button-bg-color);
+    border-color: var(--el-button-border-color);
+  }
+  .el-button.is-text:not(.is-disabled):not(.is-has-bg):hover:not(:active) {
+    background-color: transparent;
+  }
+  .el-button.is-link:not(.is-disabled):hover:not(:active) {
+    color: var(--el-button-text-color);
+  }
+  .el-segmented__item:not(.is-disabled):not(.is-selected):hover:not(:active) {
+    color: var(--el-segmented-color);
+    background: transparent;
+  }
+  // 点完后按钮还处于 focus（非键盘焦点）时也不显示悬停色
+  .el-button:not(.is-disabled):not(.is-text):not(.is-link):focus:not(:focus-visible):not(:active) {
+    color: var(--el-button-text-color);
+    background-color: var(--el-button-bg-color);
+    border-color: var(--el-button-border-color);
+  }
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  font-family: var(--el-font-family);
+  font-size: var(--el-font-size-base);
+  line-height: lp.$line-height;
+  color: var(--el-text-color-primary);
+  background: var(--el-bg-color-page);
+  -webkit-font-smoothing: antialiased;
+  -webkit-tap-highlight-color: transparent;
+}
+
+#app {
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+img {
+  display: block;
+  max-width: 100%;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+// 图片淡入（v-lazy 加载完成后加 is-loaded）
+.fade-img {
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  &.is-loaded {
+    opacity: 1;
+  }
+}
+
+// 骨架屏闪光（基于主题边框色）
+@keyframes lp-shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+.lp-skeleton {
+  background: linear-gradient(
+    100deg,
+    var(--el-fill-color) 30%,
+    var(--el-fill-color-lighter) 50%,
+    var(--el-fill-color) 70%
+  );
+  background-size: 200% 100%;
+  animation: lp-shimmer 1.4s linear infinite;
+}
+
+@keyframes lp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+// 底部抽屉（所有底部弹层：工具、我的、确认、选择、日期、更多、手机上的表单弹窗）
+// - 顶部两角 12px 圆角
+// - 标题 18px / 600 / 左对齐，左右 16（和列表图标对齐），标题到第一项 16
+// - 底部留出 iPhone 安全区：没有 footer 时加在 body 底部，有 footer 时加在 footer 底部
+.el-drawer.btt {
+  border-radius: lp.$radius-card lp.$radius-card 0 0;
+  .el-drawer__header {
+    margin: 0;
+    padding: lp.$space-4 lp.$space-4 0;
+    color: var(--el-text-color-primary);
+  }
+  .el-drawer__title {
+    font-size: lp.$font-size-large;
+    font-weight: lp.$font-weight-semibold;
+    line-height: 26px;
+    text-align: left;
+  }
+  .el-drawer__body {
+    padding: lp.$space-4 lp.$space-4 calc(#{lp.$space-4} + env(safe-area-inset-bottom));
+  }
+  .el-drawer__footer {
+    padding: lp.$space-3 lp.$space-4 calc(#{lp.$space-3} + env(safe-area-inset-bottom));
+  }
+  &:has(.el-drawer__footer) .el-drawer__body {
+    padding-bottom: lp.$space-2;
+  }
+}
+
+// 电脑确认框（退出、删除等 ElMessageBox）：480 宽、圆角 12、内边距 24
+.el-message-box {
+  --el-messagebox-width: #{lp.$dialog-width-desktop};
+  --el-messagebox-border-radius: #{lp.$radius-card};
+  --el-messagebox-padding-primary: 24px;
+  padding: 24px;
+  border-radius: lp.$radius-card;
+  .el-message-box__title {
+    font-size: lp.$font-size-large;
+    font-weight: lp.$font-weight-semibold;
+  }
+  .el-message-box__btns {
+    padding-top: lp.$space-5;
+  }
+}
+
+// 电脑弹窗（编辑出货单、新建子用户、额度等 ResponsiveDialog）：和确认框一致，圆角 12、内边距 24、标题 18/600。
+// 视口矮时弹窗最高到视口减 48，内容区在弹窗里滚动，底部按钮一直露在弹窗底部。
+.el-dialog.lp-rdialog {
+  --el-dialog-padding-primary: 24px;
+  --el-dialog-border-radius: #{lp.$radius-card};
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  .el-dialog__header,
+  .el-dialog__footer {
+    flex: none;
+  }
+  .el-dialog__title {
+    font-size: lp.$font-size-large;
+    font-weight: lp.$font-weight-semibold;
+  }
+  // 内容区能滚动时：滚动条贴在弹窗右边缘并且一直显示；下面还有内容时，底部按钮上方出现 1px 分割线（#EBEEF5），
+  // 滚到底或内容不需要滚动时分割线自动消失（背景 local / scroll 叠加，纯 CSS）
+  .el-dialog__body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    margin: 0 calc(-1 * var(--el-dialog-padding-primary));
+    padding: 0 var(--el-dialog-padding-primary);
+    background:
+      linear-gradient(var(--el-bg-color), var(--el-bg-color)) center bottom / 100% 1px no-repeat local,
+      linear-gradient(var(--el-border-color-lighter), var(--el-border-color-lighter)) center bottom / 100% 1px no-repeat scroll;
+    scrollbar-width: thin;
+    scrollbar-color: var(--el-text-color-placeholder) transparent;
+    &::-webkit-scrollbar {
+      width: 6px;
+    }
+    &::-webkit-scrollbar-thumb {
+      border-radius: 3px;
+      background: var(--el-text-color-placeholder);
+    }
+  }
+}
+
+// 表格操作列（蟹单、子用户）：右对齐，链接之间 12，链接去掉左右内边距，右边缘和表头「操作」对齐
+.lp-table-ops {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: lp.$space-3;
+  .el-button.is-link {
+    margin: 0;
+    padding-left: 0;
+    padding-right: 0;
+  }
+}

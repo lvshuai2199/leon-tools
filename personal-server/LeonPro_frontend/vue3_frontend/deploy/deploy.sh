@@ -6,7 +6,6 @@ DEPLOY_DIR="$(cd "$(dirname "$0")" && pwd)"
 FRONTEND_DIR="$(cd "$DEPLOY_DIR/.." && pwd)"
 ENV_FILE="$DEPLOY_DIR/deploy.env"
 DIST_DIR="$FRONTEND_DIR/dist"
-NGINX_LOCAL="$DEPLOY_DIR/nginx.conf"
 
 if [[ ! -f "$ENV_FILE" ]]; then
   echo "缺少 $ENV_FILE ，请先复制 deploy.env.example 为 deploy.env 并填写服务器信息" >&2
@@ -20,13 +19,13 @@ set +a
 
 : "${DEPLOY_HOST:?}"
 : "${DEPLOY_USER:?}"
-: "${DEPLOY_REMOTE_DIR:?}"
+# 管理端只部署到自己的目录，不再读旧的 DEPLOY_REMOTE_DIR（那是站点根目录，现在归用户端）
+DEPLOY_REMOTE_DIR="${DEPLOY_ADMIN_REMOTE_DIR:-/var/www/leonpro-admin}"
+case "$DEPLOY_REMOTE_DIR" in /var/www/?*) ;; *) echo "DEPLOY_ADMIN_REMOTE_DIR 必须在 /var/www/ 下：$DEPLOY_REMOTE_DIR" >&2; exit 1 ;; esac
 DEPLOY_PORT="${DEPLOY_PORT:-22}"
 SKIP_BUILD="${SKIP_BUILD:-0}"
-NGINX_RELOAD="${NGINX_RELOAD:-1}"
 DEPLOY_PASSWORD="${DEPLOY_PASSWORD:-}"
 DEPLOY_SSH_KEY="${DEPLOY_SSH_KEY:-}"
-DEPLOY_NGINX_CONF="${DEPLOY_NGINX_CONF:-/etc/nginx/sites-available/default}"
 
 COMMON_OPTS=(-o StrictHostKeyChecking=accept-new)
 SSH_OPTS=(-p "$DEPLOY_PORT" "${COMMON_OPTS[@]}")
@@ -72,18 +71,6 @@ echo "上传 dist 到 $DEPLOY_REMOTE_DIR ..."
 "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "if sudo -n true 2>/dev/null; then sudo mkdir -p '$DEPLOY_REMOTE_DIR' && sudo chown -R '$DEPLOY_USER':'$DEPLOY_USER' '$DEPLOY_REMOTE_DIR'; else mkdir -p '$DEPLOY_REMOTE_DIR'; fi && rm -rf '$DEPLOY_REMOTE_DIR'/*"
 tar -cf - -C "$DIST_DIR" . | "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "tar -xf - -C '$DEPLOY_REMOTE_DIR'"
 
-echo "写入 Nginx 配置..."
-"${SCP_BIN[@]}" "${SCP_OPTS[@]}" "$NGINX_LOCAL" "${REMOTE}:/tmp/leonpro-nginx.conf"
-"${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "set -e
-SUDO=''; if sudo -n true 2>/dev/null; then SUDO=sudo; fi
-if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then \$SUDO cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi
-\$SUDO cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'
-\$SUDO nginx -t
-"
+# nginx 配置由后端统一部署，这里不再改 nginx
 
-if [[ "$NGINX_RELOAD" == "1" ]]; then
-  echo "重载 Nginx..."
-  "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "if sudo -n true 2>/dev/null; then sudo systemctl reload nginx || sudo nginx -s reload; else systemctl reload nginx || nginx -s reload; fi"
-fi
-
-echo "完成：前端已放到 ${DEPLOY_HOST}:$DEPLOY_REMOTE_DIR"
+echo "完成：管理端已放到 ${DEPLOY_HOST}:$DEPLOY_REMOTE_DIR，访问 http://${DEPLOY_HOST}/admin/"

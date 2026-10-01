@@ -21,7 +21,7 @@ import java.util.List;
  * 注册码生成配置 CRUD。
  */
 @RestController
-@RequestMapping("regCodeConfig")
+@RequestMapping("/admin/regCodeConfig")
 public class RegCodeConfigController {
 
     @Autowired
@@ -39,22 +39,17 @@ public class RegCodeConfigController {
         return ApiResponse.success(this.regCodeConfigService.page(page, buildQuery(query)));
     }
 
-    /** 生成页用：ROOT 看全部，客户仅看已分配配置 */
+    /**
+     * 管理端版配置列表（注册码客户页给客户分配配置用）：返回全部配置、完整字段（含加密后缀）。
+     * 生成页请用 /common/regCodeConfig/list（只返回分配给自己的、且不含加密字段）。
+     */
     @GetMapping("list")
     public ApiResponse listAll(RegCodeConfig query, HttpServletRequest request) {
-        return ApiResponse.success(listAvailable(query, RequestUserUtils.currentUserId(request), null));
-    }
-
-    /** body 中的 userId / username 已废弃（仅兼容旧客户端，忽略），身份只取登录 token */
-    @PostMapping("available")
-    public ApiResponse listAvailablePost(@RequestBody(required = false) java.util.Map<String, String> body,
-                                         HttpServletRequest request) {
-        return ApiResponse.success(listAvailable(null, RequestUserUtils.currentUserId(request), null));
-    }
-
-    @GetMapping("{id}")
-    public ApiResponse selectOne(@PathVariable Serializable id) {
-        return ApiResponse.success(this.regCodeConfigService.getById(id));
+        String err = this.regCodeAccessService.requireManager(request);
+        if (err != null) {
+            return ApiResponse.failure(err);
+        }
+        return ApiResponse.success(this.regCodeConfigService.list(buildQuery(query)));
     }
 
     @PostMapping("add")
@@ -103,19 +98,6 @@ public class RegCodeConfigController {
             return ApiResponse.failure(deny);
         }
         return ApiResponse.success(this.regCodeConfigService.removeByIds(idList));
-    }
-
-    private List<RegCodeConfig> listAvailable(RegCodeConfig query, String userId, String username) {
-        springboot.domain.SysUsers user = this.regCodeAccessService.findUser(userId, username);
-        java.util.List<String> allowed = this.regCodeAccessService.allowedConfigIds(user);
-        if (allowed != null && allowed.isEmpty()) {
-            return Collections.emptyList();
-        }
-        LambdaQueryWrapper<RegCodeConfig> wrapper = buildQuery(query);
-        if (allowed != null) {
-            wrapper.in(RegCodeConfig::getId, allowed);
-        }
-        return this.regCodeConfigService.list(wrapper);
     }
 
     private LambdaQueryWrapper<RegCodeConfig> buildQuery(RegCodeConfig query) {

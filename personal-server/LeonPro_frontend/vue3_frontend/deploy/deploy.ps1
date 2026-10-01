@@ -4,7 +4,6 @@ $DeployDir = $PSScriptRoot
 $FrontendDir = Split-Path $DeployDir -Parent
 $EnvFile = Join-Path $DeployDir "deploy.env"
 $DistDir = Join-Path $FrontendDir "dist"
-$NginxConf = Join-Path $DeployDir "nginx.conf"
 
 if (-not (Test-Path $EnvFile)) {
     Write-Error "Missing deploy.env. Copy deploy.env.example first."
@@ -20,8 +19,12 @@ Get-Content $EnvFile | ForEach-Object {
     Set-Variable -Name $key -Value $value -Scope Script
 }
 
-if (-not $DEPLOY_HOST -or -not $DEPLOY_USER -or -not $DEPLOY_REMOTE_DIR) {
-    Write-Error "deploy.env needs DEPLOY_HOST / DEPLOY_USER / DEPLOY_REMOTE_DIR"
+# Admin deploys only to its own folder; the old DEPLOY_REMOTE_DIR (site root) now belongs to the user-side app
+$DEPLOY_REMOTE_DIR = if ($DEPLOY_ADMIN_REMOTE_DIR) { $DEPLOY_ADMIN_REMOTE_DIR } else { "/var/www/leonpro-admin" }
+if ($DEPLOY_REMOTE_DIR -notmatch "^/var/www/[^/]+") { Write-Error "DEPLOY_ADMIN_REMOTE_DIR must be under /var/www/: $DEPLOY_REMOTE_DIR" }
+
+if (-not $DEPLOY_HOST -or -not $DEPLOY_USER) {
+    Write-Error "deploy.env needs DEPLOY_HOST / DEPLOY_USER"
 }
 
 if (-not $DEPLOY_PASSWORD -and -not $DEPLOY_SSH_KEY) {
@@ -51,10 +54,8 @@ if (-not $DEPLOY_PASSWORD -and -not $DEPLOY_SSH_KEY) {
 if (-not $DEPLOY_PORT) { $DEPLOY_PORT = "22" }
 if (-not $SKIP_BUILD) { $SKIP_BUILD = "0" }
 if ($env:HUB_SKIP_BUILD -eq "0" -or $env:HUB_SKIP_BUILD -eq "1") { $SKIP_BUILD = $env:HUB_SKIP_BUILD }
-if (-not $NGINX_RELOAD) { $NGINX_RELOAD = "1" }
 if (-not $DEPLOY_PASSWORD) { $DEPLOY_PASSWORD = "" }
 if (-not $DEPLOY_SSH_KEY) { $DEPLOY_SSH_KEY = "" }
-if (-not $DEPLOY_NGINX_CONF) { $DEPLOY_NGINX_CONF = "/etc/nginx/sites-available/default" }
 
 $commonOpts = @(
     "-o", "StrictHostKeyChecking=accept-new"
@@ -109,19 +110,7 @@ Remove-Item $tarPath -Force
 & ssh @sshArgs $remote "${sudo}mkdir -p '$DEPLOY_REMOTE_DIR' && ${sudo}chown -R '${DEPLOY_USER}:${DEPLOY_USER}' '$DEPLOY_REMOTE_DIR' && ${sudo}rm -rf '$DEPLOY_REMOTE_DIR'/* && ${sudo}tar -xf /tmp/leonpro-dist.tar -C '$DEPLOY_REMOTE_DIR' && rm -f /tmp/leonpro-dist.tar"
 if ($LASTEXITCODE -ne 0) { throw "extract dist failed" }
 
-Write-Host "Writing nginx config $DEPLOY_NGINX_CONF ..."
-& scp @scpArgs $NginxConf "${remote}:/tmp/leonpro-nginx.conf"
-if ($LASTEXITCODE -ne 0) { throw "scp nginx.conf failed" }
+# nginx config is deployed by the backend side; this script no longer touches nginx
 
-$installNginx = "set -e; if [ ! -f ${DEPLOY_NGINX_CONF}.bak.leonpro ]; then ${sudo}cp '$DEPLOY_NGINX_CONF' '${DEPLOY_NGINX_CONF}.bak.leonpro'; fi; ${sudo}cp /tmp/leonpro-nginx.conf '$DEPLOY_NGINX_CONF'; ${sudo}sed -i 's/\r`$//' '$DEPLOY_NGINX_CONF'; ${sudo}nginx -t"
-& ssh @sshArgs $remote $installNginx
-if ($LASTEXITCODE -ne 0) { throw "nginx -t failed" }
-
-if ($NGINX_RELOAD -eq "1") {
-    Write-Host "Reloading nginx ..."
-    & ssh @sshArgs $remote "${sudo}systemctl reload nginx"
-    if ($LASTEXITCODE -ne 0) { throw "nginx reload failed" }
-}
-
-Write-Host "Done. Frontend is at ${DEPLOY_HOST}:$DEPLOY_REMOTE_DIR"
-Write-Host "Open http://${DEPLOY_HOST}/"
+Write-Host "Done. Admin frontend is at ${DEPLOY_HOST}:$DEPLOY_REMOTE_DIR"
+Write-Host "Open http://${DEPLOY_HOST}/admin/"

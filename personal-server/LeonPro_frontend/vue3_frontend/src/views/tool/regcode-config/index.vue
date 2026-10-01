@@ -47,7 +47,13 @@
         <el-table-column prop="encryptType" label="加密方式" width="110" align="center" />
         <el-table-column prop="encryptSuffix" label="加密字符后缀" min-width="140" show-overflow-tooltip />
         <el-table-column prop="sortOrder" label="排序" width="80" align="center" />
-        <el-table-column prop="createTime" label="创建时间" width="180" align="center" />
+        <el-table-column
+          prop="createTime"
+          label="创建时间"
+          width="180"
+          align="center"
+          :formatter="tableTimeFormatter"
+        />
         <el-table-column label="操作" width="140" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openDialog(row)">编辑</el-button>
@@ -103,6 +109,7 @@
 </template>
 
 <script setup lang="ts">
+import { tableTimeFormatter } from "@/utils";
 import RegCodeConfigAPI, {
   ENCRYPT_TYPE_OPTIONS,
   type RegCodeConfigForm,
@@ -253,10 +260,6 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
-
 .w-full {
   width: 100%;
 }

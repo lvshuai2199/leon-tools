@@ -1,25 +1,20 @@
 import request from "@/utils/request";
 
-const MENU_BASE_URL = "/sysMenus";
+const MENU_BASE_URL = "/admin/sysMenus";
 
 /**
  * 菜单 / 路由 API
  *
- * - getRoutes(): 从后端 /auth/getMenuList 拉取菜单数据并映射为 RouteVO 树，
+ * - getRoutes(): 从后端 GET /auth/menus（只按 token，返回管理端菜单）拉取菜单数据并映射为 RouteVO 树，
  *   供 permission store 动态注册路由（侧边栏由数据库驱动）
  * - CRUD: 路由配置模块增删改查，对应 sys_menus 表
  */
 const MenuAPI = {
-  /**
-   * 获取路由配置树（供 permission store 注册动态路由）
-   *
-   * @param username 当前登录用户名，后端据此按角色过滤可访问菜单
-   */
-  getRoutes(username?: string) {
+  /** 获取路由配置树（供 permission store 注册动态路由），后端按 token 取当前用户 */
+  getRoutes() {
     return request<any, SysMenuVO[]>({
-      url: "/auth/getMenuList",
+      url: "/auth/menus",
       method: "get",
-      params: username ? { username } : undefined,
     }).then((list) => buildRouteTree(list || []));
   },
 
@@ -81,9 +76,7 @@ function buildRouteTree(menus: SysMenuVO[]): RouteVO[] {
       path: menu.menuUrl,
       component: isCatalog ? "Layout" : menu.component,
       redirect: menu.redirect || undefined,
-      name:
-        menu.routeName ||
-        (isCatalog ? menu.menuUrl : capitalizeFirst(menu.menuUrl || "")),
+      name: menu.routeName || (isCatalog ? menu.menuUrl : capitalizeFirst(menu.menuUrl || "")),
       meta: {
         title: menu.menuName,
         icon: menu.icon,

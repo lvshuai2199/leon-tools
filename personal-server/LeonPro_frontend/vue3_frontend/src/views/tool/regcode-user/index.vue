@@ -28,10 +28,12 @@
         </el-form-item>
         <el-form-item>
           <el-button type="primary" @click="handleQuery">
-            <el-icon class="mr-1"><Search /></el-icon>查询
+            <el-icon class="mr-1"><Search /></el-icon>
+            查询
           </el-button>
           <el-button @click="resetQuery">
-            <el-icon class="mr-1"><Refresh /></el-icon>重置
+            <el-icon class="mr-1"><Refresh /></el-icon>
+            重置
           </el-button>
         </el-form-item>
       </el-form>
@@ -40,50 +42,77 @@
     <el-card shadow="never">
       <template #header>
         <div class="flex-x-between">
-          <span>注册码用户</span>
+          <span class="card-title">注册码客户</span>
           <el-button type="primary" @click="openDialog()">
-            <el-icon class="mr-1"><Plus /></el-icon>新增用户
+            <el-icon class="mr-1"><Plus /></el-icon>
+            新增客户
           </el-button>
         </div>
       </template>
 
-      <el-table v-loading="loading" :data="tableData" border>
-        <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="username" label="用户名" width="140" />
-        <el-table-column v-if="isRoot" label="所属父用户" width="160">
+      <el-table v-loading="loading" :data="tableData" row-key="id" border>
+        <template #empty>
+          <div class="table-empty">
+            <div class="table-empty__icon">
+              <el-icon><component :is="hasFilter ? 'Search' : 'User'" /></el-icon>
+            </div>
+            <div class="table-empty__text">
+              {{ hasFilter ? "没有找到匹配的客户" : "还没有注册码客户" }}
+            </div>
+          </div>
+        </template>
+        <el-table-column type="expand" width="48">
+          <template #default="{ row }">
+            <SubUserPanel :customer-id="customerKey(row)" />
+          </template>
+        </el-table-column>
+        <el-table-column type="index" label="#" width="48" align="center" />
+        <el-table-column prop="username" label="用户名" min-width="120" />
+        <el-table-column v-if="isRoot" label="所属父用户" min-width="140">
           <template #default="{ row }">
             {{ row.parentNickname || row.parentUsername || "-" }}
           </template>
         </el-table-column>
-        <el-table-column prop="nickname" label="昵称" width="120">
+        <el-table-column v-if="!isNarrow" prop="nickname" label="昵称" min-width="100">
           <template #default="{ row }">{{ row.nickname || "-" }}</template>
         </el-table-column>
-        <el-table-column label="可用配置" min-width="220">
+        <el-table-column label="各配置次数（已用 / 上限）" min-width="220">
           <template #default="{ row }">
             <el-tag
-              v-for="label in row.configLabels || []"
-              :key="label"
+              v-for="q in rowQuotas(row)"
+              :key="q.configId"
+              :type="(q.remaining ?? 0) > 0 ? 'primary' : 'info'"
               size="small"
               class="mr-1 mb-1"
             >
-              {{ label }}
+              {{ q.configName }} {{ q.used ?? 0 }} / {{ q.allocated ?? 0 }}
             </el-tag>
-            <span v-if="!row.configLabels?.length">-</span>
+            <span v-if="!rowQuotas(row).length">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="生成次数" width="140" align="center">
+        <el-table-column label="子用户" width="80" align="center">
           <template #default="{ row }">
-            {{ row.generateUsed || 0 }} / {{ row.generateLimit || 0 }}
+            {{ row.subUserCount ?? 0 }} / {{ row.maxSubUsers ?? 0 }}
           </template>
         </el-table-column>
-        <el-table-column label="剩余" width="80" align="center">
-          <template #default="{ row }">{{ row.remaining ?? 0 }}</template>
-        </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="170" align="center" />
-        <el-table-column label="操作" width="140" align="center" fixed="right">
+        <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-button type="primary" link size="small" @click="openDialog(row)">编辑</el-button>
-            <el-button type="danger" link size="small" @click="handleDelete(row)">删除</el-button>
+            <el-tag :type="row.status === 0 ? 'info' : 'success'" size="small">
+              {{ row.status === 0 ? "停用" : "启用" }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column
+          prop="createTime"
+          label="创建时间"
+          min-width="170"
+          align="center"
+          :formatter="tableTimeFormatter"
+        />
+        <el-table-column label="操作" width="120" align="right" header-align="right" fixed="right">
+          <template #default="{ row }">
+            <el-button type="primary" link @click="openDialog(row)">编辑</el-button>
+            <el-button type="danger" link @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -100,18 +129,14 @@
     <el-dialog
       v-model="dialog.visible"
       :title="dialog.title"
-      width="560px"
+      width="480px"
+      align-center
       destroy-on-close
       @closed="resetForm"
     >
       <el-form ref="formRef" :model="formData" :rules="rules" label-width="110px">
         <el-form-item v-if="isRoot" label="所属父用户" prop="parentId">
-          <el-select
-            v-model="formData.parentId"
-            placeholder="选择主用户"
-            filterable
-            class="w-full"
-          >
+          <el-select v-model="formData.parentId" placeholder="选择主用户" filterable class="w-full">
             <el-option
               v-for="item in parentOptions"
               :key="item.id"
@@ -138,7 +163,7 @@
           <el-select
             v-model="formData.configIds"
             multiple
-            collapse-tags
+            :collapse-tags="(formData.configIds?.length ?? 0) > 3"
             collapse-tags-tooltip
             placeholder="仅可生成这些注册码"
             class="w-full"
@@ -146,16 +171,37 @@
             <el-option
               v-for="item in configOptions"
               :key="item.id"
-              :label="`${item.company} / ${item.name}`"
+              :label="configLabel(item)"
               :value="item.id!"
             />
           </el-select>
         </el-form-item>
-        <el-form-item label="可生成次数" prop="generateLimit">
-          <el-input-number v-model="formData.generateLimit" :min="1" :max="99999" />
+        <el-form-item v-if="formData.configIds?.length" label="各配置次数">
+          <div class="quota-list">
+            <div v-for="cid in formData.configIds" :key="cid" class="quota-list__row">
+              <span class="quota-list__name">{{ configName(cid) }}</span>
+              <el-input-number
+                v-model="quotaCounts[cid]"
+                :min="usedOf(cid)"
+                :max="99999"
+                :step="1"
+                step-strictly
+                controls-position="right"
+                class="quota-list__input"
+              />
+              <span class="quota-list__hint">已用 {{ usedOf(cid) }}</span>
+            </div>
+          </div>
         </el-form-item>
-        <el-form-item v-if="formData.id" label="已用次数" prop="generateUsed">
-          <el-input-number v-model="formData.generateUsed" :min="0" :max="99999" />
+        <el-form-item label="可建子用户数" prop="maxSubUsers">
+          <el-input-number
+            v-model="formData.maxSubUsers"
+            :min="0"
+            :max="99"
+            controls-position="right"
+            class="num-input"
+          />
+          <span class="form-hint">0 表示不能建子用户；调小后已有子用户保留，只是不能再新建</span>
         </el-form-item>
         <el-form-item label="备注" prop="remark">
           <el-input v-model="formData.remark" type="textarea" :rows="2" placeholder="可选" />
@@ -170,7 +216,10 @@
 </template>
 
 <script setup lang="ts">
+import { tableTimeFormatter } from "@/utils";
 import RegCodeUserAPI, {
+  customerKey,
+  type RegCodeQuotaItem,
   type RegCodeUserForm,
   type RegCodeUserVO,
 } from "@/api/tool/regcode-user";
@@ -178,6 +227,7 @@ import RegCodeConfigAPI, { type RegCodeConfigVO } from "@/api/tool/regcode-confi
 import UserAPI, { type UserPageVO } from "@/api/system/user";
 import { useUserStore } from "@/store/modules/user";
 import { isRootRole } from "@/utils/role";
+import SubUserPanel from "./components/SubUserPanel.vue";
 
 defineOptions({
   name: "RegCodeUser",
@@ -191,6 +241,11 @@ const total = ref(0);
 const configOptions = ref<RegCodeConfigVO[]>([]);
 const parentOptions = ref<UserPageVO[]>([]);
 const userStore = useUserStore();
+/** 1200 以下（含 1024）隐藏昵称列，保证状态列不用横向滚动就能看到 */
+const { width: windowWidth } = useWindowSize();
+const isNarrow = computed(() => windowWidth.value < 1200);
+const hasFilter = computed(() => !!(queryParams.username || queryParams.parentId));
+
 const isRoot = computed(() =>
   isRootRole({ id: userStore.userInfo.roleId, roleName: userStore.userInfo.roleName })
 );
@@ -210,6 +265,11 @@ const dialog = reactive({
 
 const formRef = ref();
 const formData = reactive<RegCodeUserForm>(emptyForm());
+/** 编辑弹窗里各配置的次数上限，按 configId 存 */
+const quotaCounts = reactive<Record<string, number>>({});
+/** 正在编辑的客户各配置已用次数（上限不能低于它） */
+const usedCounts = ref<Record<string, number>>({});
+const DEFAULT_QUOTA = 10;
 
 const rules = {
   username: [
@@ -218,7 +278,7 @@ const rules = {
   ],
   password: [
     {
-      validator: (_rule: unknown, value: string, callback: (err?: Error) => void) => {
+      validator: (_rule: unknown, value: string, callback: (_err?: Error) => void) => {
         if (!formData.id && !value) {
           callback(new Error("请输入密码"));
           return;
@@ -234,7 +294,7 @@ const rules = {
   ],
   parentId: [
     {
-      validator: (_rule: unknown, value: string, callback: (err?: Error) => void) => {
+      validator: (_rule: unknown, value: string, callback: (_err?: Error) => void) => {
         if (isRoot.value && !value) {
           callback(new Error("请选择所属父用户"));
           return;
@@ -244,9 +304,21 @@ const rules = {
       trigger: "change",
     },
   ],
-  configIds: [{ required: true, type: "array", min: 1, message: "请选择可用配置", trigger: "change" }],
-  generateLimit: [{ required: true, message: "请设置可生成次数", trigger: "change" }],
+  configIds: [
+    { required: true, type: "array", min: 1, message: "请选择可用配置", trigger: "change" },
+  ],
 };
+
+/** 选了新配置时给默认次数 */
+watch(
+  () => formData.configIds,
+  (ids) => {
+    (ids || []).forEach((id) => {
+      if (quotaCounts[id] === undefined) quotaCounts[id] = Math.max(DEFAULT_QUOTA, usedOf(id));
+    });
+  },
+  { deep: true }
+);
 
 function emptyForm(): RegCodeUserForm {
   return {
@@ -254,11 +326,37 @@ function emptyForm(): RegCodeUserForm {
     username: "",
     password: "",
     nickname: "",
-    generateLimit: 10,
-    generateUsed: 0,
     remark: "",
     configIds: [],
+    maxSubUsers: 0,
   };
+}
+
+function clearQuotaCounts() {
+  Object.keys(quotaCounts).forEach((k) => delete quotaCounts[k]);
+  usedCounts.value = {};
+}
+
+/** 列表里的次数明细；老数据没有 quotas 时按可用配置 + 合计显示 */
+function rowQuotas(row: RegCodeUserVO): RegCodeQuotaItem[] {
+  if (row.quotas?.length) return row.quotas;
+  return (row.configLabels || []).map((label, i) => ({
+    configId: row.configIds?.[i] || label,
+    configName: label,
+  }));
+}
+
+function configLabel(item: RegCodeConfigVO) {
+  return [item.company, item.name].filter(Boolean).join(" / ");
+}
+
+function configName(id: string) {
+  const item = configOptions.value.find((c) => String(c.id) === String(id));
+  return item ? configLabel(item) : id;
+}
+
+function usedOf(id: string) {
+  return usedCounts.value[id] ?? 0;
 }
 
 function parentLabel(item: UserPageVO) {
@@ -324,7 +422,7 @@ function resetQuery() {
 function openDialog(row?: RegCodeUserVO) {
   refreshOptions();
   if (row) {
-    dialog.title = "编辑注册码用户";
+    dialog.title = `编辑客户：${row.nickname || row.username || ""}`;
     Object.assign(formData, {
       id: row.id,
       userId: row.userId,
@@ -333,14 +431,26 @@ function openDialog(row?: RegCodeUserVO) {
       nickname: row.nickname,
       email: row.email,
       roleId: row.roleId,
-      generateLimit: row.generateLimit ?? 1,
-      generateUsed: row.generateUsed ?? 0,
       remark: row.remark,
-      configIds: [...(row.configIds || [])],
+      maxSubUsers: row.maxSubUsers ?? 0,
       password: "",
     });
+    clearQuotaCounts();
+    const quotas = row.quotas || [];
+    const used: Record<string, number> = {};
+    quotas.forEach((q) => {
+      const id = String(q.configId ?? "");
+      if (!id) return;
+      used[id] = q.used ?? 0;
+      quotaCounts[id] = q.allocated ?? 0;
+    });
+    usedCounts.value = used;
+    formData.configIds = quotas.length
+      ? quotas.map((q) => String(q.configId))
+      : [...(row.configIds || [])];
   } else {
-    dialog.title = "新增注册码用户";
+    dialog.title = "新增注册码客户";
+    clearQuotaCounts();
     Object.assign(formData, emptyForm());
   }
   dialog.visible = true;
@@ -349,15 +459,25 @@ function openDialog(row?: RegCodeUserVO) {
 function resetForm() {
   formRef.value?.resetFields?.();
   Object.assign(formData, emptyForm(), { id: undefined, userId: undefined });
+  clearQuotaCounts();
 }
 
 function handleSubmit() {
   formRef.value?.validate((valid: boolean) => {
     if (!valid) return;
     submitLoading.value = true;
-    const payload = {
+    const configIds = [...(formData.configIds || [])];
+    const payload: RegCodeUserForm = {
       ...formData,
+      // 编辑时 id 传 userId（后端两种都认）
+      id: formData.id ? customerKey(formData) : undefined,
       parentId: isRoot.value ? formData.parentId : myUserId.value,
+      configIds,
+      quotas: configIds.map((id) => ({
+        configId: id,
+        count: Math.max(quotaCounts[id] ?? 0, usedOf(id)),
+      })),
+      maxSubUsers: formData.maxSubUsers ?? 0,
     };
     const req = formData.id ? RegCodeUserAPI.update(payload) : RegCodeUserAPI.save(payload);
     req
@@ -376,17 +496,25 @@ function handleSubmit() {
 }
 
 function handleDelete(row: RegCodeUserVO) {
-  if (!row.id) return;
-  ElMessageBox.confirm(`确认删除注册码用户「${row.username}」吗？对应子用户账号会一并删除。`, "警告", {
-    confirmButtonText: "确定",
-    cancelButtonText: "取消",
-    type: "warning",
-  })
-    .then(() => {
-      RegCodeUserAPI.deleteByIds([row.id!]).then(() => {
-        ElMessage.success("删除成功");
-        loadData();
-      });
+  const key = customerKey(row);
+  if (!key) return;
+  ElMessageBox.confirm(
+    `确认删除客户「${row.username}」吗？它创建的子用户会保留账号，但会被停用，没用完的次数作废。`,
+    "警告",
+    {
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+      type: "warning",
+    }
+  )
+    .then(() => RegCodeUserAPI.deleteByIds([key]))
+    .then((res) => {
+      const retired = res?.retiredSubUsers ?? 0;
+      const voided = res?.voidedTotal ?? 0;
+      ElMessage.success(
+        retired || voided ? `已删除，已停用 ${retired} 个子用户，作废 ${voided} 次` : "删除成功"
+      );
+      loadData();
     })
     .catch(() => {});
 }
@@ -402,11 +530,60 @@ onActivated(() => {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
-
 .w-full {
   width: 100%;
+}
+
+.num-input {
+  width: 120px;
+}
+
+.form-hint {
+  width: 100%;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+  color: var(--el-text-color-secondary);
+}
+
+.quota-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+
+  &__row {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+  }
+
+  &__name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  &__input {
+    flex: 0 0 120px;
+    width: 120px;
+  }
+
+  &__hint {
+    flex: 0 0 56px;
+    width: 56px;
+    font-size: 12px;
+    color: var(--el-text-color-secondary);
+    text-align: right;
+    white-space: nowrap;
+  }
+}
+
+/* 展开的子用户区：浅灰底 + 12/16 内边距 */
+:deep(.el-table__expanded-cell) {
+  padding: 12px 16px !important;
+  background: var(--el-fill-color-light) !important;
 }
 </style>

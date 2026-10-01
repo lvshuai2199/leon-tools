@@ -58,7 +58,7 @@ public class CrabShipment implements Serializable {
 
     private Date updateTime;
 
-    /** 可复制的相对路径，不入库 */
+    /** 分享页相对路径 /s/crab/{publicId}（用户端 history 路由），不入库 */
     @TableField(exist = false)
     private String sharePath;
 

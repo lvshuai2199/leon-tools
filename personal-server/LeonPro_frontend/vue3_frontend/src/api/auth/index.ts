@@ -1,4 +1,5 @@
 import request from "@/utils/request";
+import type { UserInfo } from "@/api/system/user";
 
 const AUTH_BASE_URL = "";
 
@@ -20,7 +21,7 @@ const AuthAPI = {
    */
   login(data: LoginFormData) {
     return request<any, LoginUserVO>({
-      url: `${AUTH_BASE_URL}/auth/login2`,
+      url: `${AUTH_BASE_URL}/auth/login`,
       method: "post",
       data: {
         username: data.username,
@@ -32,41 +33,6 @@ const AuthAPI = {
         Authorization: "no-auth",
       },
       skipErrorMessage: true,
-    });
-  },
-
-  /**
-   * 登录接口（带验证码）
-   */
-  loginWithCaptcha(data: LoginFormData) {
-    return request<any, LoginUserVO>({
-      url: `${AUTH_BASE_URL}/auth/login`,
-      method: "post",
-      data: {
-        username: data.username,
-        password: data.password,
-        captchaKey: data.captchaKey,
-        captchaCode: data.captchaCode,
-      },
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: "no-auth",
-      },
-      skipErrorMessage: true,
-    });
-  },
-
-  /**
-   * 获取图形验证码
-   * 返回 { captchaKey, captchaBase64 }
-   */
-  getCaptcha() {
-    return request<any, CaptchaInfo>({
-      url: `${AUTH_BASE_URL}/auth/captcha`,
-      method: "post",
-      headers: {
-        Authorization: "no-auth",
-      },
     });
   },
 
@@ -83,6 +49,23 @@ const AuthAPI = {
       skipErrorMessage: true,
     });
   },
+
+  /** 当前登录用户（只按 token 取，不传 username） */
+  getMe() {
+    return request<any, UserInfo>({
+      url: `${AUTH_BASE_URL}/auth/me`,
+      method: "get",
+    });
+  },
+
+  /** 修改自己的资料：只认 nickname / email / password，password 留空表示不改 */
+  updateMe(data: { nickname?: string; email?: string; password?: string }) {
+    return request<any, string>({
+      url: `${AUTH_BASE_URL}/auth/me`,
+      method: "post",
+      data,
+    });
+  },
 };
 
 export default AuthAPI;
@@ -93,10 +76,6 @@ export interface LoginFormData {
   username: string;
   /** 密码 */
   password: string;
-  /** 验证码缓存key */
-  captchaKey?: string;
-  /** 验证码 */
-  captchaCode?: string;
 }
 
 /** 登录成功返回的用户信息（SysUsers） */
@@ -116,12 +95,4 @@ export interface LoginUserVO {
   menuIds?: string[] | null;
   /** 登录凭证：之后请求头携带 Authorization: Bearer <token> */
   token?: string;
-}
-
-/** 验证码信息 */
-export interface CaptchaInfo {
-  /** 验证码缓存key */
-  captchaKey: string;
-  /** 验证码图片Base64字符串 */
-  captchaBase64: string;
 }

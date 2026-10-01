@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const BASE_URL = "/regCodeConfig";
+const BASE_URL = "/admin/regCodeConfig";
 
 /**
  * 注册码生成配置 API（对接 LeonPro_backend RegCodeConfigController）
@@ -20,7 +20,15 @@ const RegCodeConfigAPI = {
     });
   },
 
-  /** 生成页用：全部配置 */
+  /** 注册码生成页用：只返回分给自己的配置（不含加密后缀） */
+  mine() {
+    return request<any, RegCodeConfigVO[]>({
+      url: "/common/regCodeConfig/list",
+      method: "get",
+    });
+  },
+
+  /** 注册码客户页用：全部配置、完整字段（给客户分配配置） */
   list() {
     return request<any, RegCodeConfigVO[]>({
       url: `${BASE_URL}/list`,

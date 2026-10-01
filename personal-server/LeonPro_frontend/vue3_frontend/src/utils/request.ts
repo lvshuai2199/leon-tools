@@ -21,6 +21,8 @@ declare module "axios" {
 
 /** 后端约定：token 无效 / 缺失 / 过期时返回 HTTP 401 + { status: 401, message } */
 const UNAUTHORIZED = "401";
+const FORBIDDEN = "403";
+const FORBIDDEN_MESSAGE = "没有权限";
 const SESSION_EXPIRED_MESSAGE = "登录已失效，请重新登录";
 
 // 创建 axios 实例
@@ -83,7 +85,9 @@ service.interceptors.response.use(
     }
 
     if (!response.config.skipErrorMessage) {
-      ElMessage.error(message || "系统出错-响应");
+      ElMessage.error(
+        message || (String(status) === FORBIDDEN ? FORBIDDEN_MESSAGE : "系统出错-响应")
+      );
     }
     return Promise.reject(new Error(message || "Error"));
   },
@@ -106,9 +110,11 @@ service.interceptors.response.use(
       return rejectSessionExpired(config, message);
     }
 
+    // 403：登录有效但没有权限，只提示，不清登录态
+    const isForbidden = response?.status === 403 || String(bodyStatus) === FORBIDDEN;
     if (!config?.skipErrorMessage) {
-      if (hasBody) {
-        ElMessage.error(message || "系统出错-请求");
+      if (hasBody || isForbidden) {
+        ElMessage.error(message || (isForbidden ? FORBIDDEN_MESSAGE : "系统出错-请求"));
       } else {
         // 网络错误 / 后端未返回业务结构
         ElMessage.error(error?.message || "网络请求失败，请稍后重试");

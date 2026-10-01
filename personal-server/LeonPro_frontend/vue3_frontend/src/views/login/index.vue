@@ -70,7 +70,7 @@
         >
           登 录
         </el-button>
-        <a class="phone-login-link" href="/h5/#/pages/login/login">注册码客户请从手机端登录</a>
+        <a class="phone-login-link" :href="PHONE_LOGIN_PATH">注册码客户请从手机端登录</a>
       </el-form>
     </div>
   </div>
@@ -141,7 +141,8 @@ async function handleLoginSubmit() {
           router.push({ path: path, query: queryParams });
         })
         .catch((error) => {
-          const msg = typeof error === "string" ? error : String((error as any)?.message || error || "");
+          const msg =
+            typeof error === "string" ? error : String((error as any)?.message || error || "");
           if (msg.includes("手机端")) {
             ElMessage.warning(msg);
             window.location.replace(PHONE_LOGIN_PATH);

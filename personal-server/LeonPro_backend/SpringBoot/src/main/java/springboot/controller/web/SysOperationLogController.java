@@ -17,7 +17,7 @@ import java.io.Serializable;
 import java.util.Date;
 
 @RestController
-@RequestMapping("sysOperationLog")
+@RequestMapping("/admin/sysOperationLog")
 public class SysOperationLogController {
 
     @Autowired

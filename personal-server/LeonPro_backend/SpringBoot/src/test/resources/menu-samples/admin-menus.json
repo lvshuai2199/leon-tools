@@ -1,0 +1,12 @@
+[
+  { "path": "/tool", "name": "工具中心", "type": "dir", "icon": "api", "sort": 1, "client": "admin", "redirect": "/tool/trace" },
+  { "path": "/tool/trace", "name": "轨迹分析", "parent": "/tool", "type": "page", "component": "tool/trace/index", "icon": "code", "sort": 1, "client": "admin", "routeName": "Trace" },
+  { "path": "/tool/wallpaper", "name": "壁纸管理", "parent": "/tool", "type": "page", "component": "tool/wallpaper/index", "icon": "el-icon-Picture", "sort": 5, "client": "admin", "routeName": "Wallpaper" },
+  { "path": "/regcode", "name": "注册码", "type": "dir", "icon": "key", "sort": 2, "client": "admin", "redirect": "/regcode/generate", "alwaysShow": true, "routeName": "RegCodeCenter" },
+  { "path": "/regcode/generate", "name": "注册码生成", "parent": "/regcode", "type": "page", "component": "tool/regcode/index", "icon": "key", "sort": 1, "client": "admin", "routeName": "RegCode" },
+  { "path": "/regcode/user", "name": "注册码用户", "parent": "/regcode", "type": "page", "component": "tool/regcode-user/index", "icon": "user", "sort": 3, "client": "admin", "keepAlive": true, "routeName": "RegCodeUser" },
+  { "path": "/work", "name": "业务管理", "type": "dir", "icon": "todo", "sort": 3, "client": "admin", "redirect": "/work/crab" },
+  { "path": "/work/crab", "name": "螃蟹出货", "parent": "/work", "type": "page", "component": "work/crab/index", "icon": "table", "sort": 2, "client": "admin", "routeName": "CrabShipment" },
+  { "path": "/system", "name": "系统管理", "type": "dir", "icon": "system", "sort": 4, "client": "admin", "redirect": "/system/user" },
+  { "path": "/system/user", "name": "用户管理", "parent": "/system", "type": "page", "component": "system/user/index", "icon": "role", "sort": 1, "client": "admin", "keepAlive": true, "routeName": "User" }
+]

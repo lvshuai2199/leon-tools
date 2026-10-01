@@ -1,6 +1,5 @@
 package springboot.controller.web;
 
-
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -25,7 +24,7 @@ import java.util.List;
  * @since 2024-12-06 11:26:18
  */
 @RestController
-@RequestMapping("sysRoles")
+@RequestMapping("/admin/sysRoles")
 public class SysRolesController {
     /**
      * 服务对象
@@ -54,17 +53,6 @@ public class SysRolesController {
         }
         queryWrapper.orderByAsc(SysRoles::getCreateTime);
         return ApiResponse.success(this.sysRolesService.page(page, queryWrapper));
-    }
-
-    /**
-     * 通过主键查询单条数据
-     *
-     * @param id 主键
-     * @return 单条数据
-     */
-    @GetMapping("{id}")
-    public ApiResponse selectOne(@PathVariable Serializable id) {
-        return ApiResponse.success(this.sysRolesService.getById(id));
     }
 
     /**
@@ -116,11 +104,24 @@ public class SysRolesController {
     }
 
     /**
-     * 分配角色可访问的菜单（路由）列表（先删后插）
+     * 分配角色可访问的菜单（路由）列表。body: {roleId, menuIds, client}；
+     * client 必填（admin / app），只替换该端的授权，另一端的授权原样保留；不传 client 直接返回业务错误、什么都不改
+     * （避免旧页面一次保存把另一端的授权清掉）。已停用菜单的原有授权始终保留；不存在的菜单 id 忽略。
      */
     @PostMapping("menus")
     public ApiResponse assignRoleMenus(@RequestBody Map<String, Object> body) {
-        String roleId = (String) body.get("roleId");
+        String roleId = body == null || body.get("roleId") == null ? null : String.valueOf(body.get("roleId")).trim();
+        if (roleId == null || roleId.isEmpty()) {
+            return ApiResponse.failure("缺少角色 id");
+        }
+        Object clientValue = body.get("client");
+        String client = clientValue == null || String.valueOf(clientValue).isBlank() ? null : String.valueOf(clientValue).trim();
+        if (client == null) {
+            return ApiResponse.failure("保存角色菜单必须指定端：client 传 admin（管理端）或 app（用户端）");
+        }
+        if (!springboot.service.menu.MenuClients.isValid(client)) {
+            return ApiResponse.failure("client 只能是 admin 或 app");
+        }
         if (RoleUtils.isRoot(this.sysRolesService.getById(roleId))) {
             return ApiResponse.failure("系统默认角色 ROOT 拥有全部权限，无需配置");
         }
@@ -131,7 +132,7 @@ public class SysRolesController {
                 menuIds.add(String.valueOf(o));
             }
         }
-        sysRoleMenuService.assignMenus(roleId, menuIds);
+        sysRoleMenuService.assignMenus(roleId, menuIds, client);
         return ApiResponse.success("OK");
     }
 

@@ -70,6 +70,14 @@ if [[ ! -f "$JAR_PATH" ]]; then
   exit 1
 fi
 
+# jar 里必须有两个页面清单（在只有后端目录的地方打包会漏掉，菜单同步会失败）
+for m in BOOT-INF/classes/menus/admin/menus.json BOOT-INF/classes/menus/app/menus.json; do
+  if ! unzip -l "$JAR_PATH" "$m" >/dev/null 2>&1; then
+    echo "jar 里没有 $m ：请在完整仓库里重新打包（SKIP_BUILD=0），不要上传这个 jar" >&2
+    exit 1
+  fi
+done
+
 echo "在服务器创建目录 $DEPLOY_REMOTE_DIR ..."
 "${SSH_BIN[@]}" "${SSH_OPTS[@]}" "$REMOTE" "if sudo -n true 2>/dev/null; then sudo mkdir -p '$DEPLOY_REMOTE_DIR' && sudo chown -R '$DEPLOY_USER':'$DEPLOY_USER' '$DEPLOY_REMOTE_DIR'; else mkdir -p '$DEPLOY_REMOTE_DIR'; fi"
 

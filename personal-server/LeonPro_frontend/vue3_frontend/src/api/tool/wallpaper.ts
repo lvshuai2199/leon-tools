@@ -1,7 +1,7 @@
 import request from "@/utils/request";
 import { ResultEnum } from "@/enums/ResultEnum";
 
-const BASE_URL = "/wallpaper";
+const BASE_URL = "/admin/wallpaper";
 
 /** 壁纸管理 API（管理端，需要登录） */
 const WallpaperAPI = {
@@ -304,7 +304,7 @@ export function wallpaperRandomUrl(group: Pick<WallpaperGroupVO, "groupKey" | "t
   const base = import.meta.env.VITE_APP_BASE_API || "";
   const params = new URLSearchParams({ group: group.groupKey });
   if (group.token) params.set("token", group.token);
-  return `${window.location.origin}${base}/extern/wallpaper/random?${params.toString()}`;
+  return `${window.location.origin}${base}/public/wallpaper/random?${params.toString()}`;
 }
 
 /**
@@ -320,16 +320,7 @@ export function reassignSorts<T extends { sort?: number }>(ordered: T[]) {
 }
 
 /** 后端时间（ISO 字符串，UTC）转本地 YYYY-MM-DD HH:mm:ss */
-export function formatDateTime(v?: string | number | Date) {
-  if (v == null || v === "") return "-";
-  const d = new Date(v);
-  if (isNaN(d.getTime())) return String(v);
-  const p = (n: number) => String(n).padStart(2, "0");
-  return (
-    `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ` +
-    `${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-  );
-}
+export { formatDateTime } from "@/utils";
 
 /** 与后端 app.wallpaper.max-file-size 一致 */
 export const WALLPAPER_MAX_FILE_SIZE = 20 * 1024 * 1024;

@@ -4,7 +4,6 @@ import { store } from "@/store";
 import router from "@/router";
 
 import MenuAPI, { type RouteVO } from "@/api/system/menu";
-import { useUserStoreHook } from "@/store/modules/user";
 const modules = import.meta.glob("../../views/**/**.vue");
 const Layout = () => import("@/layout/index.vue");
 
@@ -22,9 +21,8 @@ export const usePermissionStore = defineStore("permission", () => {
    */
   function generateRoutes() {
     return new Promise<RouteRecordRaw[]>((resolve) => {
-      // 携带当前登录用户名，后端按角色返回可访问菜单
-      const username = useUserStoreHook().userInfo?.username;
-      MenuAPI.getRoutes(username)
+      // 后端按 token 取当前用户，返回其角色可访问的管理端菜单
+      MenuAPI.getRoutes()
         .then((data) => {
           const dynamicRoutes = parseDynamicRoutes(data);
           routes.value = [...constantRoutes, ...dynamicRoutes];

@@ -1,0 +1,54 @@
+[
+  {
+    "path": "/crab",
+    "name": "螃蟹出货",
+    "parent": null,
+    "type": "page",
+    "component": "crab/list",
+    "icon": "crab",
+    "sort": 1,
+    "hidden": false,
+    "keepAlive": false,
+    "client": "app",
+    "routeName": "crabList"
+  },
+  {
+    "path": "/crab/new",
+    "name": "录入出货单",
+    "parent": "/crab",
+    "type": "page",
+    "component": "crab/entry",
+    "icon": "",
+    "sort": 2,
+    "hidden": true,
+    "keepAlive": false,
+    "client": "app",
+    "routeName": "crabNew"
+  },
+  {
+    "path": "/crab/:id",
+    "name": "出货单详情",
+    "parent": "/crab",
+    "type": "page",
+    "component": "crab/edit",
+    "icon": "",
+    "sort": 3,
+    "hidden": true,
+    "keepAlive": false,
+    "client": "app",
+    "routeName": "crabDetail"
+  },
+  {
+    "path": "/regcode",
+    "name": "注册码生成",
+    "parent": null,
+    "type": "page",
+    "component": "regcode/index",
+    "icon": "key",
+    "sort": 4,
+    "hidden": false,
+    "keepAlive": false,
+    "client": "app",
+    "routeName": "regcode"
+  }
+]

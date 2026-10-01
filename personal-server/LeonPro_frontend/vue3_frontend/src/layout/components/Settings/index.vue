@@ -9,11 +9,6 @@
     <el-divider>{{ $t("settings.interface") }}</el-divider>
 
     <div class="py-1 flex-x-between">
-      <span class="text-xs">{{ $t("settings.themeColor") }}</span>
-      <ThemeColorPicker v-model="settingsStore.themeColor" @update:model-value="changeThemeColor" />
-    </div>
-
-    <div class="py-1 flex-x-between">
       <span class="text-xs">{{ $t("settings.tagsView") }}</span>
       <el-switch v-model="settingsStore.tagsView" />
     </div>
@@ -65,15 +60,6 @@ const settingsVisible = computed({
     settingsStore.settingsVisible = false;
   },
 });
-
-/**
- *  切换主题颜色
- *
- * @param color 颜色
- */
-function changeThemeColor(color: string) {
-  settingsStore.changeThemeColor(color);
-}
 
 /**
  * 切换主题

@@ -22,10 +22,10 @@ class CrabOrderParserTest {
         assertEquals("王大姐", rows.get(0).getCustomerName());
         assertEquals("13800138000", rows.get(0).getPhone());
         assertEquals("广东省阳江市江城区岗列街道幸福路12号", rows.get(0).getAddress());
-        assertEquals("3.5母", rows.get(0).getSpec());
+        assertEquals("3.5两母", rows.get(0).getSpec());
         assertEquals(20, rows.get(0).getQuantity());
         assertEquals(1, rows.get(0).getSeqNo());
-        assertEquals("4公", rows.get(1).getSpec());
+        assertEquals("4两公", rows.get(1).getSpec());
         assertEquals(15, rows.get(1).getQuantity());
     }
 
@@ -36,11 +36,11 @@ class CrabOrderParserTest {
         List<CrabShipment> rows = CrabOrderParser.parse(text);
         assertEquals(2, rows.size());
         assertEquals("张三", rows.get(0).getCustomerName());
-        assertEquals("2.8母", rows.get(0).getSpec());
+        assertEquals("2.8两母", rows.get(0).getSpec());
         assertEquals(8, rows.get(0).getQuantity());
         assertEquals(4, rows.get(1).getSeqNo());
         assertEquals("李梅", rows.get(1).getCustomerName());
-        assertEquals("3母", rows.get(1).getSpec());
+        assertEquals("3两母", rows.get(1).getSpec());
         assertEquals(12, rows.get(1).getQuantity());
     }
 
@@ -64,7 +64,7 @@ class CrabOrderParserTest {
     void parseLiangAndZhiUnits() {
         List<CrabShipment> rows = CrabOrderParser.parse("王大姐 13800138000 阳江岗列 3两母 20只");
         assertEquals(1, rows.size());
-        assertEquals("3母", rows.get(0).getSpec());
+        assertEquals("3两母", rows.get(0).getSpec());
         assertEquals(20, rows.get(0).getQuantity());
         assertEquals("阳江岗列", rows.get(0).getAddress());
     }
@@ -73,7 +73,7 @@ class CrabOrderParserTest {
     void parseChineseQtyAndFemaleFirst() {
         List<CrabShipment> rows = CrabOrderParser.parse("陈师傅 13912345678 玉林沙田 母蟹3.5两 十二只");
         assertEquals(1, rows.size());
-        assertEquals("3.5母", rows.get(0).getSpec());
+        assertEquals("3.5两母", rows.get(0).getSpec());
         assertEquals(12, rows.get(0).getQuantity());
     }
 
@@ -86,7 +86,7 @@ class CrabOrderParserTest {
         assertEquals(2, rows.size());
         assertEquals("张三", rows.get(0).getCustomerName());
         assertEquals("18600001111", rows.get(0).getPhone());
-        assertEquals("2.8公", rows.get(0).getSpec());
+        assertEquals("2.8两公", rows.get(0).getSpec());
         assertEquals(8, rows.get(0).getQuantity());
         assertEquals("李梅", rows.get(1).getCustomerName());
         assertEquals(12, rows.get(1).getQuantity());
@@ -100,7 +100,7 @@ class CrabOrderParserTest {
         assertEquals("13800138000", rows.get(0).getPhone());
         assertEquals("张三", rows.get(0).getCustomerName());
         assertEquals("广东省阳江市江城区岗列街道幸福路12号", rows.get(0).getAddress());
-        assertEquals("2.8母", rows.get(0).getSpec());
+        assertEquals("2.8两母", rows.get(0).getSpec());
         assertEquals(8, rows.get(0).getQuantity());
     }
 
@@ -133,5 +133,30 @@ class CrabOrderParserTest {
         assertEquals("王大姐", rows.get(0).getCustomerName());
         assertEquals("阳江市江城区岗列街道幸福路12号", rows.get(0).getAddress());
         assertEquals("13800138000", rows.get(0).getPhone());
+    }
+
+    /** 规格统一为 数字 + 两 + 公母：原来「4两公」会被存成「4公」，丢了「两」 */
+    @Test
+    void specAlwaysNumberLiangGender() {
+        String[][] cases = {
+                {"4两公", "4两公"}, {"2.8两公", "2.8两公"}, {"公4两", "4两公"}, {"公蟹4两", "4两公"},
+                {"4公", "4两公"}, {"4 两 母", "4两母"}, {"母蟹 3.5 两", "3.5两母"}, {"3.5母蟹", "3.5两母"}};
+        for (String[] c : cases) {
+            assertEquals(c[1], CrabOrderParser.extractSpecQty(c[0]).spec, c[0]);
+        }
+        // 表格（有表头，走 cleanSpec）
+        String table = "姓名\t电话\t地址\t规格\t数量\n"
+                + "王大姐\t13800138000\t阳江市江城区幸福路12号\t4两公\t20只\n"
+                + "陈师傅\t13912345678\t玉林市沙田镇\t公4两\t15只\n"
+                + "李梅\t13700002222\t湛江市霞山区\t四两母\t12只\n";
+        List<CrabShipment> rows = CrabOrderParser.parse(table);
+        assertEquals(3, rows.size());
+        assertEquals("4两公", rows.get(0).getSpec());
+        assertEquals("4两公", rows.get(1).getSpec());
+        assertEquals("4两母", rows.get(2).getSpec());
+        // 松散行（按手机号定位）
+        assertEquals("2.8两公", CrabOrderParser.parse("张三 18600001111 海口美兰蓝天路3号 2.8两公 8只").get(0).getSpec());
+        assertEquals("4两公", CrabOrderParser.parse("张三 18600001111 海口美兰蓝天路3号 公4两 8只").get(0).getSpec());
+        assertEquals("4两公", CrabOrderParser.parse("张三 18600001111 海口美兰蓝天路3号 四两公 8只").get(0).getSpec());
     }
 }

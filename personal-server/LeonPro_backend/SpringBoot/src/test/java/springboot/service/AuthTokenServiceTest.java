@@ -87,4 +87,43 @@ class AuthTokenServiceTest {
         r3.addHeader("Authorization", "Bearer    ");
         assertNull(AuthTokenService.bearerToken(r3));
     }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void revokeAllForUserDeletesOnlyThatUsersTokens() {
+        String a1 = service.issue("u1");
+        String a2 = service.issue("u1");
+        String b = service.issue("u2");
+        store.put("other:key", "u1");
+        when(redis.scan(any(org.springframework.data.redis.core.ScanOptions.class))).thenAnswer(inv -> {
+            java.util.Iterator<String> it = new java.util.ArrayList<>(store.keySet()).stream()
+                    .filter(k -> k.startsWith(service.keyPrefix())).iterator();
+            org.springframework.data.redis.core.Cursor<String> c = mock(org.springframework.data.redis.core.Cursor.class);
+            when(c.hasNext()).thenAnswer(x -> it.hasNext());
+            when(c.next()).thenAnswer(x -> it.next());
+            return c;
+        });
+        when(ops.multiGet(any())).thenAnswer(inv -> ((java.util.Collection<String>) inv.getArgument(0)).stream()
+                .map(store::get).toList());
+        when(redis.delete(any(java.util.Collection.class))).thenAnswer(inv -> {
+            long n = 0;
+            for (Object k : (java.util.Collection<Object>) inv.getArgument(0)) {
+                n += store.remove(k) != null ? 1 : 0;
+            }
+            return n;
+        });
+        assertEquals(2, service.revokeAllForUser("u1"));
+        assertNull(service.resolve(a1));
+        assertNull(service.resolve(a2));
+        assertEquals("u2", service.resolve(b));
+        assertEquals("u1", store.get("other:key"), "别的 key 不受影响");
+        assertEquals(0, service.revokeAllForUser("u1"));
+        assertEquals(0, service.revokeAllForUser(" "));
+    }
+
+    @Test
+    void revokeAllForUserSwallowsRedisErrors() {
+        when(redis.scan(any(org.springframework.data.redis.core.ScanOptions.class))).thenThrow(new IllegalStateException("down"));
+        assertEquals(-1, service.revokeAllForUser("u1"));
+    }
 }

@@ -9,6 +9,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 import springboot.utils.ApiResponse;
+import springboot.utils.BizException;
+import springboot.utils.ForbiddenException;
 
 /**
  * 未捕获异常转为统一 JSON，便于前端提示，并让操作日志过滤器记录 ERROR。
@@ -25,6 +27,19 @@ public class GlobalExceptionHandler {
     public ResponseEntity<ApiResponse> handleNoResource(NoResourceFoundException e) {
         return ResponseEntity.status(HttpStatus.NOT_FOUND)
                 .body(ApiResponse.withStatus(404, "资源不存在", null));
+    }
+
+    /** 已登录但无权限：HTTP 403 + {status: 403, message}，前端据此提示“无权限”，不要当成登录失效 */
+    @ExceptionHandler(ForbiddenException.class)
+    public ResponseEntity<ApiResponse> handleForbidden(ForbiddenException e) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.withStatus(ForbiddenException.FORBIDDEN_STATUS, e.getMessage(), null));
+    }
+
+    /** 业务校验失败：返回普通业务失败提示，不记 ERROR 堆栈（事务已因异常回滚） */
+    @ExceptionHandler(BizException.class)
+    public ApiResponse handleBiz(BizException e) {
+        return ApiResponse.failure(e.getMessage());
     }
 
     /** 上传超过 spring.servlet.multipart 限制：返回业务提示（status 413），不当作 500 */

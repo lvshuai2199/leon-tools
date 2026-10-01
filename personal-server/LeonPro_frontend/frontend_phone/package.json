@@ -1,21 +1,36 @@
 {
-  "name": "leonpro-phone",
-  "version": "2.0.0",
+  "name": "leonpro-app",
+  "version": "3.0.0",
   "private": true,
   "type": "module",
+  "description": "LeonPro 用户端（原手机端 frontend_phone + 原展示端 portal 合并），电脑/手机两套布局",
   "scripts": {
     "dev": "vite",
-    "dev:h5": "vite",
-    "build": "vite build",
-    "build:h5": "vite build",
-    "test": "node --test utils/crab-parse.test.js"
+    "dev:mock": "vite --mode mock",
+    "check-menus": "node ../shared/scripts/check-menus.mjs --client app --pages src/pages",
+    "prebuild": "node ../shared/scripts/check-menus.mjs --client app --pages src/pages",
+    "build": "vue-tsc --noEmit && vite build",
+    "build-only": "vite build",
+    "type-check": "vue-tsc --noEmit",
+    "preview": "vite preview",
+    "test": "node scripts/run-tests.mjs"
   },
   "dependencies": {
+    "@element-plus/icons-vue": "^2.3.2",
+    "element-plus": "^2.14.5",
     "vue": "^3.5.22",
     "vue-router": "^4.5.1"
   },
   "devDependencies": {
+    "@types/node": "^22.18.0",
     "@vitejs/plugin-vue": "^6.0.1",
-    "vite": "^6.3.5"
+    "sass": "^1.91.0",
+    "typescript": "~5.9.2",
+    "unplugin-vue-components": "^28.8.0",
+    "vite": "^6.3.5",
+    "vue-tsc": "^3.0.6"
+  },
+  "engines": {
+    "node": ">=20.19.0"
   }
 }

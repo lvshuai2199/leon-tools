@@ -64,7 +64,7 @@ const permissionStore = usePermissionStore();
 const width = useWindowSize().width;
 
 // 常量
-const WIDTH_DESKTOP = 992; // 响应式布局容器固定宽度（大屏 >=1200px，中屏 >=992px，小屏 >=768px）
+const WIDTH_DESKTOP = 1200; // 1200 以下（含 1024）侧边栏收起，点汉堡按钮以抽屉打开
 
 // 计算属性
 const isMobile = computed(() => appStore.device === DeviceEnum.MOBILE); // 是否为移动设备
@@ -136,7 +136,7 @@ function handleToggleSidebar() {
     z-index: 999;
     width: 100%;
     height: 100%;
-    background-color: rgba(0, 0, 0, 0.3);
+    background-color: rgba(0, 0, 0, 0.5);
   }
 
   &__sidebar {

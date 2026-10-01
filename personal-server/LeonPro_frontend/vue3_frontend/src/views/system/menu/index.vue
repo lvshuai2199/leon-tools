@@ -410,10 +410,6 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
-
 .menu-svg-icon {
   display: inline-block;
   width: 14px;

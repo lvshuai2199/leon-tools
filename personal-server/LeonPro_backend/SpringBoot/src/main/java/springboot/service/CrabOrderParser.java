@@ -454,11 +454,11 @@ public final class CrabOrderParser {
         Matcher specA = SPEC_A.matcher(text);
         Matcher specB = SPEC_B.matcher(text);
         if (specA.find()) {
-            result.spec = specA.group(1) + specA.group(2);
+            result.spec = specOf(specA.group(1), specA.group(2));
             specStart = specA.start();
             specEnd = specA.end();
         } else if (specB.find()) {
-            result.spec = specB.group(2) + specB.group(1);
+            result.spec = specOf(specB.group(2), specB.group(1));
             specStart = specB.start();
             specEnd = specB.end();
         }
@@ -558,6 +558,11 @@ public final class CrabOrderParser {
         return matcher.find() ? matcher.group(1) : trimToNull(raw);
     }
 
+    /** 统一规格格式：数字 + 两 + 公母（4两公、2.8两母）；「4公」「公4两」「公蟹 4 两」「4 两公」都归一成这一种 */
+    static String specOf(String number, String gender) {
+        return number + "两" + gender;
+    }
+
     private static String cleanSpec(String raw) {
         String value = trimToNull(raw);
         if (value == null) {
@@ -567,7 +572,7 @@ public final class CrabOrderParser {
         if (extracted.spec != null) {
             return extracted.spec;
         }
-        return value.replace(" ", "").replace("两", "");
+        return value.replace(" ", "");
     }
 
     private static Integer parseQuantity(String raw) {

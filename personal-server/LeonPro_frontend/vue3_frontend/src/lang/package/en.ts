@@ -54,7 +54,6 @@ export default {
     theme: "Theme",
     interface: "Interface",
     navigation: "Navigation",
-    themeColor: "Theme Color",
     tagsView: "Tags View",
     sidebarLogo: "Sidebar Logo",
     sidebarColorScheme: "Sidebar Color Scheme",

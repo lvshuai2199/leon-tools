@@ -41,7 +41,7 @@ public class ToolMindmapController {
     @Value("${app.mindmap.storage-dir:./data/mindmap}")
     private String storageDir;
 
-    @GetMapping("mindmap/getAll")
+    @GetMapping("/admin/mindmap/getAll")
     public ApiResponse selectAll(Page<ToolMindmap> page, ToolMindmap query) {
         LambdaQueryWrapper<ToolMindmap> wrapper = new LambdaQueryWrapper<>();
         wrapper.select(ToolMindmap::getId, ToolMindmap::getTitle, ToolMindmap::getPublicId,
@@ -57,7 +57,7 @@ public class ToolMindmapController {
         return ApiResponse.success(result);
     }
 
-    @GetMapping("mindmap/{id}")
+    @GetMapping("/admin/mindmap/{id}")
     public ApiResponse selectOne(@PathVariable Serializable id) {
         ToolMindmap entity = this.toolMindmapService.getById(id);
         if (entity == null) {
@@ -67,7 +67,7 @@ public class ToolMindmapController {
         return ApiResponse.success(entity);
     }
 
-    @PostMapping("mindmap/save")
+    @PostMapping("/admin/mindmap/save")
     public ApiResponse save(@RequestBody MindmapSaveRequest req) {
         if (req == null || req.getMarkdown() == null || req.getMarkdown().isBlank()) {
             return ApiResponse.failure("请填写 Markdown 内容");
@@ -131,7 +131,7 @@ public class ToolMindmapController {
         return ApiResponse.success(entity);
     }
 
-    @PostMapping("mindmap/del")
+    @PostMapping("/admin/mindmap/del")
     public ApiResponse delete(@RequestBody List<String> idList) {
         if (idList == null || idList.isEmpty()) {
             return ApiResponse.failure("请选择要删除的记录");

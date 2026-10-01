@@ -1,24 +1,27 @@
+@use "../../../shared/theme" as lp;
+
+// Element Plus 的 scss 变量也取共用主题的值（CSS 变量由 index.scss 里的 lp.css-vars 输出）
 @forward "element-plus/theme-chalk/src/common/var.scss" with (
   $colors: (
     "primary": (
-      "base": #4080ff,
+      "base": lp.$primary,
     ),
     "success": (
-      "base": #23c343,
+      "base": lp.$success,
     ),
     "warning": (
-      "base": #ff9a2e,
+      "base": lp.$warning,
     ),
     "danger": (
-      "base": #f76560,
+      "base": lp.$danger,
     ),
-    "info": (
-      "base": #a9aeb8,
+    "error": (
+      "base": lp.$danger,
     ),
   ),
 
   $bg-color: (
-    "page": #f5f8fd,
+    "page": lp.$bg-page,
   )
 );
 
@@ -44,7 +47,7 @@
 html.sidebar-color-blue {
   --menu-background: #304156; // 菜单背景色
   --menu-text: #bfcbd9; // 菜单文字颜色
-  --menu-active-text: var(--el-menu-active-color); // 菜单激活文字颜色
+  --menu-active-text: #fff; // 菜单激活文字颜色（深色底上用白字）
   --menu-hover: #263445; // 菜单悬停背景色
   --sidebar-logo-background: #2d3748; // 侧边栏 Logo 背景色
   --sidebar-logo-text-color: #fff; // 侧边栏 Logo 文字颜色
@@ -54,7 +57,7 @@ html.sidebar-color-blue {
 html.dark {
   --menu-background: var(--el-bg-color-overlay);
   --menu-text: #fff;
-  --menu-active-text: var(--el-menu-active-color);
+  --menu-active-text: #fff;
   --menu-hover: rgb(0 0 0 / 20%);
   --sidebar-logo-background: rgb(0 0 0 / 20%);
   --sidebar-logo-text-color: #fff;

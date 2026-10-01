@@ -49,7 +49,13 @@
 
       <el-table v-loading="loading" :data="logList" border>
         <el-table-column type="index" label="#" width="50" align="center" />
-        <el-table-column prop="createTime" label="时间" width="170" align="center" />
+        <el-table-column
+          prop="createTime"
+          label="时间"
+          width="170"
+          align="center"
+          :formatter="tableTimeFormatter"
+        />
         <el-table-column label="操作人" min-width="110" show-overflow-tooltip>
           <template #default="{ row }">
             {{ row.operatorName || "未知人员" }}
@@ -90,7 +96,9 @@
 
     <el-drawer v-model="detail.visible" title="操作详情" size="520px" destroy-on-close>
       <el-descriptions v-if="detail.data" :column="1" border>
-        <el-descriptions-item label="时间">{{ detail.data.createTime || "-" }}</el-descriptions-item>
+        <el-descriptions-item label="时间">
+          {{ formatDateTime(detail.data.createTime) }}
+        </el-descriptions-item>
         <el-descriptions-item label="操作人">
           {{ detail.data.operatorName || "未知人员" }}
           <span v-if="detail.data.operatorId" class="muted">（{{ detail.data.operatorId }}）</span>
@@ -116,6 +124,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime, tableTimeFormatter } from "@/utils";
 import OperationLogAPI, { type OperationLogVO } from "@/api/system/oplog";
 
 defineOptions({
@@ -213,10 +222,6 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
-
 .header-hint {
   margin-left: 12px;
   font-size: 12px;

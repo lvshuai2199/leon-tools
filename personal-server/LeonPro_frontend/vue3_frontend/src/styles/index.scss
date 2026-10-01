@@ -1,7 +1,147 @@
 @use "./reset";
+@use "../../../shared/theme" as lp;
 
+// 共用主题的 CSS 变量，整个管理端只输出这一次
+@include lp.css-vars;
+
+// 主内容区：左右和顶部 24
 .app-container {
-  padding: 15px;
+  padding: var(--lp-page-padding-desktop);
+}
+
+@media (width <= 767px) {
+  .app-container {
+    padding: var(--lp-page-padding-mobile);
+  }
+}
+
+// 卡片：圆角 12，内边距 16；卡片标题 16/600
+// Element 的组件样式按需后加载，同样的选择器会把这里盖掉，所以前面加 html 提高优先级
+html .el-card {
+  --el-card-border-radius: var(--lp-radius-card);
+  --el-card-padding: var(--lp-card-padding);
+}
+
+html .el-card__header {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--el-text-color-primary);
+}
+
+// 搜索卡片：表单项间距 16，最后一行不留底边距，上下内边距都是 16
+.el-card__body > .el-form--inline {
+  margin-bottom: -16px;
+
+  .el-form-item {
+    margin-bottom: 16px;
+  }
+}
+
+// 弹窗：圆角 12，内边距 24，标题 18/600
+html .el-dialog {
+  --el-dialog-border-radius: var(--lp-radius-card);
+  --el-dialog-padding-primary: 24px;
+}
+
+html .el-dialog__title {
+  font-size: 18px;
+  font-weight: 600;
+}
+
+// 表格操作列里的文字链接：无内边距，间距 12
+.el-table .el-button.is-link {
+  padding: 0;
+
+  & + .el-button.is-link {
+    margin-left: 12px;
+  }
+}
+
+// 表格空状态：48×48 图标框 + 14px 说明
+html .el-table__empty-text {
+  line-height: 1.5;
+}
+
+.table-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+  padding: 32px 0;
+
+  &__icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 48px;
+    height: 48px;
+    font-size: 24px;
+    color: #6b7280;
+    background: #f5f7fa;
+    border-radius: 12px;
+  }
+
+  &__text {
+    font-size: 14px;
+    color: #6b7280;
+  }
+}
+
+html.dark .table-empty {
+  &__icon {
+    color: var(--el-text-color-secondary);
+    background: var(--el-fill-color-light);
+  }
+
+  &__text {
+    color: var(--el-text-color-secondary);
+  }
+}
+
+// 窄屏时头像下拉菜单里的分组小标题（字号、语言）
+.el-dropdown-menu__item.navbar__menu-label {
+  font-size: 12px;
+  cursor: default;
+}
+
+.el-dropdown-menu__item.navbar__menu-current {
+  font-weight: 500;
+  color: var(--el-color-primary);
+}
+
+// 浅色下的标签：灰色标签统一色值，成功 / 警告用主题里的浅底，不用 Element 自动混色
+html:not(.dark) {
+  .el-tag--info {
+    --el-tag-text-color: #6b7280;
+    --el-tag-bg-color: #f5f7fa;
+    --el-tag-border-color: #dcdfe6;
+  }
+
+  .el-tag--success {
+    --el-tag-bg-color: var(--lp-color-success-bg);
+    --el-tag-border-color: #bbf7d0;
+  }
+
+  .el-tag--warning {
+    --el-tag-bg-color: var(--lp-color-warning-bg);
+    --el-tag-border-color: #fde68a;
+  }
+}
+
+// 深色侧边栏（浅色主题的深蓝底 / 暗黑主题）选中项：白字 + 浅蓝底 + 左侧 3px 竖条，图标跟文字同色
+html.sidebar-color-blue,
+html.dark {
+  .layout__sidebar .el-menu-item.is-active,
+  .layout__sidebar--left .el-menu-item.is-active {
+    color: #fff !important;
+    background-color: rgb(59 130 246 / 20%) !important;
+    box-shadow: inset 3px 0 0 #3b82f6;
+
+    .el-icon,
+    svg {
+      color: currentcolor;
+    }
+  }
 }
 
 .search-bar {
@@ -19,10 +159,10 @@
 
 .link-type,
 .link-type:focus {
-  color: #337ab7;
+  color: var(--el-color-primary);
   cursor: pointer;
 
   &:hover {
-    color: rgb(32 160 255);
+    color: var(--el-color-primary-light-3);
   }
 }

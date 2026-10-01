@@ -66,7 +66,7 @@
         </el-table-column>
         <el-table-column prop="createTime" label="生成时间" width="200" align="center">
           <template #default="{ row }">
-            {{ row.createTime || "-" }}
+            {{ formatDateTime(row.createTime) }}
           </template>
         </el-table-column>
       </el-table>
@@ -83,6 +83,7 @@
 </template>
 
 <script setup lang="ts">
+import { formatDateTime } from "@/utils";
 import RegistrationAPI, { type RegistrationPageVO } from "@/api/registration";
 
 defineOptions({
@@ -150,7 +151,4 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
 </style>

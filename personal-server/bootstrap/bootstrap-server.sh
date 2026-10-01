@@ -12,8 +12,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_FILE="${SCRIPT_DIR}/bootstrap.env"
 MYSQL_DIR="/opt/leonpro/mysql"
 BACKEND_DIR="/opt/leonpro/backend"
-WWW_DIR="/var/www/leonpro"
-WWW_H5_DIR="/var/www/leonpro-h5"
+# 用户端（站点根 /）和管理端（/admin/）的静态文件目录，与 nginx-leonpro.conf 一致
+WWW_DIR="/var/www/leonpro-web"
+WWW_ADMIN_DIR="/var/www/leonpro-admin"
 TOOL_DIR="/var/www/tool"
 NGINX_CONF="/etc/nginx/sites-available/default"
 
@@ -67,11 +68,17 @@ apt-get install -y ca-certificates curl gnupg lsb-release apt-transport-https \
 log "安装 Nginx"
 apt-get install -y nginx
 systemctl enable nginx
-mkdir -p "${WWW_DIR}" "${WWW_H5_DIR}" "${TOOL_DIR}"
+mkdir -p "${WWW_DIR}" "${WWW_ADMIN_DIR}" "${TOOL_DIR}"
 if [[ ! -f "${WWW_DIR}/index.html" ]]; then
   cat >"${WWW_DIR}/index.html" <<'HTML'
 <!doctype html><meta charset="utf-8"><title>LeonPro</title>
-<p>Nginx 已就绪。请部署前端到 /var/www/leonpro。</p>
+<p>Nginx 已就绪。请部署用户端到 /var/www/leonpro-web。</p>
+HTML
+fi
+if [[ ! -f "${WWW_ADMIN_DIR}/index.html" ]]; then
+  cat >"${WWW_ADMIN_DIR}/index.html" <<'HTML'
+<!doctype html><meta charset="utf-8"><title>LeonPro 管理端</title>
+<p>Nginx 已就绪。请部署管理端到 /var/www/leonpro-admin。</p>
 HTML
 fi
 
@@ -131,7 +138,7 @@ systemctl start docker
 if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
   usermod -aG docker "${SUDO_USER}" || true
   log "已将 ${SUDO_USER} 加入 docker 组（需重新登录后生效）"
-  chown -R "${SUDO_USER}:${SUDO_USER}" /opt/leonpro /var/www/leonpro /var/www/leonpro-h5 || true
+  chown -R "${SUDO_USER}:${SUDO_USER}" /opt/leonpro "${WWW_DIR}" "${WWW_ADMIN_DIR}" || true
 fi
 
 mkdir -p /etc/docker
@@ -210,7 +217,7 @@ if [[ "${SETUP_UFW}" == "1" ]]; then
 fi
 
 if [[ -n "${SUDO_USER:-}" && "${SUDO_USER}" != "root" ]]; then
-  chown -R "${SUDO_USER}:${SUDO_USER}" /opt/leonpro/backend /var/www/leonpro /var/www/leonpro-h5 || true
+  chown -R "${SUDO_USER}:${SUDO_USER}" /opt/leonpro/backend "${WWW_DIR}" "${WWW_ADMIN_DIR}" || true
 fi
 
 log "完成"
@@ -219,7 +226,7 @@ echo "Nginx:     systemctl status nginx"
 echo "Docker:    docker ps"
 echo "MySQL:     容器 mysql8，映射 ${MYSQL_PUBLISH}"
 echo "库:        leonpro_db_prod / leonpro_db_dev"
-echo "前端目录:  ${WWW_DIR}"
+echo "前端目录:  ${WWW_DIR}（用户端 /）、${WWW_ADMIN_DIR}（管理端 /admin/）"
 echo "后端目录:  ${BACKEND_DIR}"
 echo "Redis:     随后端 docker compose 一起启动，无需本脚本安装"
 echo

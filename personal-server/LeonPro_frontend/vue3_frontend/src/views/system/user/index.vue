@@ -47,7 +47,13 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="160" align="center" />
+        <el-table-column
+          prop="createTime"
+          label="创建时间"
+          width="160"
+          align="center"
+          :formatter="tableTimeFormatter"
+        />
         <el-table-column label="操作" width="220" align="center" fixed="right">
           <template #default="{ row }">
             <el-button
@@ -149,7 +155,13 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="createTime" label="创建时间" width="160" align="center" />
+        <el-table-column
+          prop="createTime"
+          label="创建时间"
+          width="160"
+          align="center"
+          :formatter="tableTimeFormatter"
+        />
         <el-table-column label="操作" width="140" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openChildDialog(row)">编辑</el-button>
@@ -169,6 +181,7 @@
 </template>
 
 <script setup lang="ts">
+import { tableTimeFormatter } from "@/utils";
 import UserAPI, { type UserPageVO, type UserForm } from "@/api/system/user";
 import RoleAPI, { type RolePageVO } from "@/api/system/role";
 import { REGCODE_CLIENT_ROLE_ID } from "@/utils/role";
@@ -417,7 +430,4 @@ onMounted(() => {
 </script>
 
 <style lang="scss" scoped>
-.app-container {
-  padding: 16px;
-}
 </style>

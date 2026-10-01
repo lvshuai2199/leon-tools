@@ -1,6 +1,6 @@
 import request from "@/utils/request";
 
-const TASK_BASE_URL = "/sysTasks";
+const TASK_BASE_URL = "/admin/sysTasks";
 
 /**
  * 任务 API（对接 LeonPro_backend SysTasksController）
@@ -32,14 +32,6 @@ const TaskAPI = {
     });
   },
 
-  /** 获取任务详情 */
-  getFormData(id: string) {
-    return request<any, TaskForm>({
-      url: `${TASK_BASE_URL}/${id}`,
-      method: "get",
-    });
-  },
-
   /** 新增任务（自动设置 createTime 与 isDelete=0） */
   add(data: TaskForm) {
     return request<any, boolean>({
@@ -53,17 +45,6 @@ const TaskAPI = {
   update(data: TaskForm) {
     return request<any, boolean>({
       url: `${TASK_BASE_URL}/update`,
-      method: "post",
-      data,
-    });
-  },
-
-  /**
-   * 异常上报（追加 remarks 并以 END 结尾）
-   */
-  abnormalUpload(data: TaskForm) {
-    return request<any, TaskForm>({
-      url: `/auth/abnormalUpload`,
       method: "post",
       data,
     });

@@ -5,7 +5,7 @@
     <el-form v-else label-width="88px" @submit.prevent>
       <el-form-item v-if="quota" label="剩余次数">
         <el-tag :type="quota.unlimited ? 'info' : 'warning'">
-          {{ quota.unlimited ? "不限" : `${quota.remaining ?? 0} / ${quota.generateLimit ?? 0}` }}
+          {{ quotaText }}
         </el-tag>
       </el-form-item>
       <el-row :gutter="16">
@@ -24,7 +24,12 @@
         </el-col>
         <el-col :span="12" :xs="24">
           <el-form-item label="名称">
-            <el-select v-model="configId" placeholder="选择名称" class="w-full" @change="resetResult">
+            <el-select
+              v-model="configId"
+              placeholder="选择名称"
+              class="w-full"
+              @change="resetResult"
+            >
               <el-option
                 v-for="item in currentConfigs"
                 :key="item.id"
@@ -77,9 +82,9 @@
 
 <script setup lang="ts">
 import RegistrationAPI, { type TempRegCodeVO } from "@/api/registration";
+import { copyText } from "@/utils/clipboard";
 import RegCodeConfigAPI, { type RegCodeConfigVO } from "@/api/tool/regcode-config";
 import RegCodeUserAPI, { type RegCodeQuotaVO } from "@/api/tool/regcode-user";
-import { useUserStore } from "@/store/modules/user";
 import {
   ALL_VALIDITY_FIELDS,
   DEFAULT_VISIBLE_FIELDS,
@@ -87,10 +92,17 @@ import {
   type ValidityKey,
 } from "./config";
 
-const userStore = useUserStore();
-
 const configs = ref<RegCodeConfigVO[]>([]);
 const quota = ref<RegCodeQuotaVO | null>(null);
+/** 次数按配置分别计算：显示当前所选配置的剩余 / 上限，没有明细时退回合计 */
+const quotaText = computed(() => {
+  const q = quota.value;
+  if (!q) return "";
+  if (q.unlimited) return "不限";
+  const item = q.items?.find((x) => String(x.configId) === String(currentConfig.value?.id ?? ""));
+  if (item) return `${item.remaining ?? 0} / ${item.allocated ?? 0}`;
+  return `${q.remaining ?? 0} / ${q.generateLimit ?? 0}`;
+});
 const loadingConfigs = ref(false);
 const companyName = ref("");
 const configId = ref("");
@@ -129,9 +141,7 @@ const currentConfig = computed(
 );
 
 const allFields = computed<ValidityKey[]>(() => ALL_VALIDITY_FIELDS);
-const visibleFields = computed(() =>
-  expanded.value ? allFields.value : DEFAULT_VISIBLE_FIELDS
-);
+const visibleFields = computed(() => (expanded.value ? allFields.value : DEFAULT_VISIBLE_FIELDS));
 const hiddenFields = computed(() =>
   expanded.value ? [] : allFields.value.filter((field) => !DEFAULT_VISIBLE_FIELDS.includes(field))
 );
@@ -158,12 +168,6 @@ function resetAll() {
   resetResult();
 }
 
-function copyText(text: string) {
-  navigator.clipboard.writeText(text).then(() => {
-    ElMessage.success("已复制");
-  });
-}
-
 function loadQuota() {
   RegCodeUserAPI.myQuota()
     .then((data) => {
@@ -176,7 +180,7 @@ function loadQuota() {
 
 function loadConfigs() {
   loadingConfigs.value = true;
-  RegCodeConfigAPI.list()
+  RegCodeConfigAPI.mine()
     .then((data) => {
       configs.value = data || [];
       applyDefaultSelection();
@@ -205,7 +209,6 @@ function handleGenerate() {
     configId: currentConfig.value.id,
     company: currentConfig.value.company,
     applyName: currentConfig.value.name,
-    applyId: userStore.userInfo.id,
   })
     .then((data) => {
       Object.assign(result, data);
