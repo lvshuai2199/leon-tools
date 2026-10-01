@@ -112,7 +112,7 @@ defineOptions({
 });
 
 import { markRaw } from "vue";
-import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar, Key, Setting, Download, Share, Notebook, ShoppingCart } from "@element-plus/icons-vue";
+import { TrendCharts, Folder, Document, Tickets, Postcard, User, Avatar, Key, Setting, Download, Share, Notebook, ShoppingCart, Trophy } from "@element-plus/icons-vue";
 import { useUserStore } from "@/store/modules/user";
 import { usePermissionStore } from "@/store/modules/permission";
 import SystemDataAPI, { type SystemDataStatusVO } from "@/api/system/data-pack";
@@ -207,6 +207,14 @@ const allToolCards: ToolCard[] = [
     menuId: "menu_mindmap",
     icon: markRaw(Share),
     color: "#14C9C9",
+  },
+  {
+    title: "羽毛球计费",
+    desc: "场地费、用球费按人数均摊，支持多项明细",
+    path: "/tool/badminton",
+    menuId: "menu_badminton",
+    icon: markRaw(Trophy),
+    color: "#0EA5E9",
   },
 ];
 
