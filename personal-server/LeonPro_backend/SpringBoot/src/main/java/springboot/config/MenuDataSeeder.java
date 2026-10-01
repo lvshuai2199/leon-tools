@@ -31,6 +31,7 @@ public class MenuDataSeeder implements CommandLineRunner {
     public static final String MENU_REGCODE_USER = "menu_regcode_user";
     public static final String MENU_REGISTRATION = "menu_registration";
     public static final String MENU_CRAB = "menu_crab";
+    public static final String MENU_BADMINTON = "menu_badminton";
 
     private static final List<String> REGCODE_MENU_IDS = List.of(
             MENU_REGCODE_CENTER,
@@ -65,6 +66,8 @@ public class MenuDataSeeder implements CommandLineRunner {
                     "Documents", "file", 3, 1, 1, 0, 0, null, now));
             menus.add(build("menu_mindmap", "menu_tool", "思维导图", "mindmap", "tool/mindmap/index", null,
                     "Mindmap", "share", 4, 1, 1, 0, 0, null, now));
+            menus.add(build(MENU_BADMINTON, "menu_tool", "羽毛球计费", "badminton", "tool/badminton/index", null,
+                    "BadmintonBill", "el-icon-Trophy", 6, 1, 1, 0, 0, null, now));
 
             menus.add(build(MENU_REGCODE_CENTER, "0", "注册码", "/regcode", "Layout", "/regcode/generate",
                     "RegCodeCenter", "key", 2, 0, 1, 1, 0, null, now));
@@ -104,6 +107,7 @@ public class MenuDataSeeder implements CommandLineRunner {
         groupRegCodeMenus();
         grantRegCodeMenusToManagers();
         grantCrabMenuToBusinessRoles();
+        grantBadmintonMenuToAppRoles();
     }
 
     private void ensureSeedMenu() {
@@ -120,6 +124,8 @@ public class MenuDataSeeder implements CommandLineRunner {
         }
         insertIfAbsent(MENU_CRAB, "menu_work", "螃蟹出货", "crab", "work/crab/index",
                 null, "CrabShipment", "table", 2, 1, 1, 0, 0, now);
+        insertIfAbsent(MENU_BADMINTON, "menu_tool", "羽毛球计费", "badminton", "tool/badminton/index",
+                null, "BadmintonBill", "el-icon-Trophy", 6, 1, 1, 0, 0, now);
     }
 
     /** 只补缺失的注册码菜单，已有行完全以 sys_menus 为准 */
@@ -172,6 +178,33 @@ public class MenuDataSeeder implements CommandLineRunner {
             extra.setMenuId(MENU_CRAB);
             sysRoleMenuService.save(extra);
             log.info("已为角色 {} 补齐菜单 {}。", roleId, MENU_CRAB);
+        }
+    }
+
+    /** 已有工具中心或任务管理的业务角色，补插羽毛球计费；注册码客户除外。 */
+    private void grantBadmintonMenuToAppRoles() {
+        LambdaQueryWrapper<SysRoleMenu> wrapper = new LambdaQueryWrapper<>();
+        wrapper.in(SysRoleMenu::getMenuId, List.of("menu_mindmap", "menu_tasks", "menu_tool", MENU_CRAB));
+        Set<String> roleIds = new HashSet<>();
+        for (SysRoleMenu row : sysRoleMenuService.list(wrapper)) {
+            if (row.getRoldId() != null) {
+                roleIds.add(row.getRoldId());
+            }
+        }
+        for (String roleId : roleIds) {
+            if (RegCodeAccessService.ROLE_REGCODE_CLIENT_ID.equals(roleId)) {
+                continue;
+            }
+            List<String> menuIds = sysRoleMenuService.getMenuIdsByRole(roleId);
+            Set<String> owned = menuIds == null ? new HashSet<>() : new HashSet<>(menuIds);
+            if (owned.contains(MENU_BADMINTON)) {
+                continue;
+            }
+            SysRoleMenu extra = new SysRoleMenu();
+            extra.setRoldId(roleId);
+            extra.setMenuId(MENU_BADMINTON);
+            sysRoleMenuService.save(extra);
+            log.info("已为角色 {} 补齐菜单 {}。", roleId, MENU_BADMINTON);
         }
     }
 

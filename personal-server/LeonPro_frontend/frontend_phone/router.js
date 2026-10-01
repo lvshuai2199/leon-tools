@@ -38,6 +38,16 @@ const router = createRouter({
       path: "/pages/crab/share",
       component: () => import("@/pages/crab/share.vue"),
     },
+    {
+      path: "/pages/badminton/list",
+      component: () => import("@/pages/badminton/list.vue"),
+      meta: { auth: true, needCrab: true },
+    },
+    {
+      path: "/pages/badminton/edit",
+      component: () => import("@/pages/badminton/edit.vue"),
+      meta: { auth: true, needCrab: true },
+    },
     { path: "/:pathMatch(.*)*", redirect: "/pages/login/login" },
   ],
 });

@@ -3,7 +3,7 @@
     <div class="hero">
       <div>
         <div class="hello">你好，{{ displayName }}</div>
-        <div class="desc">今日出货与常用工具</div>
+        <div class="desc">今日出货、计费与常用工具</div>
       </div>
       <button class="logout" type="button" @click="handleLogout">退出</button>
     </div>
@@ -13,6 +13,14 @@
       <div class="meta">
         <div class="title">螃蟹出货</div>
         <div class="hint">粘贴或拍照录入，标记付款发货，单条分享</div>
+      </div>
+    </button>
+
+    <button class="tile" type="button" @click="go('/pages/badminton/list')">
+      <div class="icon bird">羽</div>
+      <div class="meta">
+        <div class="title">羽毛球计费</div>
+        <div class="hint">场地费、用球费按人数均摊，支持多项明细</div>
       </div>
     </button>
 
@@ -128,6 +136,10 @@ export default {
 
 .icon.key {
   background: #4080ff;
+}
+
+.icon.bird {
+  background: #0ea5e9;
 }
 
 .title {

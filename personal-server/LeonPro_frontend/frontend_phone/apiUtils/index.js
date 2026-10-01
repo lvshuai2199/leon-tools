@@ -63,6 +63,22 @@ export default {
 		return http.post("/crabShipment/del", ids);
 	},
 
+	listBadmintonBills(params) {
+		return http.get(`/badmintonBill/getAll${toQuery(params)}`);
+	},
+
+	getBadmintonBill(id) {
+		return http.get(`/badmintonBill/${encodeURIComponent(id)}`);
+	},
+
+	saveBadmintonBill(data) {
+		return http.post("/badmintonBill/save", data);
+	},
+
+	deleteBadmintonBills(ids) {
+		return http.post("/badmintonBill/del", ids);
+	},
+
 	publicCrabShipment(publicId) {
 		return http.get(`/public/crabShipment/${encodeURIComponent(publicId)}`);
 	},
