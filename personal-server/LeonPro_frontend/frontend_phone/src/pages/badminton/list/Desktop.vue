@@ -4,11 +4,15 @@ import { ArrowLeft, ArrowRight, Plus, Search } from '@element-plus/icons-vue'
 import type { BadmintonBill } from '@/api/types'
 import PageBar from '@/components/PageBar.vue'
 import StateBlock from '@/components/StateBlock.vue'
+import { useBreakpoint } from '@/composables/useBreakpoint'
 import { formatMoney } from '@/utils/badminton-bill'
 import { useBadmintonListPage, type DateMode } from './useBadmintonListPage'
 
 const list = useBadmintonListPage()
 const { filter, records, loading, loaded, error, summary } = list
+/** 视口 ≥ 1000 才显示场地费 / 用球费两列（768–999 宽时表格放不下，避免内部横向滚动） */
+const { width } = useBreakpoint()
+const wide = computed(() => width.value >= 1000)
 
 const keyword = ref(filter.keyword)
 const mode = computed({
@@ -94,26 +98,29 @@ function doSearch() {
         :row-class-name="() => 'is-clickable'"
         @row-click="list.openDetail"
       >
-        <el-table-column prop="playDate" label="日期" width="120" />
-        <el-table-column label="标题" min-width="160">
-          <template #default="{ row }">{{ row.title || '未填标题' }}</template>
+        <el-table-column prop="playDate" label="日期" width="110" />
+        <el-table-column label="标题" min-width="120">
+          <template #default="{ row }">
+            <span class="title-cell" :title="row.title || ''">{{ row.title || '未填标题' }}</span>
+          </template>
         </el-table-column>
-        <el-table-column prop="participantCount" label="人数" width="80" align="center" />
-        <el-table-column label="场地费" width="110" align="right">
+        <el-table-column prop="participantCount" label="人数" width="64" align="center" />
+        <!-- 窄电脑（< 1000）收起场地费 / 用球费两列，保证表格不出现内部横向滚动 -->
+        <el-table-column v-if="wide" label="场地费" width="110" align="right" class-name="num">
           <template #default="{ row }">{{ formatMoney(row.courtTotal) }}</template>
         </el-table-column>
-        <el-table-column label="用球费" width="110" align="right">
+        <el-table-column v-if="wide" label="用球费" width="110" align="right" class-name="num">
           <template #default="{ row }">{{ formatMoney(row.ballTotal) }}</template>
         </el-table-column>
-        <el-table-column label="总计" width="110" align="right">
+        <el-table-column label="总计" width="110" align="right" class-name="num">
           <template #default="{ row }">{{ formatMoney(row.grandTotal) }}</template>
         </el-table-column>
-        <el-table-column label="个人应付" width="120" align="right">
+        <el-table-column label="个人应付" width="120" align="right" class-name="num">
           <template #default="{ row }">
             <span class="per">{{ formatMoney(row.perPerson) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="200" fixed="right" align="right">
+        <el-table-column label="操作" width="170" fixed="right" align="right">
           <template #default="{ row }">
             <div class="ops lp-table-ops" @click.stop>
               <el-button link type="primary" @click="list.openDetail(row as BadmintonBill)">编辑</el-button>
@@ -174,6 +181,18 @@ function doSearch() {
   :deep(.is-clickable) {
     cursor: pointer;
   }
+}
+.title-cell {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+.table :deep(.num .cell) {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
 }
 .per {
   font-weight: lp.$font-weight-semibold;

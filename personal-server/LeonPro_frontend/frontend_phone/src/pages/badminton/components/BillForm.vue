@@ -148,7 +148,7 @@ function manualUnit(row: BadmintonBallFeeItem) {
         <span />
       </div>
       <div v-for="(row, index) in form.ballItems" :key="'b' + index" class="balls__row">
-        <el-input v-model="row.brand" maxlength="50" placeholder="如 亚狮龙7号" aria-label="品牌" />
+        <el-input v-model="row.brand" maxlength="50" placeholder="如 亚狮龙7号" aria-label="品牌" class="brand" :title="row.brand" />
         <el-input-number
           v-model="row.quantity"
           :min="0"
@@ -196,13 +196,27 @@ function manualUnit(row: BadmintonBallFeeItem) {
       </div>
     </div>
 
-    <!-- 手机端：每条一张卡片；第一行品牌 + 数量，第二行单价 / 整桶价各半，小计在右下角 -->
+    <!--
+      手机端：每条一张卡片（美工 10-04）：① 品牌 + 右上删除（44×44）② 数量（半宽）
+      ③ 单价 | 整桶价各半 ④ 左「整桶 ÷ 12 · 改为手填」（有整桶价时）右小计（加粗）
+    -->
     <div v-for="(row, index) in compact ? form.ballItems : []" :key="'bm' + index" class="ball-card">
-      <div class="ball-card__row ball-card__row--first">
-        <label class="field">
+      <div class="ball-card__head">
+        <label class="field ball-card__brand">
           <span class="field__label">品牌</span>
-          <el-input v-model="row.brand" maxlength="50" placeholder="如 亚狮龙7号" />
+          <el-input v-model="row.brand" maxlength="50" placeholder="如 亚狮龙7号" class="brand" :title="row.brand" />
         </label>
+        <el-button
+          type="danger"
+          link
+          class="ball-card__del"
+          aria-label="删除这条用球"
+          @click="emit('removeBall', index)"
+        >
+          删除
+        </el-button>
+      </div>
+      <div class="ball-card__row">
         <label class="field">
           <span class="field__label">数量</span>
           <el-input-number v-model="row.quantity" :min="0" :max="10000" :step="1" controls-position="right" class="w-full" />
@@ -211,13 +225,7 @@ function manualUnit(row: BadmintonBallFeeItem) {
       <div class="ball-card__row">
         <div class="field">
           <span class="field__label">单价</span>
-          <template v-if="hasBucket(row)">
-            <div class="unit__ro">¥{{ formatMoney(unitOf(row)) }}</div>
-            <div class="unit__hint">
-              <span>整桶 ÷ 12</span>
-              <el-button type="primary" link class="unit__manual" @click="manualUnit(row)">改为手填</el-button>
-            </div>
-          </template>
+          <div v-if="hasBucket(row)" class="unit__ro">¥{{ formatMoney(unitOf(row)) }}</div>
           <el-input-number
             v-else
             v-model="row.unitPrice"
@@ -230,7 +238,7 @@ function manualUnit(row: BadmintonBallFeeItem) {
           />
         </div>
         <label class="field">
-          <span class="field__label">整桶价</span>
+          <span class="field__label">整桶价（元/桶）</span>
           <el-input-number
             :model-value="row.bucketPrice ?? undefined"
             :min="0"
@@ -238,15 +246,17 @@ function manualUnit(row: BadmintonBallFeeItem) {
             :precision="2"
             :controls="false"
             :value-on-clear="null"
-            class="w-full"
+            class="w-full bucket-m"
             @update:model-value="(v: number | null | undefined) => onBucketChange(row, v)"
-          >
-            <template #suffix>元/桶</template>
-          </el-input-number>
+          />
         </label>
       </div>
       <div class="ball-card__foot">
-        <el-button type="danger" link @click="emit('removeBall', index)">删除</el-button>
+        <div v-if="hasBucket(row)" class="unit__hint">
+          <span>整桶 ÷ 12 ·</span>
+          <el-button type="primary" link class="unit__manual" @click="manualUnit(row)">改为手填</el-button>
+        </div>
+        <span v-else />
         <span class="ball-card__amount">小计 {{ formatMoney(ballAmount(row)) }}</span>
       </div>
     </div>
@@ -296,6 +306,7 @@ function manualUnit(row: BadmintonBallFeeItem) {
 }
 .item__foot {
   display: flex;
+  font-variant-numeric: tabular-nums;
   align-items: center;
   justify-content: space-between;
   color: var(--el-text-color-regular);
@@ -321,6 +332,8 @@ function manualUnit(row: BadmintonBallFeeItem) {
       display: block;
       margin-top: 4px;
       font-size: lp.$font-size-medium;
+      font-variant-numeric: tabular-nums;
+      white-space: nowrap;
     }
   }
   .is-hl {
@@ -351,7 +364,8 @@ function manualUnit(row: BadmintonBallFeeItem) {
 }
 .balls__row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 110px 140px 120px 90px 40px;
+  /* 品牌列可缩（min 0），数字列宽度固定、不省略不换行（美工 10-04 防溢出） */
+  grid-template-columns: minmax(0, 1fr) 110px 140px 140px minmax(90px, max-content) 40px;
   gap: lp.$space-2;
   align-items: start;
   & + & {
@@ -369,19 +383,43 @@ function manualUnit(row: BadmintonBallFeeItem) {
 .balls__amount {
   line-height: 32px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.balls__row > * {
+  min-width: 0;
 }
 .bucket {
-  width: 120px;
+  width: 100%;
+  :deep(.el-input__wrapper) {
+    padding: 1px 8px;
+  }
+  :deep(.el-input__suffix-inner) {
+    font-size: 12px;
+  }
+  :deep(.el-input__inner) {
+    text-align: left;
+  }
+}
+/* 品牌：单行省略，title 显示全名；数字一律等宽数字 */
+.brand :deep(.el-input__inner) {
+  text-overflow: ellipsis;
+}
+.balls :deep(.el-input-number .el-input__inner),
+.ball-card :deep(.el-input-number .el-input__inner) {
+  font-variant-numeric: tabular-nums;
 }
 .unit__ro {
   line-height: 32px;
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
   color: var(--el-text-color-primary);
 }
 .unit__hint {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: lp.$space-1;
+  min-width: 0;
+  column-gap: lp.$space-1;
   font-size: 12px;
   line-height: 16px;
   color: var(--el-text-color-secondary);
@@ -392,21 +430,33 @@ function manualUnit(row: BadmintonBallFeeItem) {
   font-size: 12px;
 }
 .ball-card {
-  margin-bottom: lp.$space-3;
-  padding: lp.$space-3;
-  border-radius: lp.$radius-base;
+  margin-bottom: 8px;
+  padding: 12px;
+  border-radius: 12px;
   background: var(--el-fill-color-light);
+}
+.ball-card__head {
+  display: flex;
+  align-items: flex-end;
+  gap: lp.$space-1;
+}
+.ball-card__brand {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.ball-card__del {
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
+  margin: 0;
+  padding: 0;
+  justify-content: center;
 }
 .ball-card__row {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: lp.$space-2;
-  & + & {
-    margin-top: lp.$space-2;
-  }
-}
-.ball-card__row--first {
-  grid-template-columns: minmax(0, 1fr) 120px;
+  gap: 8px;
+  margin-top: 8px;
 }
 .field {
   display: block;
@@ -422,12 +472,48 @@ function manualUnit(row: BadmintonBallFeeItem) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-top: lp.$space-2;
+  gap: lp.$space-2;
+  margin-top: 8px;
+  min-height: 20px;
 }
 .ball-card__amount {
+  flex: none;
+  margin-left: auto;
+  white-space: nowrap;
   font-weight: lp.$font-weight-semibold;
   font-variant-numeric: tabular-nums;
   color: var(--el-text-color-primary);
+}
+/* 卡片里的输入框 44 高、16 号字（避免 iOS 聚焦放大）；只读单价同高 */
+.ball-card :deep(.el-input__wrapper) {
+  min-height: 44px;
+}
+.ball-card :deep(.el-input__inner) {
+  height: 42px;
+  font-size: 16px;
+}
+.ball-card :deep(.el-input-number) {
+  width: 100%;
+  line-height: 42px;
+}
+.ball-card :deep(.el-input-number.is-controls-right .el-input-number__increase),
+.ball-card :deep(.el-input-number.is-controls-right .el-input-number__decrease) {
+  height: 21px;
+}
+.ball-card .bucket-m :deep(.el-input__wrapper) {
+  padding: 1px 12px;
+}
+.bucket-m :deep(.el-input__inner) {
+  text-align: left;
+}
+.ball-card .unit__ro {
+  display: flex;
+  align-items: center;
+  height: 44px;
+  padding: 0 lp.$space-3;
+  border-radius: lp.$radius-base;
+  background: var(--el-fill-color);
+  font-size: 16px;
 }
 .is-compact {
   :deep(.el-form-item) {

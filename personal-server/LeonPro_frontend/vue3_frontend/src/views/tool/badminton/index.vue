@@ -22,7 +22,7 @@
           </el-col>
           <el-col :xs="24" :sm="8">
             <el-form-item label="标题">
-              <el-input v-model="formData.title" maxlength="100" placeholder="如 周五夜场 / 体育馆" />
+              <el-input v-model="formData.title" maxlength="100" placeholder="如 周五夜场 / 体育馆" :title="formData.title" />
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
@@ -59,7 +59,7 @@
               <el-input v-model="row.remark" maxlength="100" placeholder="场地名 / 时段" />
             </template>
           </el-table-column>
-          <el-table-column label="小计" width="120" align="right">
+          <el-table-column label="小计" width="120" align="right" class-name="num-cell">
             <template #default="{ row }">{{ formatMoney(courtAmount(row)) }}</template>
           </el-table-column>
           <el-table-column label="" width="70" align="center">
@@ -76,9 +76,9 @@
           </el-button>
         </div>
         <el-table :data="formData.ballItems" border class="mb-4">
-          <el-table-column label="用球品牌" min-width="160">
+          <el-table-column label="用球品牌" min-width="120">
             <template #default="{ row }">
-              <el-input v-model="row.brand" maxlength="50" placeholder="如 亚狮龙7号" />
+              <el-input v-model="row.brand" maxlength="50" placeholder="如 亚狮龙7号" class="brand-input" :title="row.brand" />
             </template>
           </el-table-column>
           <el-table-column label="数量" min-width="130">
@@ -88,10 +88,43 @@
           </el-table-column>
           <el-table-column label="单价（元）" min-width="140">
             <template #default="{ row }">
-              <el-input-number v-model="row.unitPrice" :min="0" :max="100000" :step="1" :precision="2" controls-position="right" class="w-full" />
+              <template v-if="hasBucket(row)">
+                <div class="unit-ro">¥{{ formatMoney(unitOf(row)) }}</div>
+                <div class="unit-hint">
+                  <span>整桶 ÷ 12</span>
+                  <el-button type="primary" link class="unit-manual" @click="manualUnit(row)">改为手填</el-button>
+                </div>
+              </template>
+              <el-input-number
+                v-else
+                v-model="row.unitPrice"
+                :min="0"
+                :max="100000"
+                :step="1"
+                :precision="2"
+                controls-position="right"
+                class="w-full"
+              />
             </template>
           </el-table-column>
-          <el-table-column label="小计" width="120" align="right">
+          <el-table-column label="整桶价" width="140">
+            <template #default="{ row }">
+              <el-input-number
+                :model-value="row.bucketPrice ?? undefined"
+                :min="0"
+                :max="100000"
+                :precision="2"
+                :controls="false"
+                :value-on-clear="null"
+                class="bucket-input"
+                aria-label="整桶价"
+                @update:model-value="(v: number | null | undefined) => onBucketChange(row, v)"
+              >
+                <template #suffix>元/桶</template>
+              </el-input-number>
+            </template>
+          </el-table-column>
+          <el-table-column label="小计" width="120" align="right" class-name="num-cell">
             <template #default="{ row }">{{ formatMoney(ballAmount(row)) }}</template>
           </el-table-column>
           <el-table-column label="" width="70" align="center">
@@ -168,27 +201,29 @@
       </el-form>
 
       <el-table v-loading="loading" :data="tableData" border highlight-current-row @row-click="openRow">
-        <el-table-column prop="playDate" label="日期" width="120" align="center" />
-        <el-table-column prop="title" label="标题" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.title || "—" }}</template>
+        <el-table-column prop="playDate" label="日期" width="110" align="center" />
+        <el-table-column prop="title" label="标题" min-width="120">
+          <template #default="{ row }">
+            <span class="title-cell" :title="row.title || ''">{{ row.title || "—" }}</span>
+          </template>
         </el-table-column>
-        <el-table-column prop="participantCount" label="人数" width="80" align="center" />
-        <el-table-column label="场地费" width="110" align="right">
+        <el-table-column prop="participantCount" label="人数" width="64" align="center" />
+        <el-table-column label="场地费" width="110" align="right" class-name="num-cell">
           <template #default="{ row }">{{ formatMoney(row.courtTotal) }}</template>
         </el-table-column>
-        <el-table-column label="用球费" width="110" align="right">
+        <el-table-column label="用球费" width="110" align="right" class-name="num-cell">
           <template #default="{ row }">{{ formatMoney(row.ballTotal) }}</template>
         </el-table-column>
-        <el-table-column label="总计" width="110" align="right">
+        <el-table-column label="总计" width="110" align="right" class-name="num-cell">
           <template #default="{ row }">{{ formatMoney(row.grandTotal) }}</template>
         </el-table-column>
-        <el-table-column label="个人应付" width="110" align="right">
+        <el-table-column label="个人应付" width="110" align="right" class-name="num-cell">
           <template #default="{ row }">
             <span class="per-person">{{ formatMoney(row.perPerson) }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="operatorName" label="记录人" width="110" show-overflow-tooltip />
-        <el-table-column label="操作" width="200" align="center" fixed="right">
+        <el-table-column prop="operatorName" label="记录人" width="84" show-overflow-tooltip />
+        <el-table-column label="操作" width="160" align="center" fixed="right">
           <template #default="{ row }">
             <div class="lp-table-ops" @click.stop>
               <el-button type="primary" link size="small" @click="openRow(row)">编辑</el-button>
@@ -231,6 +266,9 @@
 <script setup lang="ts">
 import BadmintonBillAPI, {
   ballAmount,
+  bucketPrice,
+  bucketPriceInvalid,
+  bucketUnitPrice,
   buildSummaryText,
   courtAmount,
   emptyBall,
@@ -302,6 +340,28 @@ function removeBall(index: number) {
   formData.ballItems = list;
 }
 
+/* 整桶价：有值时单价只读 = round2(整桶/12)；「改为手填」清空整桶价（规则与用户端一致） */
+function hasBucket(row: BadmintonBallFeeItem) {
+  return bucketPrice(row) !== null;
+}
+
+function unitOf(row: BadmintonBallFeeItem) {
+  const bucket = bucketPrice(row);
+  return bucket === null ? Number(row.unitPrice || 0) : bucketUnitPrice(bucket);
+}
+
+function onBucketChange(row: BadmintonBallFeeItem, value: number | null | undefined) {
+  row.bucketPrice = value === undefined ? null : value;
+  const bucket = bucketPrice(row);
+  if (bucket !== null) row.unitPrice = bucketUnitPrice(bucket);
+}
+
+function manualUnit(row: BadmintonBallFeeItem) {
+  const bucket = bucketPrice(row);
+  if (bucket !== null) row.unitPrice = bucketUnitPrice(bucket);
+  row.bucketPrice = null;
+}
+
 function resetEditor() {
   formData.id = undefined;
   formData.playDate = today();
@@ -328,6 +388,7 @@ function fillForm(row: BadmintonBillVO) {
     brand: item.brand || "",
     quantity: item.quantity ?? 0,
     unitPrice: Number(item.unitPrice ?? 0),
+    bucketPrice: item.bucketPrice === null || item.bucketPrice === undefined ? null : Number(item.bucketPrice),
   }));
   if (!formData.courtItems.length) formData.courtItems = [emptyCourt()];
   if (!formData.ballItems.length) formData.ballItems = [emptyBall()];
@@ -401,8 +462,17 @@ function handleSubmit() {
     ElMessage.warning("请填写参与人数");
     return;
   }
+  if ((formData.ballItems || []).some((item) => bucketPriceInvalid(item))) {
+    ElMessage.warning("请输入大于 0 的价格");
+    return;
+  }
+  // 整桶价 0 / 空 = 没填（发 null）；有整桶价时单价同步成 round2(整桶/12)，服务端也会重算
+  const ballItems = (formData.ballItems || []).map((item) => {
+    const bucket = bucketPrice(item);
+    return { ...item, bucketPrice: bucket, unitPrice: bucket === null ? item.unitPrice : bucketUnitPrice(bucket) };
+  });
   submitLoading.value = true;
-  BadmintonBillAPI.save({ ...formData })
+  BadmintonBillAPI.save({ ...formData, ballItems })
     .then((data) => {
       ElMessage.success("保存成功");
       fillForm(data);
@@ -489,6 +559,59 @@ onMounted(() => {
 <style lang="scss" scoped>
 .w-full {
   width: 100%;
+}
+.unit-ro {
+  line-height: 32px;
+  font-variant-numeric: tabular-nums;
+  color: var(--el-text-color-primary);
+}
+.unit-hint {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--el-text-color-secondary);
+}
+.unit-manual {
+  height: auto;
+  padding: 0;
+  font-size: 12px;
+}
+.bucket-input {
+  width: 100%;
+  :deep(.el-input__wrapper) {
+    padding: 1px 8px;
+  }
+  :deep(.el-input__suffix-inner) {
+    font-size: 12px;
+  }
+  :deep(.el-input__inner) {
+    text-align: left;
+  }
+}
+/* 防溢出（美工 10-04）：品牌单行省略 + title；数字等宽、不省略不换行；名称在列表最多两行 */
+.brand-input :deep(.el-input__inner) {
+  text-overflow: ellipsis;
+}
+.editor :deep(.el-input-number .el-input__inner),
+.summary strong,
+.unit-ro {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+:deep(.num-cell .cell) {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.title-cell {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .block-head {
