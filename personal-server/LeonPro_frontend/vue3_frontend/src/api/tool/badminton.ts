@@ -200,10 +200,27 @@ export function emptyBall(): BadmintonBallFeeItem {
   return { brand: "", quantity: 1, unitPrice: 0, bucketPrice: null };
 }
 
+/** 名称结尾已是「YYYY-MM-DD」或「YYYY-MM-DD (n)」（新规则保存过的名称），与用户端一致 */
+const NAME_DATE_TAIL = /\d{4}-\d{2}-\d{2}(?:\s*\(\d{1,4}\))?$/;
+
+export function nameHasDate(title?: string | null): boolean {
+  return NAME_DATE_TAIL.test((title || "").trim());
+}
+
+/**
+ * 显示名（与用户端 billTitle 一致，规格第 12 条）：名称结尾带日期 → 只显示名称；
+ * 老记录名称结尾没有日期 → 「日期 标题」，如「2026-10-02 羽林 10.1」；都没有 → 「球局」。
+ */
+export function billTitle(item: { playDate?: string | null; title?: string | null }): string {
+  const title = (item.title || "").trim();
+  if (title && nameHasDate(title)) return title;
+  return [item.playDate, title].filter(Boolean).join(" ") || "球局";
+}
+
 export function buildSummaryText(form: BadmintonBillForm & ReturnType<typeof summarize>): string {
   const lines: string[] = [];
-  const head = [form.playDate, form.title].filter(Boolean).join(" ");
-  lines.push(head ? `羽毛球计费 ${head}` : "羽毛球计费");
+  const head = billTitle(form);
+  lines.push(head && head !== "球局" ? `羽毛球计费 ${head}` : "羽毛球计费");
   lines.push("场地费：");
   const courts = form.courtItems || [];
   if (!courts.length) {

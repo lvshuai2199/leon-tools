@@ -1,4 +1,4 @@
-import { ballAmount, bucketPrice, courtAmount, formatBucket, formatMoney, intVal, money, summarize, type BadmintonBallFeeItem, type BadmintonBillForm, type BadmintonCourtFeeItem } from "@/api/tool/badminton";
+import { ballAmount, billTitle, bucketPrice, courtAmount, formatBucket, formatMoney, intVal, money, nameHasDate, summarize, type BadmintonBallFeeItem, type BadmintonBillForm, type BadmintonCourtFeeItem } from "@/api/tool/badminton";
 import { canvasToBlob, downloadBlob } from "@/utils/crab-ship-sheet";
 
 const WIDTH = 1080;
@@ -205,12 +205,10 @@ function drawSection(
 }
 
 export function sheetFilename(bill: Pick<BadmintonBillForm, "playDate" | "title">) {
-  const date = bill.playDate || "未填日期";
-  const title = (bill.title || "")
-    .trim()
-    .replace(/[\\/:*?"<>|]/g, "")
-    .slice(0, 40);
-  return title ? `羽毛球结算-${date}-${title}.png` : `羽毛球结算-${date}.png`;
+  // 与用户端一致：新规则名称（结尾带日期）只用名称，截后 60 字保留日期；老记录「日期 标题」
+  const title = (bill.title || "").trim();
+  const name = title && nameHasDate(title) ? title.slice(-60) : `${bill.playDate || "未填日期"} ${title.slice(0, 40)}`.trim();
+  return `羽毛球结算-${name.replace(/[\\/:*?"<>|]/g, "")}.png`;
 }
 
 export function renderBillSheet(bill: BadmintonBillForm & { operatorName?: string }) {
@@ -230,10 +228,8 @@ export function renderBillSheet(bill: BadmintonBillForm & { operatorName?: strin
   const remarkLines = remark ? wrapText(ctx, remark, inner) : [];
   const remarkH = remarkLines.length ? 36 + 40 + remarkLines.length * 42 + 28 : 0;
   const footerH = 56;
-  // 抬头副标题（日期 · 名称 · 人数）：名称完整显示，超宽自动换行（美工 10-04：账单里名称不省略）
-  const sub = [bill.playDate || "未填日期", (bill.title || "").trim() || "未填标题", `${totals.people}人`]
-    .filter(Boolean)
-    .join("  ·  ");
+  // 抬头副标题「显示名 · 人数」：显示名同用户端（新名称只显示名称，老记录「日期 标题」）；完整显示、超宽换行
+  const sub = [billTitle(bill), `${totals.people}人`].join("  ·  ");
   ctx.font = `500 28px ${FONT}`;
   const subLines = wrapText(ctx, sub, inner - 16);
   const headerH = HEADER_H + Math.max(0, subLines.length - 1) * 38;

@@ -2,6 +2,7 @@
 import type { BadmintonBallFeeItem, BadmintonBill, BadmintonCourtFeeItem } from '@/api/types'
 import {
   ballAmount,
+  billTitle,
   bucketPrice,
   courtAmount,
   formatBucket,
@@ -205,14 +206,10 @@ function drawSection(
 }
 
 export function sheetFilename(bill: Pick<BadmintonBill, 'playDate' | 'title'>) {
-  const date = bill.playDate || '未填日期'
-  const title = (bill.title || '')
-    .trim()
-    .replace(/[\\/:*?"<>|]/g, '')
-  // 新规则的名称已带日期：只用名称（截前 60 字，保留结尾日期）；老记录仍是「日期-标题」
-  if (title && nameHasDate(title)) return `羽毛球结算-${title.length > 60 ? title.slice(-60) : title}.png`
-  const short = title.slice(0, 40)
-  return short ? `羽毛球结算-${date}-${short}.png` : `羽毛球结算-${date}.png`
+  // 新规则的名称已带日期：只用名称（截后 60 字，保留结尾日期）；老记录「日期 标题」，如「2026-10-02 羽林 10.1」
+  const title = (bill.title || '').trim()
+  const name = title && nameHasDate(title) ? title.slice(-60) : `${bill.playDate || '未填日期'} ${title.slice(0, 40)}`.trim()
+  return `羽毛球结算-${name.replace(/[\\/:*?"<>|]/g, '')}.png`
 }
 
 export function renderBillSheet(bill: BadmintonBill) {
@@ -232,15 +229,8 @@ export function renderBillSheet(bill: BadmintonBill) {
   const remarkLines = remark ? wrapText(ctx, remark, inner) : []
   const remarkH = remarkLines.length ? 36 + 40 + remarkLines.length * 42 + 28 : 0
   const footerH = 56
-  // 抬头副标题（名称 · 人数）：名称完整显示，超宽自动换行（美工 10-04：账单里名称不省略）
-  const name = (bill.title || '').trim()
-  // 新规则的名称已带日期：抬头只显示名称；老记录名称结尾没有日期，仍按「日期 · 标题」
-  const sub = (nameHasDate(name)
-    ? [name, `${totals.people}人`]
-    : [bill.playDate || '未填日期', name || '未填标题', `${totals.people}人`]
-  )
-    .filter(Boolean)
-    .join('  ·  ')
+  // 抬头副标题「显示名 · 人数」：新规则名称只显示名称，老记录「日期 标题」（规格第 12 条）；完整显示、超宽换行
+  const sub = [billTitle(bill), `${totals.people}人`].join('  ·  ')
   ctx.font = `500 28px ${FONT}`
   const subLines = wrapText(ctx, sub, inner - 16)
   const headerH = HEADER_H + Math.max(0, subLines.length - 1) * 38
