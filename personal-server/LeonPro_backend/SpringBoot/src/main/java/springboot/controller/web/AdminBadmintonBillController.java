@@ -51,7 +51,8 @@ public class AdminBadmintonBillController {
 
     @PostMapping("/save")
     public ApiResponse save(@RequestBody BadmintonBill body, HttpServletRequest request) {
-        return bizService.save(body, currentUser(request), null);
+        // 管理端页面不认识整桶价：沿用原明细的整桶价（单价没改时），避免编辑后金额变化
+        return bizService.save(body, currentUser(request), null, true);
     }
 
     @PostMapping("/preview")

@@ -114,6 +114,15 @@ public class BadmintonBillBizService {
 
     @Transactional
     public ApiResponse save(BadmintonBill body, SysUsers operator, Collection<String> scope) {
+        return save(body, operator, scope, false);
+    }
+
+    /**
+     * @param inheritBucketPrice 管理端保存传 true：管理端页面不认识整桶价，按
+     *                           {@link BadmintonBilling#inheritBucketPrices} 沿用原明细的整桶价，避免编辑后整桶价丢失、金额变化。
+     */
+    @Transactional
+    public ApiResponse save(BadmintonBill body, SysUsers operator, Collection<String> scope, boolean inheritBucketPrice) {
         if (body == null) {
             return ApiResponse.failure("请填写计费信息");
         }
@@ -138,6 +147,14 @@ public class BadmintonBillBizService {
         entity.setParticipantCount(clampPeople(body.getParticipantCount()));
         entity.setCourtItems(sanitizeCourts(body.getCourtItems()));
         entity.setBallItems(sanitizeBalls(body.getBallItems()));
+        if (inheritBucketPrice && !creating) {
+            List<BadmintonBallFee> stored = ballFeeService.list(
+                    new LambdaQueryWrapper<BadmintonBallFee>()
+                            .eq(BadmintonBallFee::getBillId, entity.getId())
+                            .orderByAsc(BadmintonBallFee::getSortOrder)
+                            .orderByAsc(BadmintonBallFee::getId));
+            BadmintonBilling.inheritBucketPrices(entity.getBallItems(), stored);
+        }
         entity.setUpdateTime(now);
         BadmintonBilling.apply(entity);
 
