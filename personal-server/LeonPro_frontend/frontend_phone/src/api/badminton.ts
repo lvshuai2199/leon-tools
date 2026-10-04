@@ -15,6 +15,10 @@ export const badmintonApi = {
   save(data: Record<string, unknown>) {
     return http.post<BadmintonBill>(`${BASE}/save`, data)
   },
+  /** 名称预览：与保存时的名称规则一致；silent，失败由调用方显示兜底文案 */
+  namePreview(data: { id?: string; title?: string; playDate?: string }, signal?: AbortSignal) {
+    return http.post<{ name: string; playDate: string }>(`${BASE}/namePreview`, data, { silent: true, signal })
+  },
   preview(data: Record<string, unknown>) {
     return http.post<BadmintonBill>(`${BASE}/preview`, data)
   },

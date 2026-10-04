@@ -5,10 +5,13 @@ import { confirmAction, copyText, showToast } from '@/utils/ui'
 import { exportBillSheet } from '@/utils/badminton-bill-sheet'
 import {
   billTitle,
+  bucketPrice,
+  bucketPriceInvalid,
   buildSummaryText,
   emptyBall,
   emptyCourt,
   emptyForm,
+  syncBucketUnit,
   todayStr,
 } from '@/utils/badminton-bill'
 
@@ -43,6 +46,7 @@ export function useBadmintonForm(opts: { onDeleted: () => void }) {
       brand: item.brand || '',
       quantity: item.quantity ?? 0,
       unitPrice: Number(item.unitPrice ?? 0),
+      bucketPrice: item.bucketPrice === null || item.bucketPrice === undefined ? null : Number(item.bucketPrice),
     }))
     if (!form.courtItems?.length) form.courtItems = [emptyCourt()]
     if (!form.ballItems?.length) form.ballItems = [emptyBall()]
@@ -99,9 +103,19 @@ export function useBadmintonForm(opts: { onDeleted: () => void }) {
       showToast('请填写参与人数', 'warning')
       return false
     }
+    if ((form.ballItems || []).some((item) => bucketPriceInvalid(item))) {
+      showToast('请输入大于 0 的价格', 'warning')
+      return false
+    }
+    // 整桶价 0 / 空 = 没填；有整桶价时单价同步成 round2(整桶/12)（服务端也会重算）
+    const ballItems = (form.ballItems || []).map((item) => {
+      const row = { ...item, bucketPrice: bucketPrice(item) }
+      syncBucketUnit(row)
+      return row
+    })
     saving.value = true
     try {
-      const data = await badmintonApi.save({ ...form, id: form.id || undefined })
+      const data = await badmintonApi.save({ ...form, ballItems, id: form.id || undefined })
       fill(data)
       showToast('保存成功', 'success')
       return true

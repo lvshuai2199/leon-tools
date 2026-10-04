@@ -296,6 +296,9 @@ public class SchemaPatcher implements CommandLineRunner {
                         + "PRIMARY KEY (`id`),"
                         + "KEY `idx_badminton_ball_bill` (`bill_id`, `sort_order`)"
                         + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='羽毛球用球费用明细'");
+        // 2026-10 整桶价（可为空，老数据不动），与 sql/badminton_bucket_price.sql 一致
+        ensureColumn("badminton_ball_fee", "bucket_price",
+                "ALTER TABLE badminton_ball_fee ADD COLUMN bucket_price DECIMAL(10,2) NULL DEFAULT NULL COMMENT '整桶价格（12个），空=没填' AFTER unit_price");
     }
 
     private void ensureOperationLogTable() {

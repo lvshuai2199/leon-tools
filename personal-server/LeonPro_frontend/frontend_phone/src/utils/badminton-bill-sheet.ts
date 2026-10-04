@@ -1,6 +1,16 @@
 /** 羽毛球结算图：1080 宽画布，预览层复用发货图 overlay */
 import type { BadmintonBallFeeItem, BadmintonBill, BadmintonCourtFeeItem } from '@/api/types'
-import { ballAmount, courtAmount, formatMoney, intVal, money, summarize } from '@/utils/badminton-bill'
+import {
+  ballAmount,
+  bucketPrice,
+  courtAmount,
+  formatBucket,
+  formatMoney,
+  intVal,
+  money,
+  nameHasDate,
+  summarize,
+} from '@/utils/badminton-bill'
 import { canvasToBlob, showSheetPreview } from '@/utils/crab-ship-sheet.js'
 import { THEME } from '@/utils/theme-colors.js'
 import { showToast } from '@/utils/ui'
@@ -78,11 +88,22 @@ function courtLines(items: BadmintonCourtFeeItem[] | undefined): FeeLine[] {
 
 function ballLines(items: BadmintonBallFeeItem[] | undefined): FeeLine[] {
   return (items || [])
-    .filter((item) => (item.brand || '').trim() || intVal(item.quantity) || money(item.unitPrice))
-    .map((item) => ({
-      main: `${(item.brand || '').trim() || '未填品牌'} × ${intVal(item.quantity)} × ${formatMoney(item.unitPrice)}元`,
-      amount: formatMoney(ballAmount(item)),
-    }))
+    .filter((item) => (item.brand || '').trim() || intVal(item.quantity) || money(item.unitPrice) || bucketPrice(item))
+    .map((item) => {
+      const brand = (item.brand || '').trim() || '未填品牌'
+      const bucket = bucketPrice(item)
+      if (bucket !== null) {
+        // 有整桶价：「亚狮龙7号 3 个（整桶 ¥100 ÷ 12）」 + 「¥25.00」
+        return {
+          main: `${brand} ${intVal(item.quantity)} 个（整桶 ¥${formatBucket(bucket)} ÷ 12）`,
+          amount: `¥${formatMoney(ballAmount(item))}`,
+        }
+      }
+      return {
+        main: `${brand} × ${intVal(item.quantity)} × ${formatMoney(item.unitPrice)}元`,
+        amount: formatMoney(ballAmount(item)),
+      }
+    })
 }
 
 function measureLines(ctx: CanvasRenderingContext2D, lines: FeeLine[], inner: number) {
@@ -177,8 +198,10 @@ export function sheetFilename(bill: Pick<BadmintonBill, 'playDate' | 'title'>) {
   const title = (bill.title || '')
     .trim()
     .replace(/[\\/:*?"<>|]/g, '')
-    .slice(0, 40)
-  return title ? `羽毛球结算-${date}-${title}.png` : `羽毛球结算-${date}.png`
+  // 新规则的名称已带日期：只用名称（截前 60 字，保留结尾日期）；老记录仍是「日期-标题」
+  if (title && nameHasDate(title)) return `羽毛球结算-${title.length > 60 ? title.slice(-60) : title}.png`
+  const short = title.slice(0, 40)
+  return short ? `羽毛球结算-${date}-${short}.png` : `羽毛球结算-${date}.png`
 }
 
 export function renderBillSheet(bill: BadmintonBill) {
@@ -211,7 +234,12 @@ export function renderBillSheet(bill: BadmintonBill) {
   ctx.fillText('羽毛球结算', PAD + 36, PAD + 64)
   ctx.font = `500 28px ${FONT}`
   ctx.fillStyle = TEAL_SUB
-  const sub = [bill.playDate || '未填日期', (bill.title || '').trim() || '未填标题', `${totals.people}人`]
+  const name = (bill.title || '').trim()
+  // 新规则的名称已带日期：抬头只显示名称；老记录名称结尾没有日期，仍按「日期 · 标题」
+  const sub = (nameHasDate(name)
+    ? [name, `${totals.people}人`]
+    : [bill.playDate || '未填日期', name || '未填标题', `${totals.people}人`]
+  )
     .filter(Boolean)
     .join('  ·  ')
   ctx.fillText(ellipsis(ctx, sub, inner + 8), PAD + 36, PAD + 114)

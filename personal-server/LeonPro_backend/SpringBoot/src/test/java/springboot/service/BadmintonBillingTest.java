@@ -88,4 +88,45 @@ class BadmintonBillingTest {
         assertEquals(new BigDecimal("0.00"), bill.getGrandTotal());
         assertEquals(new BigDecimal("0.00"), bill.getPerPerson());
     }
+
+    @Test
+    void bucketPriceRoundsOnlyAtTheEnd() {
+        BadmintonBill bill = new BadmintonBill();
+        bill.setParticipantCount(1);
+        BadmintonBallFee ball = new BadmintonBallFee();
+        ball.setQuantity(3);
+        ball.setUnitPrice(new BigDecimal("1.00"));
+        ball.setBucketPrice(new BigDecimal("100"));
+        bill.setBallItems(List.of(ball));
+
+        BadmintonBilling.apply(bill);
+
+        assertEquals(new BigDecimal("8.33"), ball.getUnitPrice());
+        assertEquals(new BigDecimal("25.00"), ball.getAmount());
+        assertEquals(new BigDecimal("25.00"), bill.getBallTotal());
+        assertEquals(new BigDecimal("100.00"), ball.getBucketPrice());
+    }
+
+    @Test
+    void bucket102IsUnit850AndZeroBucketMeansManual() {
+        BadmintonBallFee a = new BadmintonBallFee();
+        a.setQuantity(12);
+        a.setBucketPrice(new BigDecimal("102"));
+        BadmintonBallFee b = new BadmintonBallFee();
+        b.setQuantity(3);
+        b.setUnitPrice(new BigDecimal("8.33"));
+        b.setBucketPrice(BigDecimal.ZERO);
+        BadmintonBill bill = new BadmintonBill();
+        bill.setParticipantCount(2);
+        bill.setBallItems(List.of(a, b));
+
+        BadmintonBilling.apply(bill);
+
+        assertEquals(new BigDecimal("8.50"), a.getUnitPrice());
+        assertEquals(new BigDecimal("102.00"), a.getAmount());
+        assertEquals(null, b.getBucketPrice());
+        assertEquals(new BigDecimal("24.99"), b.getAmount());
+        assertEquals(new BigDecimal("126.99"), bill.getBallTotal());
+        assertEquals(new BigDecimal("25.00"), BadmintonBilling.ballAmount(new BigDecimal("100"), null, 3));
+    }
 }

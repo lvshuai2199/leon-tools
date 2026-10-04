@@ -17,6 +17,8 @@ public final class BadmintonBilling {
     public static final int MONEY_SCALE = 2;
     public static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
     public static final BigDecimal ZERO = BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING);
+    /** 一桶羽毛球 12 个 */
+    public static final BigDecimal BALLS_PER_BUCKET = BigDecimal.valueOf(12);
 
     private BadmintonBilling() {
     }
@@ -56,8 +58,17 @@ public final class BadmintonBilling {
             }
             item.setSortOrder(i);
             item.setQuantity(nonNegativeInt(item.getQuantity()));
-            item.setUnitPrice(nonNegativeMoney(item.getUnitPrice()));
-            item.setAmount(money(BigDecimal.valueOf(item.getQuantity()).multiply(item.getUnitPrice())));
+            BigDecimal qty = BigDecimal.valueOf(item.getQuantity());
+            BigDecimal bucket = bucketOrNull(item.getBucketPrice());
+            item.setBucketPrice(bucket);
+            if (bucket != null) {
+                // 单价只用于展示：round2(整桶/12)；小计用整桶价直接算，最后才取到分（100 元 × 3 个 = 25.00）
+                item.setUnitPrice(bucket.divide(BALLS_PER_BUCKET, MONEY_SCALE, ROUNDING));
+                item.setAmount(bucket.multiply(qty).divide(BALLS_PER_BUCKET, MONEY_SCALE, ROUNDING));
+            } else {
+                item.setUnitPrice(nonNegativeMoney(item.getUnitPrice()));
+                item.setAmount(money(qty.multiply(item.getUnitPrice())));
+            }
             ballTotal = ballTotal.add(item.getAmount());
         }
 
@@ -84,6 +95,24 @@ public final class BadmintonBilling {
     public static BigDecimal nonNegativeMoney(BigDecimal value) {
         BigDecimal n = money(value);
         return n.signum() < 0 ? ZERO : n;
+    }
+
+    /** 整桶价：空、0 或负数都当没填（返回 null）；校验在 BadmintonBillBizService 里先做 */
+    public static BigDecimal bucketOrNull(BigDecimal value) {
+        if (value == null || value.signum() <= 0) {
+            return null;
+        }
+        return money(value);
+    }
+
+    /** 单条用球小计（与 apply 里的口径一致），给测试和预览用 */
+    public static BigDecimal ballAmount(BigDecimal bucketPrice, BigDecimal unitPrice, Integer quantity) {
+        BigDecimal qty = BigDecimal.valueOf(nonNegativeInt(quantity));
+        BigDecimal bucket = bucketOrNull(bucketPrice);
+        if (bucket != null) {
+            return bucket.multiply(qty).divide(BALLS_PER_BUCKET, MONEY_SCALE, ROUNDING);
+        }
+        return money(qty.multiply(nonNegativeMoney(unitPrice)));
     }
 
     public static int nonNegativeInt(Integer value) {

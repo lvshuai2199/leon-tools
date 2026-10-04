@@ -1,6 +1,7 @@
 -- ============================================================
 -- 羽毛球计费：球局主表 + 场地费 / 用球费明细
 -- 可重复执行（表 IF NOT EXISTS）。后端启动时 SchemaPatcher 也会自动建这三张表。
+-- 已有库加整桶价：sql/badminton_bucket_price.sql（后端启动时 SchemaPatcher 也会自动补这一列）。
 -- 菜单由页面清单同步（vue3_frontend / frontend_phone 的 menus.json），不要在这里插 sys_menus。
 -- ============================================================
 
@@ -41,6 +42,7 @@ CREATE TABLE IF NOT EXISTS `badminton_ball_fee` (
   `brand` VARCHAR(50) DEFAULT NULL COMMENT '用球品牌',
   `quantity` INT DEFAULT 0 COMMENT '数量',
   `unit_price` DECIMAL(12,2) DEFAULT 0.00 COMMENT '单价',
+  `bucket_price` DECIMAL(10,2) NULL DEFAULT NULL COMMENT '整桶价格（12个），空=没填',
   `amount` DECIMAL(12,2) DEFAULT 0.00 COMMENT '小计',
   `sort_order` INT DEFAULT 0 COMMENT '排序',
   PRIMARY KEY (`id`),

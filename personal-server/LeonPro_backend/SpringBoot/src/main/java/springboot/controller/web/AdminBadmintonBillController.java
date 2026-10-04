@@ -59,6 +59,12 @@ public class AdminBadmintonBillController {
         return bizService.preview(body);
     }
 
+    /** 名称预览：与保存时的名称规则一致（重名范围按这条记录的 operator_id，新建按当前用户） */
+    @PostMapping("/namePreview")
+    public ApiResponse namePreview(@RequestBody BadmintonBill body, HttpServletRequest request) {
+        return bizService.namePreview(body, currentUser(request), null);
+    }
+
     @PostMapping("/del")
     public ApiResponse delete(@RequestBody List<String> idList) {
         return bizService.delete(idList, null);

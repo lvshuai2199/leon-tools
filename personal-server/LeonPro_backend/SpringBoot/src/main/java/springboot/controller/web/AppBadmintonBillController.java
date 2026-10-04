@@ -64,6 +64,13 @@ public class AppBadmintonBillController {
         return bizService.preview(body);
     }
 
+    /** 名称预览：body 取 id / title / playDate，返回 {name, playDate}，与保存时的名称规则一致 */
+    @PostMapping("/namePreview")
+    public ApiResponse namePreview(@RequestBody BadmintonBill body, HttpServletRequest request) {
+        SysUsers user = regCodeAccessService.requireBadminton(request);
+        return bizService.namePreview(body, user, bizService.scopeOf(user));
+    }
+
     @PostMapping("/del")
     public ApiResponse delete(@RequestBody List<String> idList, HttpServletRequest request) {
         SysUsers user = regCodeAccessService.requireBadminton(request);

@@ -9,9 +9,11 @@ import springboot.domain.BadmintonBill;
 import springboot.domain.BadmintonCourtFee;
 import springboot.domain.SysUsers;
 import springboot.utils.ApiResponse;
+import springboot.utils.BizException;
 import springboot.utils.DateUtils;
 import springboot.utils.ForbiddenException;
 
+import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -20,6 +22,8 @@ import java.util.Collection;
 import java.util.Date;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 
@@ -37,6 +41,8 @@ public class BadmintonBillBizService {
     private static final int MAX_PEOPLE = 999;
     private static final int MAX_COURTS = 100;
     private static final int MAX_QTY = 10000;
+    private static final BigDecimal MAX_BUCKET_PRICE = new BigDecimal("100000");
+    static final String BUCKET_PRICE_INVALID = "请输入大于 0 的价格";
 
     private final BadmintonBillService billService;
     private final BadmintonCourtFeeService courtFeeService;
@@ -127,7 +133,7 @@ public class BadmintonBillBizService {
             assertInScope(entity, scope);
         }
         entity.setPlayDate(normalizeDate(body.getPlayDate()));
-        entity.setTitle(trimTo(body.getTitle(), 100));
+        entity.setTitle(resolveName(body.getTitle(), entity.getPlayDate(), entity.getOperatorId(), entity.getId()));
         entity.setRemark(trimTo(body.getRemark(), 500));
         entity.setParticipantCount(clampPeople(body.getParticipantCount()));
         entity.setCourtItems(sanitizeCourts(body.getCourtItems()));
@@ -181,6 +187,68 @@ public class BadmintonBillBizService {
         bill.setBallItems(sanitizeBalls(body == null ? null : body.getBallItems()));
         BadmintonBilling.apply(bill);
         return ApiResponse.success(bill);
+    }
+
+    /**
+     * 名称预览：与 save 用同一套规则（含同一天重名加序号，正在编辑的这条不算）。
+     * body 只看 id / title / playDate。编辑别人的记录（不在数据范围内）按无权处理。
+     */
+    public ApiResponse namePreview(BadmintonBill body, SysUsers operator, Collection<String> scope) {
+        String playDate = normalizeDate(body == null ? null : body.getPlayDate());
+        String title = body == null ? null : body.getTitle();
+        String id = body == null || body.getId() == null ? null : body.getId().trim();
+        String owner = operator == null ? null : operator.getId();
+        if (id != null && !id.isEmpty()) {
+            BadmintonBill existing = billService.getById(id);
+            if (existing != null) {
+                assertInScope(existing, scope);
+                owner = existing.getOperatorId();
+            } else {
+                id = null;
+            }
+        }
+        String name = resolveName(title, playDate, owner, id);
+        return ApiResponse.success(Map.of("name", name, "playDate", playDate));
+    }
+
+    /** 最终名称：规则见 {@link BadmintonNames}；重名范围 = 同一 operator_id + 同一 play_date，排除 selfId */
+    private String resolveName(String rawTitle, String playDate, String ownerId, String selfId) {
+        LambdaQueryWrapper<BadmintonBill> wrapper = new LambdaQueryWrapper<BadmintonBill>()
+                .select(BadmintonBill::getId, BadmintonBill::getTitle)
+                .eq(BadmintonBill::getPlayDate, playDate);
+        if (ownerId == null || ownerId.isBlank()) {
+            wrapper.isNull(BadmintonBill::getOperatorId);
+        } else {
+            wrapper.eq(BadmintonBill::getOperatorId, ownerId);
+        }
+        if (selfId != null && !selfId.isBlank()) {
+            wrapper.ne(BadmintonBill::getId, selfId);
+        }
+        List<BadmintonBill> sameDay = billService.list(wrapper);
+        Set<String> names = new LinkedHashSet<>();
+        if (sameDay != null) {
+            sameDay.stream().map(BadmintonBill::getTitle).filter(Objects::nonNull).map(String::trim).forEach(names::add);
+        }
+        return BadmintonNames.normalize(rawTitle, playDate, names);
+    }
+
+    /**
+     * 整桶价校验：空或 0 = 没填（返回 null）；负数不能保存；最多两位小数；上限 10 万。
+     */
+    static BigDecimal validateBucketPrice(BigDecimal value) {
+        if (value == null || value.signum() == 0) {
+            return null;
+        }
+        if (value.signum() < 0) {
+            throw new BizException(BUCKET_PRICE_INVALID);
+        }
+        if (value.stripTrailingZeros().scale() > 2) {
+            throw new BizException("整桶价格最多两位小数");
+        }
+        if (value.compareTo(MAX_BUCKET_PRICE) > 0) {
+            throw new BizException("整桶价格不能超过 100000");
+        }
+        return value;
     }
 
     private BadmintonBill getWithItems(String id) {
@@ -283,6 +351,7 @@ public class BadmintonBillBizService {
             item.setBrand(trimTo(src.getBrand(), 50));
             item.setQuantity(clampInt(src.getQuantity(), MAX_QTY));
             item.setUnitPrice(src.getUnitPrice());
+            item.setBucketPrice(validateBucketPrice(src.getBucketPrice()));
             out.add(item);
         }
         return out;
