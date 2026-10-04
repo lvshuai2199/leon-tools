@@ -22,7 +22,10 @@
           </el-col>
           <el-col :xs="24" :sm="8">
             <el-form-item label="标题">
-              <el-input v-model="formData.title" maxlength="100" placeholder="如 周五夜场 / 体育馆" :title="formData.title" />
+              <div class="name-field">
+                <el-input v-model="formData.title" maxlength="100" placeholder="如 周五夜场 / 体育馆" :title="formData.title" />
+                <div class="name-hint">保存时自动加上日期</div>
+              </div>
             </el-form-item>
           </el-col>
           <el-col :xs="24" :sm="8">
@@ -570,6 +573,17 @@ onMounted(() => {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
+  font-size: 12px;
+  line-height: 16px;
+  color: var(--el-text-color-secondary);
+}
+.name-field {
+  width: 100%;
+  min-width: 0;
+}
+/* 名称下方灰色提示（与用户端预览失败时的文案一致），样式同「整桶 ÷ 12」提示 */
+.name-hint {
+  margin-top: 4px;
   font-size: 12px;
   line-height: 16px;
   color: var(--el-text-color-secondary);
