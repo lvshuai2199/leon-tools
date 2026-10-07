@@ -1,0 +1,33 @@
+{
+ "01-home-dark-1280x800": {
+  "checked": 106,
+  "min": 3.47,
+  "fails": [],
+  "disabled": [
+   {
+    "text": "开始",
+    "cls": "btn xl pri dis",
+    "fs": 18,
+    "fw": 600,
+    "fg": "#6B7784",
+    "bg": "#1C232C",
+    "ratio": 3.47,
+    "need": 4.5,
+    "disabled": true,
+    "ph": false
+   },
+   {
+    "text": "[icon]",
+    "cls": "btn xl pri dis",
+    "fs": 24,
+    "fw": 0,
+    "fg": "#6B7784",
+    "bg": "#1C232C",
+    "ratio": 3.47,
+    "need": 3,
+    "disabled": true,
+    "icon": true
+   }
+  ]
+ }
+}
