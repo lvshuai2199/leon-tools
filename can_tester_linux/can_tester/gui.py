@@ -2622,7 +2622,7 @@ class CanTesterApp(tk.Tk):
         }
         self._combo_slots = {
             COMBO_MEGMEET_GOO: {"role": ROLE_CLIENT},
-            nbm.COMBO_JASIC_NBM: {"role": ROLE_WELDER, "auto": True},
+            nbm.COMBO_JASIC_NBM: {"role": ROLE_WELDER, "auto": True, "auto_arc": True},
         }
         self._last_combo = CHOICE_NONE
         self._profile_switching = False
@@ -3681,8 +3681,11 @@ class CanTesterApp(tk.Tk):
         if not slots or key not in slots:
             return
         slots[key]["role"] = self._goo_role()
-        if key == nbm.COMBO_JASIC_NBM and getattr(self, "_nbm_auto", None) is not None:
-            slots[key]["auto"] = bool(self._nbm_auto.get())
+        if key == nbm.COMBO_JASIC_NBM:
+            if getattr(self, "_nbm_auto", None) is not None:
+                slots[key]["auto"] = bool(self._nbm_auto.get())
+            if getattr(self, "_nbm_auto_arc", None) is not None:
+                slots[key]["auto_arc"] = bool(self._nbm_auto_arc.get())
 
     def _apply_combo_slot(self, key: str) -> None:
         slot = (getattr(self, "_combo_slots", None) or {}).get(key)
@@ -3695,8 +3698,11 @@ class CanTesterApp(tk.Tk):
         try:
             if hasattr(self, "_role_var"):
                 self._role_var.set(role)
-            if key == nbm.COMBO_JASIC_NBM and getattr(self, "_nbm_auto", None) is not None:
-                self._nbm_auto.set(bool(slot.get("auto", True)))
+            if key == nbm.COMBO_JASIC_NBM:
+                if getattr(self, "_nbm_auto", None) is not None:
+                    self._nbm_auto.set(bool(slot.get("auto", True)))
+                if getattr(self, "_nbm_auto_arc", None) is not None:
+                    self._nbm_auto_arc.set(bool(slot.get("auto_arc", True)))
         finally:
             self._profile_switching = False
 
@@ -4285,13 +4291,22 @@ class CanTesterApp(tk.Tk):
         entry(nums, "报警", self._nbm_alarm, 4, lambda _e: self._sync_nbm_tx_fields())
         entry(nums, "电流 A", self._nbm_out_i, 6, lambda _e: self._sync_nbm_tx_fields())
         entry(nums, "电压 V", self._nbm_out_u, 6, lambda _e: self._sync_nbm_tx_fields())
+        auto_row = ttk.Frame(self._nbm_welder_box)
+        auto_row.pack(fill=tk.X, pady=(4, 0))
         self._nbm_auto = tk.BooleanVar(value=True)
         ttk.Checkbutton(
-            self._nbm_welder_box,
+            auto_row,
             text="自动应答",
             variable=self._nbm_auto,
             command=self._on_nbm_auto,
-        ).pack(anchor=tk.W, pady=(4, 0))
+        ).pack(side=tk.LEFT, padx=(0, 12))
+        self._nbm_auto_arc = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            auto_row,
+            text="跟随起弧",
+            variable=self._nbm_auto_arc,
+            command=self._on_nbm_auto,
+        ).pack(side=tk.LEFT)
         ttk.Label(
             self._nbm_welder_box, textvariable=self._nbm_frag_var, style="Muted.TLabel"
         ).pack(anchor=tk.W)
@@ -4463,6 +4478,21 @@ class CanTesterApp(tk.Tk):
         self._sync_nbm_tx_fields()
         self._sync_protocol_engines()
 
+    def _follow_nbm_arc(self, data: bytes) -> None:
+        """Robot 起弧 (RPDO1 bit0) → 焊机起弧成功，关则清。"""
+        var = getattr(self, "_nbm_auto_arc", None)
+        arc = getattr(self, "_nbm_arc", None)
+        if var is None or arc is None or not bool(var.get()):
+            return
+        slot = (getattr(self, "_combo_slots", None) or {}).get(nbm.COMBO_JASIC_NBM) or {}
+        if slot.get("role") != ROLE_WELDER:
+            return
+        weld = bool(nbm.parse_rpdo1(data).get("weld"))
+        if bool(arc.get()) == weld:
+            return
+        arc.set(weld)
+        self._sync_nbm_tx_fields()
+
     def _send_nbm_frames(
         self, frames: list[tuple[int, bytes]], *, always: bool, arm: bool
     ) -> None:
@@ -4510,7 +4540,8 @@ class CanTesterApp(tk.Tk):
                 "开总线后每 20ms 发标准帧 0x182/0x282。\n"
                 "必须和 WeldingTools 用同一个 canN，不要选 virtual。\n"
                 "插件 Enable 会把口 down 再 up，本工具会自动重连。\n"
-                "勾选「通讯就绪」后插件才认为焊机就绪。"
+                "勾选「通讯就绪」后插件才认为焊机就绪。\n"
+                "勾选「跟随起弧」后，机器人起弧开则回起弧成功，关则清掉。"
             )
         return (
             "通用模式\n\n"
@@ -4674,6 +4705,8 @@ class CanTesterApp(tk.Tk):
         if is_echo:
             return
         cid = int(can_id)
+        if cid == nbm.RPDO1_ID:
+            self._follow_nbm_arc(data)
         job = self._nbm_setup
         if job and job.get("phase") == "wait" and cid == nbm.EXPLICIT_RSP_ID:
             job["got"] = True
