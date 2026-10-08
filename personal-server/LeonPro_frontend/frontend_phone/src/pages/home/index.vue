@@ -16,6 +16,7 @@ const TOOL_DESC: Record<string, string> = {
   '/crab': '录入、查看出货单，导出发货图',
   '/badminton': '场地费、用球费按人数分摊',
   '/regcode': '为客户生成对应注册码',
+  '/cursor': '用自己的 Key 发任务，点名字切换预览',
 }
 
 const isLoggedIn = userStore.isLoggedIn

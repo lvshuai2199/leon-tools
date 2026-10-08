@@ -89,5 +89,18 @@
     "keepAlive": false,
     "client": "app",
     "routeName": "regcode"
+  },
+  {
+    "path": "/cursor",
+    "name": "Cursor 任务",
+    "parent": null,
+    "type": "page",
+    "component": "cursor/index",
+    "icon": "cursor",
+    "sort": 6,
+    "hidden": false,
+    "keepAlive": false,
+    "client": "app",
+    "routeName": "cursorTasks"
   }
 ]

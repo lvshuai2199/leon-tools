@@ -51,3 +51,8 @@ wechat:
   enabled: ${WECHAT_ENABLED:false}
   token: ${WECHAT_TOKEN:}
   crab-operator-username: ${WECHAT_CRAB_USER:admin}
+
+# 只用来加密用户自己填的 Cursor API Key，不是 Cursor Key 本身。生产环境用环境变量覆盖。
+cursor:
+  api-base: ${CURSOR_API_BASE:https://api.cursor.com}
+  key-secret: ${CURSOR_KEY_SECRET:leonpro-dev-cursor-key}
