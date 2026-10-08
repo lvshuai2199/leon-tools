@@ -1,8 +1,8 @@
 <script setup lang="ts">
 /**
- * Cursor 任务：每人保存自己的 Key。左边（手机上是顶部横滑）切换任务，右边看结果和追加指令。
+ * Cursor 任务：每人保存自己的 Key。电脑左侧列表切换；手机点当前任务弹出完整列表，直接跳到某一条。
  */
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { ArrowLeft, ArrowRight, Key, Plus } from '@element-plus/icons-vue'
 import PageBar from '@/components/PageBar.vue'
 import IconAction from '@/components/IconAction.vue'
@@ -22,6 +22,40 @@ const startingRef = ref('')
 const autoCreatePr = ref(true)
 const followText = ref('')
 const repoManual = ref(false)
+const listOpen = ref(false)
+const taskQuery = ref('')
+const taskListEl = ref<HTMLElement | null>(null)
+
+function repoLabel(url?: string) {
+  if (!url) return ''
+  return url.replace(/^https?:\/\/(www\.)?github\.com\//i, '').replace(/\.git$/, '')
+}
+
+const currentTask = computed(() => page.tasks.value.find((t) => t.id === page.selectedId.value))
+const filteredTasks = computed(() => {
+  const q = taskQuery.value.trim().toLowerCase()
+  if (!q) return page.tasks.value
+  return page.tasks.value.filter((t) => {
+    const blob = `${t.name || ''} ${repoLabel(t.repoUrl)} ${cursorStatusText(t.agentStatus, t.runStatus)}`.toLowerCase()
+    return blob.includes(q)
+  })
+})
+
+function openTaskList() {
+  taskQuery.value = ''
+  listOpen.value = true
+}
+
+function pickTask(id: string) {
+  listOpen.value = false
+  page.select(id)
+}
+
+watch(listOpen, async (open) => {
+  if (!open) return
+  await nextTick()
+  taskListEl.value?.querySelector('[data-current="1"]')?.scrollIntoView({ block: 'center' })
+})
 
 const repoOptions = computed(() =>
   page.repos.value.map((r) => ({
@@ -115,9 +149,6 @@ async function onClearKey() {
 
       <div v-else class="work">
         <aside class="switcher">
-          <button type="button" class="step" aria-label="上一条" :disabled="page.tasks.value.length < 2" @click="page.step(-1)">
-            <el-icon :size="18"><ArrowLeft /></el-icon>
-          </button>
           <div class="switcher__list" role="tablist" aria-label="任务">
             <button
               v-for="t in page.tasks.value"
@@ -129,15 +160,60 @@ async function onClearKey() {
               :aria-selected="t.id === page.selectedId.value"
               @click="page.select(t.id)"
             >
-              <i class="dot" :class="`dot--${cursorTone(t.agentStatus, t.runStatus)}`" />
-              <span class="chip__name">{{ t.name || '未命名任务' }}</span>
+              <span class="chip__top">
+                <i class="dot" :class="`dot--${cursorTone(t.agentStatus, t.runStatus)}`" />
+                <span class="chip__name">{{ t.name || '未命名任务' }}</span>
+              </span>
+              <span class="chip__meta">
+                {{ cursorStatusText(t.agentStatus, t.runStatus) }}
+                <template v-if="repoLabel(t.repoUrl)"> · {{ repoLabel(t.repoUrl) }}</template>
+              </span>
             </button>
           </div>
-          <button type="button" class="step" aria-label="下一条" :disabled="page.tasks.value.length < 2" @click="page.step(1)">
-            <el-icon :size="18"><ArrowRight /></el-icon>
-          </button>
-          <p class="switcher__pos">{{ page.index.value + 1 }} / {{ page.tasks.value.length }}</p>
+
+          <div class="switcher__bar">
+            <button type="button" class="step" aria-label="上一条" :disabled="page.tasks.value.length < 2" @click="page.step(-1)">
+              <el-icon :size="18"><ArrowLeft /></el-icon>
+            </button>
+            <button type="button" class="now" @click="openTaskList">
+              <span class="now__name">{{ currentTask?.name || '未命名任务' }}</span>
+              <span class="now__meta">
+                {{ cursorStatusText(currentTask?.agentStatus, currentTask?.runStatus) }}
+                <template v-if="repoLabel(currentTask?.repoUrl)"> · {{ repoLabel(currentTask?.repoUrl) }}</template>
+                · {{ page.index.value + 1 }}/{{ page.tasks.value.length }} · 全部
+              </span>
+            </button>
+            <button type="button" class="step" aria-label="下一条" :disabled="page.tasks.value.length < 2" @click="page.step(1)">
+              <el-icon :size="18"><ArrowRight /></el-icon>
+            </button>
+          </div>
         </aside>
+
+        <el-drawer v-model="listOpen" direction="btt" size="78%" title="全部任务" append-to-body class="cursor-task-sheet">
+          <div class="sheet">
+            <el-input v-model="taskQuery" clearable placeholder="搜任务名或仓库" />
+            <ul ref="taskListEl" class="sheet__list" role="listbox">
+              <li v-for="t in filteredTasks" :key="t.id">
+                <button
+                  type="button"
+                  class="row"
+                  :class="{ 'is-on': t.id === page.selectedId.value }"
+                  :data-current="t.id === page.selectedId.value ? '1' : undefined"
+                  @click="pickTask(t.id)"
+                >
+                  <span class="row__name">{{ t.name || '未命名任务' }}</span>
+                  <span class="row__meta">
+                    <i class="dot" :class="`dot--${cursorTone(t.agentStatus, t.runStatus)}`" />
+                    {{ cursorStatusText(t.agentStatus, t.runStatus) }}
+                    <template v-if="repoLabel(t.repoUrl)"> · {{ repoLabel(t.repoUrl) }}</template>
+                    <template v-if="t.updatedAt"> · {{ t.updatedAt }}</template>
+                  </span>
+                </button>
+              </li>
+            </ul>
+            <p v-if="!filteredTasks.length" class="sheet__empty">没有匹配的任务</p>
+          </div>
+        </el-drawer>
 
         <section v-if="page.detail.value" class="preview" role="tabpanel">
           <header class="preview__head">
@@ -265,21 +341,17 @@ async function onClearKey() {
   max-height: calc(100vh - 180px);
   overflow: auto;
 }
-.switcher__pos {
-  margin: lp.$space-2 0 0;
-  font-size: lp.$font-size-base;
-  color: var(--el-text-color-secondary);
-}
-.step {
+.switcher__bar {
   display: none;
 }
 .chip {
   display: flex;
-  align-items: center;
-  gap: lp.$space-2;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
   width: 100%;
-  min-height: 44px;
-  padding: 0 lp.$space-3;
+  min-height: 56px;
+  padding: lp.$space-2 lp.$space-3;
   border: 1px solid var(--el-border-color-lighter);
   border-radius: lp.$radius-base;
   background: var(--el-bg-color);
@@ -289,14 +361,112 @@ async function onClearKey() {
   &.is-on {
     border-color: var(--el-color-primary);
     background: var(--el-color-primary-light-9);
-    color: var(--el-color-primary);
   }
 }
-.chip__name {
+.chip__top {
+  display: flex;
+  align-items: center;
+  gap: lp.$space-2;
+  min-width: 0;
+}
+.chip__name,
+.row__name,
+.now__name {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+.chip__name {
   white-space: nowrap;
+}
+.chip__meta,
+.row__meta,
+.now__meta {
+  color: var(--el-text-color-secondary);
+  font-size: lp.$font-size-base;
+  line-height: 1.4;
+}
+.step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: lp.$radius-base;
+  background: var(--el-fill-color-light);
+  color: var(--el-text-color-primary);
+  &:disabled { opacity: 0.4; }
+}
+.now {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 0 lp.$space-2;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.now__name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  color: var(--el-text-color-primary);
+  font-size: lp.$font-size-medium;
+  line-height: 1.3;
+}
+.sheet {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: lp.$space-3;
+  min-height: 0;
+}
+.sheet__list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow: auto;
+  flex: 1;
+}
+.sheet__empty {
+  margin: 0;
+  color: var(--el-text-color-secondary);
+  text-align: center;
+}
+.row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  min-height: 64px;
+  padding: lp.$space-3 0;
+  border: none;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  &.is-on .row__name { color: var(--el-color-primary); }
+}
+.row__name {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  white-space: normal;
+  color: var(--el-text-color-primary);
+  font-size: lp.$font-size-medium;
+  line-height: 1.35;
+}
+.row__meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
 }
 .dot {
   flex: none;
@@ -392,43 +562,27 @@ async function onClearKey() {
     position: sticky;
     top: var(--topbar-h, 44px);
     z-index: 4;
-    display: grid;
-    grid-template-columns: 44px minmax(0, 1fr) 44px;
-    grid-template-rows: auto auto;
-    gap: lp.$space-2;
     margin: 0 calc(-1 * #{lp.$page-padding-mobile}) lp.$space-3;
     padding: lp.$space-2 lp.$page-padding-mobile;
     background: var(--el-bg-color);
   }
-  .step {
-    display: inline-flex;
+  .switcher__list { display: none; }
+  .switcher__bar {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) 44px;
+    gap: lp.$space-2;
     align-items: center;
-    justify-content: center;
-    width: 44px;
-    height: 44px;
-    border: none;
-    border-radius: lp.$radius-base;
-    background: var(--el-fill-color-light);
-    color: var(--el-text-color-primary);
-    &:disabled { opacity: 0.4; }
-  }
-  .switcher__list {
-    flex-direction: row;
-    max-height: none;
-    overflow-x: auto;
-  }
-  .switcher__pos {
-    grid-column: 1 / -1;
-    margin: 0;
-    text-align: center;
-  }
-  .chip {
-    flex: none;
-    width: auto;
-    max-width: 180px;
   }
   .preview {
     margin-top: lp.$space-3;
   }
+}
+</style>
+
+<style lang="scss">
+.cursor-task-sheet .el-drawer__body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 </style>
