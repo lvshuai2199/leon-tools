@@ -73,6 +73,8 @@ export interface BadmintonBallFeeItem {
   brand?: string;
   quantity?: number | null;
   unitPrice?: number | null;
+  /** 整桶价格（一桶 12 个）；空或 0 = 没填，单价手填 */
+  bucketPrice?: number | null;
   amount?: number | null;
 }
 
@@ -119,8 +121,58 @@ export function courtAmount(item: BadmintonCourtFeeItem): number {
   return money(intVal(item.courtCount) * money(item.hours) * money(item.unitPrice));
 }
 
+/** 一桶 12 个 */
+export const BALLS_PER_BUCKET = 12;
+
+/** 整桶价：空、0、负数、非数字都当没填，返回 null；否则取到分（与用户端、服务端一致） */
+export function bucketPrice(item: Pick<BadmintonBallFeeItem, "bucketPrice"> | null | undefined): number | null {
+  const raw = item?.bucketPrice;
+  const n = Number(raw);
+  if (raw === null || raw === undefined || !Number.isFinite(n) || n <= 0) return null;
+  return Math.round(n * 100) / 100;
+}
+
+/** 整桶价是否非法（负数 / 非数字）：不能保存，提示「请输入大于 0 的价格」 */
+export function bucketPriceInvalid(item: Pick<BadmintonBallFeeItem, "bucketPrice"> | null | undefined): boolean {
+  const raw = item?.bucketPrice as unknown;
+  if (raw === null || raw === undefined || raw === "") return false;
+  const n = Number(raw);
+  return !Number.isFinite(n) || n < 0;
+}
+
+/** 有整桶价时的单价（只读，round2(整桶/12)） */
+export function bucketUnitPrice(bucket: number): number {
+  return Math.round(Math.round(bucket * 100) / BALLS_PER_BUCKET) / 100;
+}
+
+/** 整桶价展示：整数不带小数（100），否则两位（102.50） */
+export function formatBucket(bucket: number): string {
+  const cents = Math.round(bucket * 100);
+  return cents % 100 === 0 ? String(cents / 100) : (cents / 100).toFixed(2);
+}
+
+/**
+ * 用球小计（与服务端 BadmintonBilling 一致）：有整桶价 → round2(整桶 / 12 × 数量)，按分整数算、最后才取到分
+ * （100 元 × 3 个 = 25.00，不是 8.33 × 3 = 24.99）；否则 → round2(数量 × 单价)。
+ */
 export function ballAmount(item: BadmintonBallFeeItem): number {
-  return money(intVal(item.quantity) * money(item.unitPrice));
+  const qty = intVal(item.quantity);
+  const bucket = bucketPrice(item);
+  if (bucket !== null) {
+    const cents = Math.round(bucket * 100);
+    return Math.round((cents * qty) / BALLS_PER_BUCKET) / 100;
+  }
+  return money(qty * money(item.unitPrice));
+}
+
+/** 一条用球的账单文字：有整桶价「3 个（整桶 ¥100 ÷ 12）= ¥25.00」，否则沿用老格式 */
+export function ballLineText(item: BadmintonBallFeeItem): string {
+  const brand = item.brand?.trim() || "未填品牌";
+  const bucket = bucketPrice(item);
+  if (bucket !== null) {
+    return `${brand} ${intVal(item.quantity)} 个（整桶 ¥${formatBucket(bucket)} ÷ 12）= ¥${formatMoney(ballAmount(item))}`;
+  }
+  return `${brand} × ${intVal(item.quantity)} × ${formatMoney(item.unitPrice)}元 = ${formatMoney(ballAmount(item))}元`;
 }
 
 export function summarize(form: {
@@ -145,13 +197,30 @@ export function emptyCourt(): BadmintonCourtFeeItem {
 }
 
 export function emptyBall(): BadmintonBallFeeItem {
-  return { brand: "", quantity: 1, unitPrice: 0 };
+  return { brand: "", quantity: 1, unitPrice: 0, bucketPrice: null };
+}
+
+/** 名称结尾已是「YYYY-MM-DD」或「YYYY-MM-DD (n)」（新规则保存过的名称），与用户端一致 */
+const NAME_DATE_TAIL = /\d{4}-\d{2}-\d{2}(?:\s*\(\d{1,4}\))?$/;
+
+export function nameHasDate(title?: string | null): boolean {
+  return NAME_DATE_TAIL.test((title || "").trim());
+}
+
+/**
+ * 显示名（与用户端 billTitle 一致，规格第 12 条）：名称结尾带日期 → 只显示名称；
+ * 老记录名称结尾没有日期 → 「日期 标题」，如「2026-10-02 羽林 10.1」；都没有 → 「球局」。
+ */
+export function billTitle(item: { playDate?: string | null; title?: string | null }): string {
+  const title = (item.title || "").trim();
+  if (title && nameHasDate(title)) return title;
+  return [item.playDate, title].filter(Boolean).join(" ") || "球局";
 }
 
 export function buildSummaryText(form: BadmintonBillForm & ReturnType<typeof summarize>): string {
   const lines: string[] = [];
-  const head = [form.playDate, form.title].filter(Boolean).join(" ");
-  lines.push(head ? `羽毛球计费 ${head}` : "羽毛球计费");
+  const head = billTitle(form);
+  lines.push(head && head !== "球局" ? `羽毛球计费 ${head}` : "羽毛球计费");
   lines.push("场地费：");
   const courts = form.courtItems || [];
   if (!courts.length) {
@@ -170,10 +239,7 @@ export function buildSummaryText(form: BadmintonBillForm & ReturnType<typeof sum
     lines.push("  无");
   } else {
     balls.forEach((item, i) => {
-      const brand = item.brand?.trim() || "未填品牌";
-      lines.push(
-        `  ${i + 1}. ${brand} × ${intVal(item.quantity)} × ${formatMoney(item.unitPrice)}元 = ${formatMoney(ballAmount(item))}元`
-      );
+      lines.push(`  ${i + 1}. ${ballLineText(item)}`);
     });
   }
   lines.push(`人数：${form.people}人`);

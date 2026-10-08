@@ -1,6 +1,17 @@
 /** 羽毛球结算图：1080 宽画布，预览层复用发货图 overlay */
 import type { BadmintonBallFeeItem, BadmintonBill, BadmintonCourtFeeItem } from '@/api/types'
-import { ballAmount, courtAmount, formatMoney, intVal, money, summarize } from '@/utils/badminton-bill'
+import {
+  ballAmount,
+  billTitle,
+  bucketPrice,
+  courtAmount,
+  formatBucket,
+  formatMoney,
+  intVal,
+  money,
+  nameHasDate,
+  summarize,
+} from '@/utils/badminton-bill'
 import { canvasToBlob, showSheetPreview } from '@/utils/crab-ship-sheet.js'
 import { THEME } from '@/utils/theme-colors.js'
 import { showToast } from '@/utils/ui'
@@ -16,29 +27,40 @@ const TEAL_SUB = '#d5f5f2'
 
 type FeeLine = { main: string; note?: string; amount: string }
 
+/**
+ * 按宽度折行。数字 / 金额 / 英文单词（如「¥102」「9.50」）作为整体不拆开（美工 10-04：金额不换行）；
+ * 只有单个词本身比一行还宽时才逐字拆。
+ */
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
   const source = String(text || '')
   if (!source) return [] as string[]
+  const tokens = source.match(/[A-Za-z0-9¥$.,%:+\-]+|\s+|[^\sA-Za-z0-9¥$.,%:+\-]/gu) || [source]
   const lines: string[] = []
   let line = ''
-  for (const ch of source) {
-    const next = line + ch
-    if (ctx.measureText(next).width > maxWidth && line) {
-      lines.push(line)
-      line = ch
-    } else {
-      line = next
+  const fits = (t: string) => ctx.measureText(t).width <= maxWidth
+  for (const tok of tokens) {
+    if (fits(line + tok)) {
+      line += tok
+      continue
+    }
+    if (line.trim()) lines.push(line.trimEnd())
+    line = ''
+    const piece = tok.trimStart()
+    if (fits(piece)) {
+      line = piece
+      continue
+    }
+    for (const ch of piece) {
+      if (!fits(line + ch) && line) {
+        lines.push(line)
+        line = ch
+      } else {
+        line += ch
+      }
     }
   }
-  if (line) lines.push(line)
+  if (line.trim()) lines.push(line.trimEnd())
   return lines
-}
-
-function ellipsis(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
-  if (ctx.measureText(text).width <= maxWidth) return text
-  let s = text
-  while (s.length && ctx.measureText(`${s}…`).width > maxWidth) s = s.slice(0, -1)
-  return `${s}…`
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -78,11 +100,22 @@ function courtLines(items: BadmintonCourtFeeItem[] | undefined): FeeLine[] {
 
 function ballLines(items: BadmintonBallFeeItem[] | undefined): FeeLine[] {
   return (items || [])
-    .filter((item) => (item.brand || '').trim() || intVal(item.quantity) || money(item.unitPrice))
-    .map((item) => ({
-      main: `${(item.brand || '').trim() || '未填品牌'} × ${intVal(item.quantity)} × ${formatMoney(item.unitPrice)}元`,
-      amount: formatMoney(ballAmount(item)),
-    }))
+    .filter((item) => (item.brand || '').trim() || intVal(item.quantity) || money(item.unitPrice) || bucketPrice(item))
+    .map((item) => {
+      const brand = (item.brand || '').trim() || '未填品牌'
+      const bucket = bucketPrice(item)
+      if (bucket !== null) {
+        // 有整桶价：「亚狮龙7号 3 个（整桶 ¥100 ÷ 12）」 + 「¥25.00」
+        return {
+          main: `${brand} ${intVal(item.quantity)} 个（整桶 ¥${formatBucket(bucket)} ÷ 12）`,
+          amount: `¥${formatMoney(ballAmount(item))}`,
+        }
+      }
+      return {
+        main: `${brand} × ${intVal(item.quantity)} × ${formatMoney(item.unitPrice)}元`,
+        amount: formatMoney(ballAmount(item)),
+      }
+    })
 }
 
 function measureLines(ctx: CanvasRenderingContext2D, lines: FeeLine[], inner: number) {
@@ -173,12 +206,10 @@ function drawSection(
 }
 
 export function sheetFilename(bill: Pick<BadmintonBill, 'playDate' | 'title'>) {
-  const date = bill.playDate || '未填日期'
-  const title = (bill.title || '')
-    .trim()
-    .replace(/[\\/:*?"<>|]/g, '')
-    .slice(0, 40)
-  return title ? `羽毛球结算-${date}-${title}.png` : `羽毛球结算-${date}.png`
+  // 新规则的名称已带日期：只用名称（截后 60 字，保留结尾日期）；老记录「日期 标题」，如「2026-10-02 羽林 10.1」
+  const title = (bill.title || '').trim()
+  const name = title && nameHasDate(title) ? title.slice(-60) : `${bill.playDate || '未填日期'} ${title.slice(0, 40)}`.trim()
+  return `羽毛球结算-${name.replace(/[\\/:*?"<>|]/g, '')}.png`
 }
 
 export function renderBillSheet(bill: BadmintonBill) {
@@ -198,25 +229,27 @@ export function renderBillSheet(bill: BadmintonBill) {
   const remarkLines = remark ? wrapText(ctx, remark, inner) : []
   const remarkH = remarkLines.length ? 36 + 40 + remarkLines.length * 42 + 28 : 0
   const footerH = 56
-  const height = PAD + HEADER_H + 20 + courtH + 20 + ballH + 20 + highlightH + (remarkH ? remarkH + 20 : 0) + footerH + PAD
+  // 抬头副标题「显示名 · 人数」：新规则名称只显示名称，老记录「日期 标题」（规格第 12 条）；完整显示、超宽换行
+  const sub = [billTitle(bill), `${totals.people}人`].join('  ·  ')
+  ctx.font = `500 28px ${FONT}`
+  const subLines = wrapText(ctx, sub, inner - 16)
+  const headerH = HEADER_H + Math.max(0, subLines.length - 1) * 38
+  const height = PAD + headerH + 20 + courtH + 20 + ballH + 20 + highlightH + (remarkH ? remarkH + 20 : 0) + footerH + PAD
   canvas.width = WIDTH
   canvas.height = Math.max(height, 720)
 
   ctx.fillStyle = THEME.bgPage
   ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-  fillRound(ctx, PAD, PAD, WIDTH - PAD * 2, HEADER_H, 24, TEAL)
+  fillRound(ctx, PAD, PAD, WIDTH - PAD * 2, headerH, 24, TEAL)
   ctx.fillStyle = THEME.white
   ctx.font = `700 48px ${FONT}`
   ctx.fillText('羽毛球结算', PAD + 36, PAD + 64)
   ctx.font = `500 28px ${FONT}`
   ctx.fillStyle = TEAL_SUB
-  const sub = [bill.playDate || '未填日期', (bill.title || '').trim() || '未填标题', `${totals.people}人`]
-    .filter(Boolean)
-    .join('  ·  ')
-  ctx.fillText(ellipsis(ctx, sub, inner + 8), PAD + 36, PAD + 114)
+  subLines.forEach((row, i) => ctx.fillText(row, PAD + 36, PAD + 114 + i * 38))
 
-  let y = PAD + HEADER_H + 20
+  let y = PAD + headerH + 20
   y = drawSection(ctx, '场地费', formatMoney(totals.courtTotal), courts, y, inner)
   y = drawSection(ctx, '用球费用', formatMoney(totals.ballTotal), balls, y, inner)
 

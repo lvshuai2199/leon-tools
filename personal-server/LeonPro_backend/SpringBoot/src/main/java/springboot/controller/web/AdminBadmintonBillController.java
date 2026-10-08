@@ -51,12 +51,19 @@ public class AdminBadmintonBillController {
 
     @PostMapping("/save")
     public ApiResponse save(@RequestBody BadmintonBill body, HttpServletRequest request) {
-        return bizService.save(body, currentUser(request), null);
+        // 管理端页面不认识整桶价：沿用原明细的整桶价（单价没改时），避免编辑后金额变化
+        return bizService.save(body, currentUser(request), null, true);
     }
 
     @PostMapping("/preview")
     public ApiResponse preview(@RequestBody BadmintonBill body) {
         return bizService.preview(body);
+    }
+
+    /** 名称预览：与保存时的名称规则一致（重名范围按这条记录的 operator_id，新建按当前用户） */
+    @PostMapping("/namePreview")
+    public ApiResponse namePreview(@RequestBody BadmintonBill body, HttpServletRequest request) {
+        return bizService.namePreview(body, currentUser(request), null);
     }
 
     @PostMapping("/del")

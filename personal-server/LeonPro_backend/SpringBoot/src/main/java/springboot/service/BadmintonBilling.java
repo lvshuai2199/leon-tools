@@ -17,6 +17,8 @@ public final class BadmintonBilling {
     public static final int MONEY_SCALE = 2;
     public static final RoundingMode ROUNDING = RoundingMode.HALF_UP;
     public static final BigDecimal ZERO = BigDecimal.ZERO.setScale(MONEY_SCALE, ROUNDING);
+    /** 一桶羽毛球 12 个 */
+    public static final BigDecimal BALLS_PER_BUCKET = BigDecimal.valueOf(12);
 
     private BadmintonBilling() {
     }
@@ -56,8 +58,17 @@ public final class BadmintonBilling {
             }
             item.setSortOrder(i);
             item.setQuantity(nonNegativeInt(item.getQuantity()));
-            item.setUnitPrice(nonNegativeMoney(item.getUnitPrice()));
-            item.setAmount(money(BigDecimal.valueOf(item.getQuantity()).multiply(item.getUnitPrice())));
+            BigDecimal qty = BigDecimal.valueOf(item.getQuantity());
+            BigDecimal bucket = bucketOrNull(item.getBucketPrice());
+            item.setBucketPrice(bucket);
+            if (bucket != null) {
+                // 单价只用于展示：round2(整桶/12)；小计用整桶价直接算，最后才取到分（100 元 × 3 个 = 25.00）
+                item.setUnitPrice(bucket.divide(BALLS_PER_BUCKET, MONEY_SCALE, ROUNDING));
+                item.setAmount(bucket.multiply(qty).divide(BALLS_PER_BUCKET, MONEY_SCALE, ROUNDING));
+            } else {
+                item.setUnitPrice(nonNegativeMoney(item.getUnitPrice()));
+                item.setAmount(money(qty.multiply(item.getUnitPrice())));
+            }
             ballTotal = ballTotal.add(item.getAmount());
         }
 
@@ -84,6 +95,60 @@ public final class BadmintonBilling {
     public static BigDecimal nonNegativeMoney(BigDecimal value) {
         BigDecimal n = money(value);
         return n.signum() < 0 ? ZERO : n;
+    }
+
+    /** 整桶价：空、0 或负数都当没填（返回 null）；校验在 BadmintonBillBizService 里先做 */
+    public static BigDecimal bucketOrNull(BigDecimal value) {
+        if (value == null || value.signum() <= 0) {
+            return null;
+        }
+        return money(value);
+    }
+
+    /**
+     * 管理端保存兼容：管理端页面不认识整桶价，提交的用球明细不带 bucketPrice（也不带明细 id，明细每次保存都重建）。
+     * 对每条没带整桶价的明细，按位置找原来的同一条：品牌相同、原来有整桶价、且提交的单价 = round2(原整桶价/12)
+     * （即管理端没改过单价）→ 沿用原整桶价，小计照整桶算，金额不变。单价被改过或品牌对不上 → 按手填单价算。
+     * 只用于管理端路径；用户端「改为手填」会显式清空整桶价，不能走这里。
+     */
+    public static void inheritBucketPrices(List<BadmintonBallFee> incoming, List<BadmintonBallFee> stored) {
+        if (incoming == null || stored == null || stored.isEmpty()) {
+            return;
+        }
+        for (int i = 0; i < incoming.size() && i < stored.size(); i++) {
+            BadmintonBallFee in = incoming.get(i);
+            BadmintonBallFee old = stored.get(i);
+            if (in == null || old == null || bucketOrNull(in.getBucketPrice()) != null) {
+                continue;
+            }
+            BigDecimal oldBucket = bucketOrNull(old.getBucketPrice());
+            if (oldBucket == null || in.getUnitPrice() == null) {
+                continue;
+            }
+            if (!sameBrand(in.getBrand(), old.getBrand())) {
+                continue;
+            }
+            BigDecimal expectedUnit = oldBucket.divide(BALLS_PER_BUCKET, MONEY_SCALE, ROUNDING);
+            if (money(in.getUnitPrice()).compareTo(expectedUnit) == 0) {
+                in.setBucketPrice(oldBucket);
+            }
+        }
+    }
+
+    private static boolean sameBrand(String a, String b) {
+        String x = a == null ? "" : a.trim();
+        String y = b == null ? "" : b.trim();
+        return x.equals(y);
+    }
+
+    /** 单条用球小计（与 apply 里的口径一致），给测试和预览用 */
+    public static BigDecimal ballAmount(BigDecimal bucketPrice, BigDecimal unitPrice, Integer quantity) {
+        BigDecimal qty = BigDecimal.valueOf(nonNegativeInt(quantity));
+        BigDecimal bucket = bucketOrNull(bucketPrice);
+        if (bucket != null) {
+            return bucket.multiply(qty).divide(BALLS_PER_BUCKET, MONEY_SCALE, ROUNDING);
+        }
+        return money(qty.multiply(nonNegativeMoney(unitPrice)));
     }
 
     public static int nonNegativeInt(Integer value) {

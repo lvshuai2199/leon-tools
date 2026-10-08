@@ -112,13 +112,14 @@ function doSearch() {
       <li v-for="item in records" :key="item.id">
         <article class="card" @click="list.openDetail(item)">
           <div class="card__head">
-            <h3 class="card__name">{{ item.title || '未填标题' }}</h3>
+            <h3 class="card__name" :title="item.title || ''">{{ item.title || '未填标题' }}</h3>
             <span class="card__per">{{ formatMoney(item.perPerson) }} / 人</span>
           </div>
           <p class="card__muted">{{ item.playDate || '-' }} · {{ item.participantCount || 0 }}人</p>
           <p class="card__muted">
-            场地 {{ formatMoney(item.courtTotal) }} · 用球 {{ formatMoney(item.ballTotal) }} · 总计
-            {{ formatMoney(item.grandTotal) }}
+            <span class="nw">场地 {{ formatMoney(item.courtTotal) }}</span> ·
+            <span class="nw">用球 {{ formatMoney(item.ballTotal) }}</span> ·
+            <span class="nw">总计 {{ formatMoney(item.grandTotal) }}</span>
           </p>
           <div class="card__actions" @click.stop>
             <el-button type="primary" plain @click="list.openDetail(item)">编辑</el-button>
@@ -189,27 +190,38 @@ function doSearch() {
 }
 .card__head {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: lp.$space-2;
 }
+/* 名称最多两行，超出省略（美工 10-04） */
 .card__name {
   flex: 1;
   min-width: 0;
   margin: 0;
   font-size: lp.$font-size-medium;
   font-weight: lp.$font-weight-semibold;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  overflow-wrap: anywhere;
 }
 .card__per {
+  flex: none;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
   color: var(--el-color-primary);
   font-weight: lp.$font-weight-semibold;
 }
 .card__muted {
   margin: lp.$space-1 0 0;
+  font-variant-numeric: tabular-nums;
   font-size: lp.$font-size-base;
   color: var(--el-text-color-secondary);
+}
+.nw {
+  white-space: nowrap;
 }
 .card__actions {
   display: grid;

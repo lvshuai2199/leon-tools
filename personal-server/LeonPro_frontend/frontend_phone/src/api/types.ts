@@ -169,6 +169,8 @@ export interface BadmintonBallFeeItem {
   brand?: string
   quantity?: number | null
   unitPrice?: number | null
+  /** 整桶价格（一桶 12 个）；空或 0 = 没填，单价手填 */
+  bucketPrice?: number | null
   amount?: number | null
 }
 
