@@ -14,7 +14,8 @@
 # GitHub Actions：Deploy branch。Actions 只上传脚本和 Dockerfile，构建在服务器上完成。
 #
 # 不写程序名时：和该程序上次部署的提交对比，只部署有文件变化的程序。
-# 某个程序还没有部署记录时，算作需要部署。
+# backend、web、admin 还没有记录时会部署。nginx 没有记录时不改线上配置，
+# 真正部署时只记下提交，之后配置文件有变化才安装。点名 nginx 或加 --all 会立刻安装。
 # 程序顺序固定为 backend → web → admin → nginx。
 #
 # 构建是 docker build（多阶段镜像）。服务器不需要安装 JDK / Node。
@@ -133,7 +134,8 @@ usage() {
 GitHub Actions：Deploy branch。Actions 只上传脚本和 Dockerfile，构建在服务器上完成。
 
 不写程序名时：和该程序上次部署的提交对比，只部署有文件变化的程序。
-某个程序还没有部署记录时，算作需要部署。
+backend、web、admin 还没有记录时会部署。nginx 没有记录时不改线上配置，
+真正部署时只记下提交，之后配置文件有变化才安装。点名 nginx 或加 --all 会立刻安装。
 程序顺序固定为 backend → web → admin → nginx。
 
 构建是 docker build（多阶段镜像）。服务器不需要安装 JDK / Node。
@@ -336,6 +338,7 @@ changed_files_since() {
 
 plan_programs() {
   PLANNED=()
+  NGINX_NEEDS_BASELINE=0
   if [[ "$ALL" == 1 ]]; then
     PLANNED=("${PROGRAMS[@]}")
     return 0
@@ -349,6 +352,11 @@ plan_programs() {
   for prog in "${PROGRAMS[@]}"; do
     old="${STATE[sha.$prog]:-}"
     if [[ -z "$old" ]]; then
+      # 线上 nginx 可能有仓库里没有的配置。没有记录时不安装，只在真正部署时记下提交。
+      if [[ "$prog" == nginx ]]; then
+        NGINX_NEEDS_BASELINE=1
+        continue
+      fi
       PLANNED+=("$prog")
       continue
     fi
@@ -581,7 +589,14 @@ main() {
   ensure_repo
   plan_programs
 
+  if [[ "$NGINX_NEEDS_BASELINE" == 1 ]]; then
+    log "nginx 还没有部署记录，这次不改线上配置。真正部署时会记下当前提交，之后只在 nginx 文件变化时安装。要现在安装请写上 nginx 或加 --all"
+  fi
   if [[ ${#PLANNED[@]} -eq 0 ]]; then
+    if [[ "$NGINX_NEEDS_BASELINE" == 1 && "$DRY" != 1 ]]; then
+      mark_deployed nginx "$SHA" "$BRANCH"
+      log "已记下 nginx 的提交 ${SHA:0:12}，未安装配置"
+    fi
     log "分支 $BRANCH（${SHA:0:12}）相对上次部署没有要更新的程序"
     exit 0
   fi
@@ -605,6 +620,10 @@ main() {
     run_program "$prog"
     mark_deployed "$prog" "$SHA" "$BRANCH"
   done
+  if [[ "$NGINX_NEEDS_BASELINE" == 1 ]]; then
+    mark_deployed nginx "$SHA" "$BRANCH"
+    log "已记下 nginx 的提交 ${SHA:0:12}，未安装配置"
+  fi
   smoke
   log "完成"
 }

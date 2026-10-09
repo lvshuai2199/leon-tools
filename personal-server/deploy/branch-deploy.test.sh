@@ -66,11 +66,19 @@ plan_programs
 
 rm -f "$LEONPRO_STATE/state"
 plan_programs
-[[ "${PLANNED[*]}" == "backend web admin nginx" ]] || fail "first got: ${PLANNED[*]}"
+[[ "${PLANNED[*]}" == "backend web admin" ]] || fail "first got: ${PLANNED[*]}"
+[[ "$NGINX_NEEDS_BASELINE" == 1 ]] || fail "first nginx baseline"
 
 ALL=1
 plan_programs
 [[ "${PLANNED[*]}" == "backend web admin nginx" ]] || fail "all got: ${PLANNED[*]}"
+[[ "$NGINX_NEEDS_BASELINE" == 0 ]] || fail "all should install nginx"
+
+ALL=0
+EXPLICIT=(nginx)
+plan_programs
+[[ "${PLANNED[*]}" == nginx && "$NGINX_NEEDS_BASELINE" == 0 ]] || fail "explicit nginx"
+EXPLICIT=()
 
 (
   parse_args --yes --dry-run -- dev web admin

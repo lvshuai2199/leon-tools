@@ -11,7 +11,7 @@ on:
         default: dev
         type: string
       programs:
-        description: 留空则按改动选择。可填 backend web admin nginx
+        description: 留空则按改动选择 backend、web、admin。要装 nginx 请写上 nginx
         required: false
         default: ""
         type: string
