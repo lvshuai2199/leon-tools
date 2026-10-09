@@ -89,5 +89,18 @@
     "keepAlive": false,
     "client": "app",
     "routeName": "regcode"
+  },
+  {
+    "path": "/notes",
+    "name": "笔记",
+    "parent": null,
+    "type": "page",
+    "component": "notes",
+    "icon": "document",
+    "sort": 6,
+    "hidden": false,
+    "keepAlive": false,
+    "client": "app",
+    "routeName": "notes"
   }
 ]

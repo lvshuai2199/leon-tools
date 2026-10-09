@@ -28,6 +28,8 @@ services:
     volumes:
       # 壁纸等上传文件持久化（容器工作目录 /app，对应 app.wallpaper.storage-dir=./uploads/wallpaper）
       - ./uploads:/app/uploads
+      # 笔记仓库克隆目录和思维导图（app.notes.storage-dir / app.mindmap.storage-dir 都在 ./data 下）
+      - ./data:/app/data
     depends_on:
       - redis
     restart: unless-stopped

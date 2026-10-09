@@ -48,6 +48,7 @@ public final class AdminAccessRules {
     }
 
     public static final String WALLPAPER_COMPONENT = "tool/wallpaper/index";
+    public static final String NOTES_COMPONENT = "tool/notes/index";
 
     private static final AntPathMatcher MATCHER = new AntPathMatcher();
 
@@ -73,7 +74,8 @@ public final class AdminAccessRules {
             menu(null, "/admin/crabShipment/**", "menu_crab"),
             menu(null, "/admin/badmintonBill/**", "menu_badminton"),
             menu(null, "/admin/mindmap/**", "menu_mindmap"),
-            new Rule(null, "/admin/wallpaper/**", Kind.COMPONENT, Set.of(), WALLPAPER_COMPONENT)
+            new Rule(null, "/admin/wallpaper/**", Kind.COMPONENT, Set.of(), WALLPAPER_COMPONENT),
+            new Rule(null, "/admin/notes/**", Kind.COMPONENT, Set.of(), NOTES_COMPONENT)
     );
 
     private AdminAccessRules() {

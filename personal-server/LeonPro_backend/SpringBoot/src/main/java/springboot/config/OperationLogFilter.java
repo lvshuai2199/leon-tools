@@ -39,7 +39,7 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
     private static final int MAX_TEXT = 4000;
     private static final int CACHE_LIMIT = 64 * 1024;
     private static final Pattern SECRET = Pattern.compile(
-            "(?i)(\"(?:password|captchaCode|imageBase64|markdown)\"\\s*:\\s*\")[^\"]*");
+            "(?i)(\"(?:password|captchaCode|imageBase64|markdown|accessToken|token)\"\\s*:\\s*\")[^\"]*");
 
     private final SysOperationLogService sysOperationLogService;
     private final JsonMapper jsonMapper;
@@ -174,7 +174,12 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
             }
             sb.append("body=").append(new String(cached, StandardCharsets.UTF_8));
         }
-        return trim(SECRET.matcher(sb.toString()).replaceAll("$1***"), MAX_TEXT);
+        String masked = SECRET.matcher(sb.toString()).replaceAll("$1***");
+        String uri = req.getRequestURI() == null ? "" : req.getRequestURI();
+        if (uri.contains("/notes/draft")) {
+            masked = masked.replaceAll("(?i)(\"(?:content)\"\\s*:\\s*\")[^\"]*", "$1***");
+        }
+        return trim(masked, MAX_TEXT);
     }
 
     /**
