@@ -94,5 +94,16 @@ plan_programs
   }
   call_like_main
 )
+(
+  envf="$tmp/env"
+  printf 'DEPLOY_USER=ubuntu\nDEPLOY_SSH_KEY=\n' > "$envf"
+  DEPLOY_HOST=already
+  DEPLOY_USER=
+  DEPLOY_PORT=
+  DEPLOY_PASSWORD=already
+  DEPLOY_SSH_KEY=preset
+  read_env_file "$envf"
+  [[ "$DEPLOY_USER" == ubuntu && "$DEPLOY_SSH_KEY" == preset && "$DEPLOY_PASSWORD" == already ]] || exit 1
+)
 
 echo OK

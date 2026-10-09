@@ -204,10 +204,13 @@ read_env_file() {
     key="$(echo "$key" | xargs)"
     case "$key" in
       DEPLOY_HOST|DEPLOY_USER|DEPLOY_PORT|DEPLOY_PASSWORD|DEPLOY_SSH_KEY)
-        [[ -z "${!key:-}" && -n "$value" ]] && printf -v "$key" '%s' "$value"
+        if [[ -z "${!key:-}" && -n "$value" ]]; then
+          printf -v "$key" '%s' "$value"
+        fi
         ;;
     esac
   done < "$f"
+  return 0
 }
 
 remote_launch() {
