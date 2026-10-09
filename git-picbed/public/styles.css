@@ -1,0 +1,106 @@
+:root {
+  --bg: #f4f5f7;
+  --panel: #fff;
+  --line: #e6e8ee;
+  --text: #1d2129;
+  --muted: #6b7280;
+  --ok: #067647;
+  --bad: #b42318;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+}
+
+.app { max-width: 640px; margin: 0 auto; padding: 12px; }
+
+.top, .card {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.top, .card { margin-bottom: 8px; }
+.top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+}
+.card { padding: 10px 12px; }
+
+h1, h2 { margin: 0; font-weight: 650; }
+h1 { font-size: 15px; }
+h2 { font-size: 13px; margin-bottom: 6px; }
+.status { color: var(--muted); margin: 6px 0 0; min-height: 1.2em; }
+.bad { color: var(--bad); }
+.ok { color: var(--ok); }
+
+.actions, .row { display: flex; gap: 8px; align-items: center; }
+.row label { flex: 1; min-width: 0; }
+.row.tight { align-items: flex-end; margin-top: 8px; }
+.row.tight .check { flex: 1; margin-top: 0; white-space: nowrap; }
+.narrow { flex: 0 0 120px; margin-top: 0; }
+
+label { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; color: var(--muted); font-size: 12px; }
+.check { flex-direction: row; align-items: center; gap: 6px; color: var(--text); }
+
+input, textarea {
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+  padding: 5px 8px;
+  font: inherit;
+}
+
+input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  margin: 0;
+  flex: none;
+}
+
+textarea { resize: vertical; }
+
+.btn, .seg button, .copy {
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--text);
+  border-radius: 6px;
+  padding: 5px 12px;
+  cursor: pointer;
+}
+
+.btn.primary { background: #1d2129; border-color: #1d2129; color: #fff; }
+.btn:disabled, .seg button:disabled { opacity: 0.45; cursor: default; }
+.seg { display: inline-flex; padding: 2px; border: 1px solid var(--line); border-radius: 6px; }
+.seg button { border: 0; background: transparent; color: var(--muted); }
+.seg button.active { background: #eef0f3; color: var(--text); }
+
+.log {
+  margin: 0;
+  max-height: 120px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--muted);
+}
+
+.table-wrap { overflow: auto; max-height: 240px; }
+table { width: 100%; border-collapse: collapse; }
+th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
+th { color: var(--muted); font-weight: 600; font-size: 12px; }
+.count { color: var(--muted); font-weight: 500; }
+.link { display: flex; gap: 6px; align-items: center; }
+.link code { flex: 1; word-break: break-all; font-size: 11px; color: var(--muted); }
+.empty { color: var(--muted); }
+.copy { padding: 3px 8px; font-size: 12px; }
