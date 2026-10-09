@@ -1,0 +1,15 @@
+.git
+**/.git
+**/node_modules
+**/dist
+**/target
+**/.pnpm-store
+**/deploy/dist
+/pics
+/can_tester_linux
+/history
+/notes
+/edge-start-hub
+/leonpro-dev-hub
+/cursor-usage-widget
+**/*.mp4
