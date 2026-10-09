@@ -63,6 +63,13 @@ class AdminAccessRulesTest {
     }
 
     @Test
+    void notesByComponent() {
+        assertTrue(allowed("POST", "/admin/notes/draft/upload", List.of("m_notes"), Set.of("tool/notes/index")));
+        assertTrue(allowed("GET", "/admin/notes/docs", List.of(), Set.of(AdminAccessRules.NOTES_COMPONENT)));
+        assertFalse(allowed("GET", "/admin/notes/source", List.of("menu_mindmap"), Set.of("tool/mindmap/index")));
+    }
+
+    @Test
     void unknownAdminPathIsRootOnly() {
         assertSame(AdminAccessRules.DEFAULT_ROOT_ONLY, AdminAccessRules.match("GET", "/admin/newModule/list"));
         assertFalse(allowed("GET", "/admin/newModule/list", "menu_user", "menu_role", "menu_menu"));

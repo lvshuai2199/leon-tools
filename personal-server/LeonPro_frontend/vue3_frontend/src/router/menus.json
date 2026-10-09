@@ -90,6 +90,19 @@
     "routeName": "BadmintonBill"
   },
   {
+    "path": "/tool/notes",
+    "name": "笔记",
+    "parent": "/tool",
+    "type": "page",
+    "component": "tool/notes/index",
+    "icon": "document",
+    "sort": 7,
+    "hidden": false,
+    "keepAlive": false,
+    "client": "admin",
+    "routeName": "Notes"
+  },
+  {
     "path": "/regcode",
     "name": "注册码",
     "parent": null,

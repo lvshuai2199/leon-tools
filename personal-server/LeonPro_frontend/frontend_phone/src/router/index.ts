@@ -51,7 +51,7 @@ const pages = import.meta.glob('../pages/**/*.vue')
 /** 电脑上用居中窄栏的菜单页面 */
 const NARROW_PAGES = new Set(['/regcode'])
 /** 手机上隐藏底部标签栏的页面：快速录入、出货单详情、注册码生成（都有底部固定操作条） */
-const NO_TABBAR_PAGES = new Set(['/crab/new', '/crab/:id', '/badminton/new', '/badminton/:id', '/regcode'])
+const NO_TABBAR_PAGES = new Set(['/crab/new', '/crab/:id', '/badminton/new', '/badminton/:id', '/regcode', '/notes'])
 
 /** component 指向单个 .vue 或目录（目录里用 index.vue） */
 function resolvePage(component: string) {

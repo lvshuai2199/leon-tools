@@ -5,13 +5,14 @@
  * 示例账号：
  *   任意用户名 + 6 位以上密码可登录（密码写 wrong123 模拟“用户名或密码错误”）
  *   账号只靠 appMenus 区分（和后端一致，不再有 canUseCrab / canUseRegCode）：
- *   demo 等其他用户名 → 出货 + 注册码都有
+ *   demo 等其他用户名 → 出货 + 注册码 + Cursor 任务
  *   用户名 crabonly → 只有螃蟹出货
  *   用户名 nomenu → 没有任何用户端菜单（首页看不到工具，直接进 /crab 被拒）
  *   用户名 empty  → 螃蟹出货没有任何记录（空状态）
  *   注册码各种账号（client / full / over / sub / noconfig / zero / newbie）见 mock/regcode.ts，只有「注册码生成」菜单
  */
 import * as wp from './wallpaper'
+import { handleCursor } from './cursor'
 import { REGCODE_ONLY_USERS, handleRegCode, regCodeMe } from './regcode'
 
 type Body = Record<string, unknown> | unknown[] | null
@@ -30,6 +31,8 @@ const MENU_CRAB = { id: 101, menuName: '螃蟹出货', menuUrl: '/crab', parentI
 const MENU_CRAB_NEW = { id: 102, menuName: '录入出货单', menuUrl: '/crab/new', parentId: 101, sortOrder: 2, icon: '', visible: 0, menuType: 'C', permission: 'app:crab:add', component: 'crab/entry', routeName: 'crabNew' }
 const MENU_CRAB_DETAIL = { id: 103, menuName: '出货单详情', menuUrl: '/crab/:id', parentId: 101, sortOrder: 3, icon: '', visible: 0, menuType: 'C', permission: 'app:crab:edit', component: 'crab/edit', routeName: 'crabDetail' }
 const MENU_REGCODE = { id: 104, menuName: '注册码生成', menuUrl: '/regcode', parentId: 0, sortOrder: 4, icon: 'key', visible: 1, menuType: 'C', permission: 'app:regcode:gen', component: 'regcode/index', routeName: 'regcode' }
+const MENU_CURSOR = { id: 105, menuName: 'Cursor 任务', menuUrl: '/cursor', parentId: 0, sortOrder: 6, icon: 'cursor', visible: 1, menuType: 'C', permission: 'app:cursor:use', component: 'cursor/index', routeName: 'cursorTasks' }
+const MENU_NOTES = { id: 106, menuName: '笔记', menuUrl: '/notes', parentId: 0, sortOrder: 7, icon: 'document', visible: 1, menuType: 'C', permission: 'app:notes:list', component: 'notes', routeName: 'notes' }
 const CRAB_MENUS = [MENU_CRAB, MENU_CRAB_NEW, MENU_CRAB_DETAIL]
 
 const NICKNAMES: Record<string, string> = {
@@ -62,7 +65,7 @@ function menusOf(username: string) {
   if (username === 'nomenu') return []
   if (username === 'crabonly') return CRAB_MENUS
   if (REGCODE_ONLY_USERS.has(username)) return [MENU_REGCODE]
-  return [...CRAB_MENUS, MENU_REGCODE]
+  return [...CRAB_MENUS, MENU_REGCODE, MENU_CURSOR, MENU_NOTES]
 }
 
 /** 当前账号能用的菜单路径（mock 接口按它返回 403） */
@@ -190,11 +193,104 @@ export async function mockFetch(pathWithQuery: string, init: RequestInit): Promi
     }
   }
 
+  if (path.startsWith('/app/cursor')) {
+    if (!allowed.has('/cursor')) return forbidden()
+    const cursor = handleCursor(username, path, method, body)
+    if (cursor) return json(cursor.status, cursor.body as Body)
+  }
+
   if (path.startsWith('/common/')) {
     if (!allowed.has('/regcode')) return forbidden()
     const r = handleRegCode(username, path, method, body)
     if (r) return json(r.status, r.body as Body)
   }
 
+  if (path.startsWith('/app/notes')) {
+    if (!allowed.has('/notes')) return forbidden()
+    return notesMock(path, method, q, body)
+  }
+
+  return json(404, { status: 404, message: `示例数据里没有这个接口：${method} ${path}`, data: null })
+}
+
+const NOTE_SOURCE = {
+  configured: true,
+  repoUrl: 'https://example.com/notes.git',
+  branch: 'main',
+  tokenSet: false,
+  status: 'ok',
+  lastCommit: 'abc1234def5678',
+  lastSyncTime: '2026-10-09 10:00:00',
+  lastCheckTime: '2026-10-09 10:05:00',
+  lastError: null,
+  fileCount: 2,
+}
+const noteDocs = [
+  { path: 'README.md', title: '欢迎', size: 32 },
+  { path: 'notes/方案.md', title: '方案', size: 24 },
+]
+const noteContent: Record<string, string> = {
+  'README.md': '# 欢迎\n\n这是仓库里的一篇笔记。\n\n- 支持 **Markdown**\n- [方案](notes/方案.md)\n',
+  'notes/方案.md': '# 方案\n\n子目录里的笔记。\n',
+}
+const noteDrafts: { id: string; title: string; content: string; updateTime: string }[] = [
+  { id: 'a'.repeat(32), title: '未写完的想法', content: '先记在这里，写完再上传。\n', updateTime: '2026-10-09 09:30:00' },
+]
+
+function nowText() {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
+}
+
+function notesMock(path: string, method: string, q: URLSearchParams, body: Record<string, any>) {
+  if (path === '/app/notes/source') return json(200, ok(NOTE_SOURCE))
+  if (path === '/app/notes/docs') return json(200, ok(noteDocs))
+  if (path === '/app/notes/doc') {
+    const p = q.get('path') || ''
+    const content = noteContent[p]
+    if (content == null) return json(404, { status: 404, message: '文档不存在', data: null })
+    return json(200, ok({ path: p, title: noteDocs.find((d) => d.path === p)?.title || p, content }))
+  }
+  if (path === '/app/notes/drafts') {
+    return json(200, ok(noteDrafts.map((d) => ({ id: d.id, title: d.title, excerpt: d.content.replace(/\s+/g, ' ').trim().slice(0, 80), updateTime: d.updateTime }))))
+  }
+  if (path === '/app/notes/draft' && method === 'GET') {
+    const d = noteDrafts.find((x) => x.id === q.get('id'))
+    return d ? json(200, ok(d)) : json(404, { status: 404, message: '缓存不存在', data: null })
+  }
+  if (path === '/app/notes/draft' && method === 'POST') {
+    const title = String(body.title || '')
+    const content = String(body.content || '')
+    let d = noteDrafts.find((x) => x.id === body.id)
+    if (body.id && !d) return json(200, { status: 500, message: '缓存不存在', data: null })
+    if (!d) {
+      d = { id: crypto.randomUUID().replace(/-/g, ''), title, content, updateTime: nowText() }
+      noteDrafts.unshift(d)
+    } else {
+      d.title = title
+      d.content = content
+      d.updateTime = nowText()
+    }
+    return json(200, ok(d))
+  }
+  if (path === '/app/notes/draft/delete') {
+    const i = noteDrafts.findIndex((x) => x.id === body.id)
+    if (i < 0) return json(200, { status: 500, message: '缓存不存在', data: null })
+    noteDrafts.splice(i, 1)
+    return json(200, ok(null))
+  }
+  if (path === '/app/notes/draft/upload') {
+    const d = noteDrafts.find((x) => x.id === body.id)
+    if (!d) return json(200, { status: 500, message: '缓存不存在', data: null })
+    if (!String(d.content || '').trim()) return json(200, { status: 500, message: '内容是空的，还不能上传', data: null })
+    const safe = (d.title || '未命名').replace(/[\\/:*?"<>|]/g, '').trim() || '未命名'
+    const pathName = `随手记/2026-10-09_${safe}.md`
+    noteContent[pathName] = d.content.endsWith('\n') ? d.content : `${d.content}\n`
+    noteDocs.unshift({ path: pathName, title: safe, size: noteContent[pathName].length })
+    NOTE_SOURCE.fileCount = noteDocs.length
+    noteDrafts.splice(noteDrafts.findIndex((x) => x.id === d.id), 1)
+    return json(200, ok({ path: pathName, commit: 'uploaded1', title: safe }))
+  }
   return json(404, { status: 404, message: `示例数据里没有这个接口：${method} ${path}`, data: null })
 }

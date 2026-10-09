@@ -33,7 +33,43 @@ public class SchemaPatcher implements CommandLineRunner {
         ensureCrabShipmentTable();
         ensureBadmintonTables();
         ensureWallpaperTables();
+        ensureNoteTables();
+        ensureCursorTables();
         ensureMenuSyncColumns();
+    }
+
+    /** Cursor 任务：每人一把加密后的 API Key，任务按 user_id 隔离。 */
+    private void ensureCursorTables() {
+        ensureTable("cursor_user_key",
+                "CREATE TABLE `cursor_user_key` ("
+                        + "`user_id` VARCHAR(64) NOT NULL COMMENT '系统用户ID',"
+                        + "`key_cipher` VARCHAR(700) NOT NULL COMMENT 'AES-GCM 加密后的 Cursor API Key',"
+                        + "`key_hint` VARCHAR(8) NOT NULL COMMENT 'Key 末四位，用于界面确认',"
+                        + "`update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',"
+                        + "PRIMARY KEY (`user_id`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户自己的 Cursor API Key'");
+        ensureTable("cursor_agent",
+                "CREATE TABLE `cursor_agent` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '本地主键',"
+                        + "`user_id` VARCHAR(64) NOT NULL COMMENT '系统用户ID',"
+                        + "`agent_id` VARCHAR(80) NOT NULL COMMENT 'Cursor agent id',"
+                        + "`name` VARCHAR(120) DEFAULT NULL COMMENT '显示名',"
+                        + "`prompt_preview` VARCHAR(200) DEFAULT NULL COMMENT '首条指令摘要',"
+                        + "`repo_url` VARCHAR(300) DEFAULT NULL COMMENT '仓库地址',"
+                        + "`starting_ref` VARCHAR(120) DEFAULT NULL COMMENT '起始分支或提交',"
+                        + "`agent_status` VARCHAR(32) DEFAULT NULL COMMENT 'ACTIVE/IDLE/ARCHIVED',"
+                        + "`run_status` VARCHAR(32) DEFAULT NULL COMMENT '最近一次执行状态',"
+                        + "`latest_run_id` VARCHAR(80) DEFAULT NULL COMMENT '最近一次 run id',"
+                        + "`result_text` MEDIUMTEXT COMMENT '最近一次执行结果',"
+                        + "`agent_url` VARCHAR(300) DEFAULT NULL COMMENT 'cursor.com/agents 链接',"
+                        + "`pr_url` VARCHAR(300) DEFAULT NULL COMMENT 'PR 链接',"
+                        + "`branch_name` VARCHAR(200) DEFAULT NULL COMMENT '推送分支',"
+                        + "`create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',"
+                        + "`update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',"
+                        + "PRIMARY KEY (`id`),"
+                        + "UNIQUE KEY `uk_cursor_agent_owner` (`user_id`, `agent_id`),"
+                        + "KEY `idx_cursor_agent_user_time` (`user_id`, `update_time`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户发起的 Cursor Cloud Agent'");
     }
 
     /**
@@ -137,6 +173,46 @@ public class SchemaPatcher implements CommandLineRunner {
                         + "PRIMARY KEY (`id`),"
                         + "KEY `idx_wallpaper_image_group` (`group_id`, `enabled`, `sort`)"
                         + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='壁纸图片'");
+    }
+
+    /** 笔记仓库配置、文档索引、随手记缓存。与 sql/notes_module.sql 保持一致。菜单由页面清单同步。 */
+    private void ensureNoteTables() {
+        ensureTable("note_source",
+                "CREATE TABLE `note_source` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '主键，固定 default',"
+                        + "`repo_url` VARCHAR(500) NOT NULL COMMENT '仓库 https 地址',"
+                        + "`branch` VARCHAR(200) NOT NULL COMMENT '分支',"
+                        + "`access_token` VARCHAR(500) DEFAULT NULL COMMENT '私有仓库 / 上传用的访问令牌',"
+                        + "`last_commit` VARCHAR(64) DEFAULT NULL COMMENT '已同步的提交',"
+                        + "`last_sync_time` DATETIME DEFAULT NULL COMMENT '最近一次同步完成时间',"
+                        + "`last_check_time` DATETIME DEFAULT NULL COMMENT '最近一次检查远程提交的时间',"
+                        + "`last_error` VARCHAR(1000) DEFAULT NULL COMMENT '最近一次失败或未收录说明',"
+                        + "`sync_status` VARCHAR(32) NOT NULL DEFAULT 'idle' COMMENT 'idle/syncing/ok/error',"
+                        + "`file_count` INT NOT NULL DEFAULT 0 COMMENT '已收录的 Markdown 数量',"
+                        + "`enabled` INT NOT NULL DEFAULT 1 COMMENT '1 自动检查新提交',"
+                        + "`create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',"
+                        + "`update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',"
+                        + "PRIMARY KEY (`id`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记仓库'");
+        ensureTable("note_doc",
+                "CREATE TABLE `note_doc` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '主键',"
+                        + "`path` VARCHAR(768) NOT NULL COMMENT '仓库内相对路径',"
+                        + "`title` VARCHAR(300) NOT NULL COMMENT '标题',"
+                        + "`size_bytes` INT NOT NULL DEFAULT 0 COMMENT '字节数',"
+                        + "PRIMARY KEY (`id`),"
+                        + "KEY `idx_note_doc_path` (`path`(191))"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='笔记文档索引'");
+        ensureTable("note_draft",
+                "CREATE TABLE `note_draft` ("
+                        + "`id` VARCHAR(64) NOT NULL COMMENT '主键',"
+                        + "`title` VARCHAR(200) NOT NULL DEFAULT '' COMMENT '标题',"
+                        + "`content` MEDIUMTEXT COMMENT '正文，上传前只存在这里',"
+                        + "`create_time` DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',"
+                        + "`update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '最近缓存时间',"
+                        + "PRIMARY KEY (`id`),"
+                        + "KEY `idx_note_draft_update` (`update_time`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='随手记缓存'");
     }
 
     private void ensureRegCodeConfigTable() {

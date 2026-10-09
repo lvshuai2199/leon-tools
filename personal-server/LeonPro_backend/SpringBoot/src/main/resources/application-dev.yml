@@ -26,6 +26,17 @@ mybatis-plus:
 app:
   mindmap:
     storage-dir: ${MINDMAP_DIR:./data/mindmap}
+  notes:
+    # 克隆下来的仓库目录。旁边会写一个 {目录名}.source 记录当前地址和分支，换地址时整目录重克隆
+    storage-dir: ${NOTES_DIR:./data/notes-repo}
+    poll-millis: ${NOTES_POLL_MILLIS:60000}
+    poll-initial-millis: 20000
+    max-files: 8000
+    max-file-bytes: 1048576
+    max-asset-bytes: 20971520
+    draft-dir: 随手记
+    commit-name: ${NOTES_COMMIT_NAME:LeonPro}
+    commit-email: ${NOTES_COMMIT_EMAIL:notes@localhost}
   wallpaper:
     # original + thumbnail files: {storage-dir}/{groupId}/
     storage-dir: ${WALLPAPER_DIR:./uploads/wallpaper}
@@ -51,3 +62,8 @@ wechat:
   enabled: ${WECHAT_ENABLED:false}
   token: ${WECHAT_TOKEN:}
   crab-operator-username: ${WECHAT_CRAB_USER:admin}
+
+# 只用来加密用户自己填的 Cursor API Key，不是 Cursor Key 本身。生产环境用环境变量覆盖。
+cursor:
+  api-base: ${CURSOR_API_BASE:https://api.cursor.com}
+  key-secret: ${CURSOR_KEY_SECRET:leonpro-dev-cursor-key}
