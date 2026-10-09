@@ -62,3 +62,8 @@ wechat:
   enabled: ${WECHAT_ENABLED:false}
   token: ${WECHAT_TOKEN:}
   crab-operator-username: ${WECHAT_CRAB_USER:admin}
+
+# 上线前在服务器环境变量设置 CURSOR_KEY_SECRET。空着时用户无法保存 Key。
+cursor:
+  api-base: ${CURSOR_API_BASE:https://api.cursor.com}
+  key-secret: ${CURSOR_KEY_SECRET:}
