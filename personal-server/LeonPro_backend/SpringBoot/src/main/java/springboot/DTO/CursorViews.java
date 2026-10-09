@@ -42,4 +42,8 @@ public final class CursorViews {
 
     public record RepoList(List<Repo> repos, String warning) {
     }
+
+    /** Cursor Models 额度。remainingPercent 是剩余百分比；读不到时 available 为 false。 */
+    public record Quota(boolean available, boolean unlimited, Integer remainingPercent, String resetAt, String warning) {
+    }
 }

@@ -6,11 +6,13 @@ import {
   createCursorTask,
   cursorBusy,
   fetchBoard,
+  fetchCursorQuota,
   fetchCursorRepos,
   fetchCursorTask,
   followCursorTask,
   saveCursorKey,
   type CursorBoard,
+  type CursorQuota,
   type CursorRepo,
   type CursorTaskDetail,
 } from '@/api/cursor'
@@ -30,6 +32,8 @@ export function useCursorTasks() {
   const repos = ref<CursorRepo[]>([])
   const reposLoading = ref(false)
   const reposWarning = ref('')
+  const quota = ref<CursorQuota | null>(null)
+  const quotaLoading = ref(false)
   let reposLoaded = false
   let reposFailedAt = 0
   let timer = 0
@@ -85,6 +89,7 @@ export function useCursorTasks() {
     }
     try {
       applyBoard(await fetchBoard({ silent }))
+      void loadQuota()
       if (selectedId.value) await loadDetail(selectedId.value, silent || !!details.value[selectedId.value])
     } catch (e) {
       if (!silent) error.value = (e as Error).message || '加载失败'
@@ -111,6 +116,28 @@ export function useCursorTasks() {
     reposFailedAt = 0
     repos.value = []
     reposWarning.value = ''
+    quota.value = null
+  }
+
+  async function loadQuota() {
+    if (!board.value.configured) {
+      quota.value = null
+      return
+    }
+    quotaLoading.value = true
+    try {
+      quota.value = await fetchCursorQuota({ silent: true })
+    } catch (e) {
+      quota.value = {
+        available: false,
+        unlimited: false,
+        remainingPercent: null,
+        resetAt: '',
+        warning: (e as Error).message || '读不到 Cursor Models 额度',
+      }
+    } finally {
+      quotaLoading.value = false
+    }
   }
 
   async function loadRepos(force = false) {
@@ -138,6 +165,7 @@ export function useCursorTasks() {
     try {
       applyBoard(await saveCursorKey(apiKey))
       resetRepos()
+      void loadQuota()
       if (selectedId.value) await loadDetail(selectedId.value, false)
     } finally {
       savingKey.value = false
@@ -213,6 +241,8 @@ export function useCursorTasks() {
     repos,
     reposLoading,
     reposWarning,
+    quota,
+    quotaLoading,
     reload,
     loadRepos,
     select,

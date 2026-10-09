@@ -45,6 +45,12 @@ public class AppCursorController {
         return ApiResponse.success(cursorTaskService.board(user.getId()));
     }
 
+    @GetMapping("/usage")
+    public ApiResponse usage(HttpServletRequest request) {
+        SysUsers user = cursorTaskService.requireUser(request);
+        return ApiResponse.success(cursorTaskService.quota(user.getId()));
+    }
+
     @GetMapping("/repos")
     public ApiResponse repos(HttpServletRequest request) {
         SysUsers user = cursorTaskService.requireUser(request);

@@ -25,20 +25,56 @@ const repoManual = ref(false)
 const listOpen = ref(false)
 const taskQuery = ref('')
 const taskListEl = ref<HTMLElement | null>(null)
+const hideArchived = ref(localStorage.getItem('lp-cursor-hide-archived') !== '0')
 
 function repoLabel(url?: string) {
   if (!url) return ''
   return url.replace(/^https?:\/\/(www\.)?github\.com\//i, '').replace(/\.git$/, '')
 }
 
-const currentTask = computed(() => page.tasks.value.find((t) => t.id === page.selectedId.value))
+const archivedCount = computed(() => page.tasks.value.filter((t) => t.agentStatus === 'ARCHIVED').length)
+const visibleTasks = computed(() =>
+  hideArchived.value ? page.tasks.value.filter((t) => t.agentStatus !== 'ARCHIVED') : page.tasks.value,
+)
+const currentTask = computed(() => visibleTasks.value.find((t) => t.id === page.selectedId.value) || page.tasks.value.find((t) => t.id === page.selectedId.value))
+const visibleIndex = computed(() => visibleTasks.value.findIndex((t) => t.id === page.selectedId.value))
 const filteredTasks = computed(() => {
   const q = taskQuery.value.trim().toLowerCase()
-  if (!q) return page.tasks.value
-  return page.tasks.value.filter((t) => {
+  if (!q) return visibleTasks.value
+  return visibleTasks.value.filter((t) => {
     const blob = `${t.name || ''} ${repoLabel(t.repoUrl)} ${cursorStatusText(t.agentStatus, t.runStatus)}`.toLowerCase()
     return blob.includes(q)
   })
+})
+const quotaText = computed(() => {
+  const q = page.quota.value
+  if (!q) return page.quotaLoading.value ? '正在读取 Cursor Models 额度' : ''
+  if (q.unlimited) return 'Cursor Models 不限额度'
+  if (q.available && q.remainingPercent != null) {
+    const reset = formatReset(q.resetAt)
+    return `Cursor Models 剩余 ${q.remainingPercent}%${reset ? ` · ${reset} 重置` : ''}`
+  }
+  return q.warning || '读不到 Cursor Models 额度'
+})
+
+function formatReset(iso?: string) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return ''
+  return `${d.getMonth() + 1}月${d.getDate()}日`
+}
+
+function stepVisible(delta: number) {
+  const list = visibleTasks.value
+  if (list.length < 2) return
+  const i = visibleIndex.value < 0 ? 0 : visibleIndex.value
+  page.select(list[(i + delta + list.length) % list.length].id)
+}
+
+watch(hideArchived, (on) => localStorage.setItem('lp-cursor-hide-archived', on ? '1' : '0'))
+watch(visibleTasks, (list) => {
+  if (!list.length) return
+  if (!list.some((t) => t.id === page.selectedId.value)) page.select(list[0].id)
 })
 
 function openTaskList() {
@@ -137,6 +173,10 @@ async function onClearKey() {
 
     <template v-else>
       <p v-if="page.board.value.warning" class="warn">{{ page.board.value.warning }}</p>
+      <div v-if="quotaText || archivedCount" class="toolbar">
+        <p v-if="quotaText" class="quota">{{ quotaText }}</p>
+        <label v-if="archivedCount" class="hide"><el-switch v-model="hideArchived" />隐藏归档（{{ archivedCount }}）</label>
+      </div>
       <StateBlock
         v-if="!page.tasks.value.length"
         type="empty"
@@ -147,11 +187,17 @@ async function onClearKey() {
         <el-button type="primary" @click="createOpen = true">新建任务</el-button>
       </StateBlock>
 
+      <div v-else-if="!visibleTasks.length">
+        <StateBlock type="empty" icon="document" title="归档任务已隐藏" desc="打开开关可以重新看到它们">
+          <el-button @click="hideArchived = false">显示归档</el-button>
+        </StateBlock>
+      </div>
+
       <div v-else class="work">
         <aside class="switcher">
           <div class="switcher__list" role="tablist" aria-label="任务">
             <button
-              v-for="t in page.tasks.value"
+              v-for="t in visibleTasks"
               :key="t.id"
               type="button"
               role="tab"
@@ -172,7 +218,7 @@ async function onClearKey() {
           </div>
 
           <div class="switcher__bar">
-            <button type="button" class="step" aria-label="上一条" :disabled="page.tasks.value.length < 2" @click="page.step(-1)">
+            <button type="button" class="step" aria-label="上一条" :disabled="visibleTasks.length < 2" @click="stepVisible(-1)">
               <el-icon :size="18"><ArrowLeft /></el-icon>
             </button>
             <button type="button" class="now" @click="openTaskList">
@@ -180,10 +226,10 @@ async function onClearKey() {
               <span class="now__meta">
                 {{ cursorStatusText(currentTask?.agentStatus, currentTask?.runStatus) }}
                 <template v-if="repoLabel(currentTask?.repoUrl)"> · {{ repoLabel(currentTask?.repoUrl) }}</template>
-                · {{ page.index.value + 1 }}/{{ page.tasks.value.length }} · 全部
+                · {{ Math.max(visibleIndex, 0) + 1 }}/{{ visibleTasks.length }} · 全部
               </span>
             </button>
-            <button type="button" class="step" aria-label="下一条" :disabled="page.tasks.value.length < 2" @click="page.step(1)">
+            <button type="button" class="step" aria-label="下一条" :disabled="visibleTasks.length < 2" @click="stepVisible(1)">
               <el-icon :size="18"><ArrowRight /></el-icon>
             </button>
           </div>
@@ -327,6 +373,27 @@ async function onClearKey() {
 .warn {
   margin: 0 0 lp.$space-3;
   color: var(--el-color-danger);
+}
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: lp.$space-2 lp.$space-3;
+  margin-bottom: lp.$space-3;
+  grid-column: 1 / -1;
+}
+.quota {
+  margin: 0;
+  color: var(--el-text-color-primary);
+  font-size: lp.$font-size-base;
+}
+.hide {
+  display: inline-flex;
+  align-items: center;
+  gap: lp.$space-2;
+  color: var(--el-text-color-regular);
+  font-size: lp.$font-size-base;
 }
 .work {
   display: grid;

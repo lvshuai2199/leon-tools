@@ -37,14 +37,11 @@ export interface CursorRepoList {
   warning: string
 }
 
-export interface CursorRepo {
-  owner: string
-  name: string
-  url: string
-}
-
-export interface CursorRepoList {
-  repos: CursorRepo[]
+export interface CursorQuota {
+  available: boolean
+  unlimited: boolean
+  remainingPercent: number | null
+  resetAt: string
   warning: string
 }
 
@@ -64,6 +61,10 @@ export function clearCursorKey() {
 
 export function fetchCursorRepos(opts: Opts = {}) {
   return http.get<CursorRepoList>('/app/cursor/repos', undefined, { timeout: 100_000, ...opts })
+}
+
+export function fetchCursorQuota(opts: Opts = {}) {
+  return http.get<CursorQuota>('/app/cursor/usage', undefined, { timeout: 30_000, ...opts })
 }
 
 export function createCursorTask(data: { prompt: string; repoUrl: string; startingRef?: string; autoCreatePr: boolean }) {

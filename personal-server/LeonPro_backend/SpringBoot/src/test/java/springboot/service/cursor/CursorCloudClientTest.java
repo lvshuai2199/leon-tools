@@ -103,4 +103,24 @@ class CursorCloudClientTest {
         assertEquals("https://github.com/leon-lv/leon-tools", repos.get(1).url());
         server.verify();
     }
+
+    @Test
+    void fetchUsageReadsCursorModelRemaining() {
+        RestTemplate http = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.createServer(http);
+        CursorCloudClient client = new CursorCloudClient(http, "https://api.cursor.com", JsonMapper.builder().build());
+
+        server.expect(requestTo("https://cursor.com/api/usage-summary"))
+                .andExpect(method(HttpMethod.GET))
+                .andRespond(withSuccess("""
+                        {"billingCycleEnd":"2026-11-02T00:00:00.000Z","isUnlimited":false,
+                         "individualUsage":{"plan":{"autoPercentUsed":38.2,"apiPercentUsed":10}}}
+                        """, MediaType.APPLICATION_JSON));
+
+        CursorCloudClient.RemoteUsage usage = client.fetchUsage(KEY);
+        assertEquals(true, usage.available());
+        assertEquals(62, usage.remainingPercent());
+        assertEquals("2026-11-02T00:00:00.000Z", usage.resetAt());
+        server.verify();
+    }
 }

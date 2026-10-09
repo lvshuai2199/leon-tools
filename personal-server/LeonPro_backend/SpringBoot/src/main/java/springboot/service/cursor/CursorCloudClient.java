@@ -21,11 +21,17 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 /**
  * Cloud Agents API v1。认证是 Basic，用户名是用户自己的 API Key，密码为空。
  */
 public class CursorCloudClient {
+
+    private static final Pattern USED_PERCENT = Pattern.compile("([0-9]+(?:\\.[0-9]+)?)\\s*%");
+    private static final String USAGE_SUMMARY = "https://cursor.com/api/usage-summary";
+    private static final String PERIOD_USAGE = "https://api2.cursor.sh/aiserver.v1.DashboardService/GetCurrentPeriodUsage";
 
     private final RestTemplate http;
     private final String apiBase;
@@ -46,6 +52,108 @@ public class CursorCloudClient {
 
     public void verify(String apiKey) {
         exchange(apiKey, HttpMethod.GET, "/v1/agents?limit=1", null);
+    }
+
+    /**
+     * Cursor Models 池的剩余额度。先读 dashboard 的 usage-summary，失败再读周期用量。
+     * 两个接口都只认登录会话时，会抛出读不到额度，不影响任务列表。
+     */
+    public RemoteUsage fetchUsage(String apiKey) {
+        BizException last = null;
+        RemoteUsage summary = tryUsage(apiKey, HttpMethod.GET, USAGE_SUMMARY, null);
+        if (summary != null && summary.available()) {
+            return summary;
+        }
+        RemoteUsage period = tryUsage(apiKey, HttpMethod.POST, PERIOD_USAGE, Map.of());
+        if (period != null && period.available()) {
+            return period;
+        }
+        if (summary != null && summary.warning() != null && !summary.warning().isBlank()) {
+            last = new BizException(summary.warning());
+        }
+        if (period != null && period.warning() != null && !period.warning().isBlank()) {
+            last = new BizException(period.warning());
+        }
+        throw last == null ? new BizException("这个 Key 读不到 Cursor Models 额度") : last;
+    }
+
+    private RemoteUsage tryUsage(String apiKey, HttpMethod method, String url, Object body) {
+        try {
+            return parseUsage(exchangeUrl(apiKey, method, url, body));
+        } catch (BizException e) {
+            if ("Cursor Key 无效或没有权限，请重新创建".equals(e.getMessage()) || "Cursor 上已经没有这个任务".equals(e.getMessage())) {
+                return new RemoteUsage(false, false, null, "", "这个 Key 读不到 Cursor Models 额度");
+            }
+            return new RemoteUsage(false, false, null, "", e.getMessage());
+        }
+    }
+
+    static RemoteUsage parseUsage(JsonNode root) {
+        if (root == null || root.isNull()) {
+            return new RemoteUsage(false, false, null, "", "这个 Key 读不到 Cursor Models 额度");
+        }
+        if (bool(root, "isUnlimited")) {
+            return new RemoteUsage(true, true, null, text(root, "billingCycleEnd"), "");
+        }
+        JsonNode plan = root.path("individualUsage").path("plan");
+        if (plan.isMissingNode() || plan.isNull()) {
+            plan = root.path("planUsage");
+        }
+        if (plan.isMissingNode() || !plan.isObject()) {
+            plan = root;
+        }
+        Double used = num(plan, "autoPercentUsed");
+        if (used == null) {
+            used = percentIn(text(root, "autoModelSelectedDisplayMessage"));
+        }
+        if (used == null) {
+            used = percentIn(text(root, "displayMessage"));
+        }
+        if (used == null) {
+            Double remaining = num(plan, "remaining");
+            Double limit = num(plan, "limit");
+            if (remaining != null && limit != null && limit > 0) {
+                used = 100.0 - (remaining * 100.0 / limit);
+            }
+        }
+        if (used == null) {
+            return new RemoteUsage(false, false, null, "", "这个 Key 读不到 Cursor Models 额度");
+        }
+        int left = (int) Math.round(100.0 - used);
+        if (left < 0) {
+            left = 0;
+        }
+        if (left > 100) {
+            left = 100;
+        }
+        return new RemoteUsage(true, false, left, text(root, "billingCycleEnd"), "");
+    }
+
+    private static Double percentIn(String message) {
+        if (message == null || message.isBlank()) {
+            return null;
+        }
+        Matcher matcher = USED_PERCENT.matcher(message);
+        if (!matcher.find()) {
+            return null;
+        }
+        return Double.parseDouble(matcher.group(1));
+    }
+
+    private static boolean bool(JsonNode node, String field) {
+        JsonNode value = node == null ? null : node.get(field);
+        return value != null && !value.isNull() && value.asBoolean(false);
+    }
+
+    private static Double num(JsonNode node, String field) {
+        if (node == null || node.isMissingNode()) {
+            return null;
+        }
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull() || !value.isNumber()) {
+            return null;
+        }
+        return value.numberValue().doubleValue();
     }
 
     /**
@@ -153,6 +261,31 @@ public class CursorCloudClient {
 
     public void cancelRun(String apiKey, String agentId, String runId) {
         exchange(apiKey, HttpMethod.POST, "/v1/agents/" + agentId + "/runs/" + runId + "/cancel", Map.of());
+    }
+
+    private JsonNode exchangeUrl(String apiKey, HttpMethod method, String url, Object body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setBearerAuth(apiKey);
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        headers.set("Origin", "https://cursor.com");
+        if (body != null) {
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            if (url.contains("aiserver.v1")) {
+                headers.set("Connect-Protocol-Version", "1");
+            }
+        }
+        String payload = body == null ? null : json.writeValueAsString(body);
+        try {
+            String raw = http.exchange(URI.create(url), method, new HttpEntity<>(payload, headers), String.class).getBody();
+            if (raw == null || raw.isBlank() || raw.charAt(0) == '<') {
+                return null;
+            }
+            return json.readTree(raw);
+        } catch (HttpStatusCodeException e) {
+            throw fail(e, apiKey);
+        } catch (ResourceAccessException e) {
+            throw new BizException("连接 Cursor 失败，请稍后再试");
+        }
     }
 
     private JsonNode exchange(String apiKey, HttpMethod method, String path, Object body) {
@@ -276,5 +409,8 @@ public class CursorCloudClient {
     }
 
     public record RemoteRepo(String owner, String name, String url) {
+    }
+
+    public record RemoteUsage(boolean available, boolean unlimited, Integer remainingPercent, String resetAt, String warning) {
     }
 }

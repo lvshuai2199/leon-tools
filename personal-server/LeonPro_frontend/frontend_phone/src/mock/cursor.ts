@@ -57,6 +57,10 @@ export function handleCursor(username: string, path: string, method: string, bod
     s.hint = ''
     return ok(board(s))
   }
+  if (path === '/app/cursor/usage' && method === 'GET') {
+    if (!s.hint) return fail('先保存你自己的 Cursor API Key')
+    return ok({ available: true, unlimited: false, remainingPercent: 62, resetAt: '2026-11-02T00:00:00.000Z', warning: '' })
+  }
   if (path === '/app/cursor/repos' && method === 'GET') {
     if (!s.hint) return fail('先保存你自己的 Cursor API Key')
     return ok({

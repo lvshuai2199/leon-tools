@@ -4,6 +4,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import springboot.DTO.CursorViews.Board;
+import springboot.DTO.CursorViews.Quota;
 import springboot.DTO.CursorViews.Repo;
 import springboot.DTO.CursorViews.RepoList;
 import springboot.DTO.CursorViews.TaskCard;
@@ -14,6 +15,7 @@ import springboot.service.cursor.CursorCloudClient.Created;
 import springboot.service.cursor.CursorCloudClient.RemoteAgent;
 import springboot.service.cursor.CursorCloudClient.RemoteRepo;
 import springboot.service.cursor.CursorCloudClient.RemoteRun;
+import springboot.service.cursor.CursorCloudClient.RemoteUsage;
 import springboot.utils.BizException;
 import springboot.utils.ForbiddenException;
 
@@ -44,6 +46,8 @@ public class CursorTaskService {
     private final RegCodeAccessService access;
     private final ConcurrentHashMap<String, RepoCache> repoCache = new ConcurrentHashMap<>();
     private final ConcurrentHashMap<String, Object> repoLocks = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, QuotaCache> quotaCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Object> quotaLocks = new ConcurrentHashMap<>();
 
     public CursorTaskService(JdbcTemplate jdbc, CursorKeyCipher cipher, CursorCloudClient client,
                              RegCodeAccessService access) {
@@ -117,11 +121,40 @@ public class CursorTaskService {
                         + "ON DUPLICATE KEY UPDATE key_cipher = VALUES(key_cipher), key_hint = VALUES(key_hint), update_time = NOW()",
                 userId, packed, hint);
         repoCache.remove(userId);
+        quotaCache.remove(userId);
     }
 
     public void clearKey(String userId) {
         jdbc.update("DELETE FROM cursor_user_key WHERE user_id = ?", userId);
         repoCache.remove(userId);
+        quotaCache.remove(userId);
+    }
+
+    /** Cursor Models 剩余额度。结果缓存 10 分钟，失败时不挡住任务列表。 */
+    public Quota quota(String userId) {
+        Object lock = quotaLocks.computeIfAbsent(userId, id -> new Object());
+        synchronized (lock) {
+            QuotaCache cached = quotaCache.get(userId);
+            long now = System.currentTimeMillis();
+            if (cached != null && now - cached.at < REPO_CACHE_MS) {
+                return cached.quota;
+            }
+            try {
+                RemoteUsage remote = client.fetchUsage(openKey(requireKey(userId)));
+                Quota quota = new Quota(remote.available(), remote.unlimited(), remote.remainingPercent(),
+                        remote.resetAt() == null ? "" : remote.resetAt(), remote.warning() == null ? "" : remote.warning());
+                if (quota.available()) {
+                    quotaCache.put(userId, new QuotaCache(quota, now));
+                }
+                return quota;
+            } catch (BizException e) {
+                if (cached != null) {
+                    return new Quota(cached.quota.available(), cached.quota.unlimited(), cached.quota.remainingPercent(),
+                            cached.quota.resetAt(), e.getMessage());
+                }
+                return new Quota(false, false, null, "", e.getMessage());
+            }
+        }
     }
 
     /** 新建任务时可选的仓库。Cursor 限制大约每分钟一次，结果缓存 10 分钟。 */
@@ -445,6 +478,9 @@ public class CursorTaskService {
     }
 
     private record RepoCache(List<Repo> repos, long at) {
+    }
+
+    private record QuotaCache(Quota quota, long at) {
     }
 
     private static final class KeyRow {
