@@ -1,0 +1,82 @@
+name: Deploy branch
+
+on:
+  # GitHub → Actions → Deploy branch → Run workflow
+  # 构建在服务器上用 Docker 完成，这里只把脚本送上去并指定分支。
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 服务器要拉取并部署的分支
+        required: true
+        default: dev
+        type: string
+      programs:
+        description: 留空则按改动选择 backend、web、admin。要装 nginx 请写上 nginx
+        required: false
+        default: ""
+        type: string
+      dry_run:
+        description: 只打印将部署哪些程序，不构建
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Upload deploy tool
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          source: "personal-server/deploy/branch-deploy.sh,personal-server/deploy/docker"
+          target: /tmp/leonpro-branch-deploy
+          strip_components: 2
+          overwrite: true
+          rm: true
+
+      - name: Build and deploy on the server
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          DEPLOY_BRANCH: ${{ inputs.branch }}
+          DEPLOY_PROGRAMS: ${{ inputs.programs }}
+          DEPLOY_DRY_RUN: ${{ inputs.dry_run }}
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          password: ${{ secrets.DEPLOY_PASSWORD }}
+          port: ${{ secrets.DEPLOY_PORT }}
+          envs: DEPLOY_BRANCH,DEPLOY_PROGRAMS,DEPLOY_DRY_RUN
+          script: |
+            set -euo pipefail
+            tool=/tmp/leonpro-branch-deploy
+            if [ ! -f "$tool/branch-deploy.sh" ]; then
+              tool=/tmp/leonpro-branch-deploy/personal-server/deploy
+            fi
+            test -f "$tool/branch-deploy.sh"
+            test -f "$tool/docker/backend.Dockerfile"
+            test -f "$tool/docker/web.Dockerfile"
+            test -f "$tool/docker/admin.Dockerfile"
+            sudo mkdir -p /opt/leonpro/bin
+            sudo rm -rf /opt/leonpro/bin/docker
+            sudo cp "$tool/branch-deploy.sh" /opt/leonpro/bin/branch-deploy.sh
+            sudo cp -a "$tool/docker" /opt/leonpro/bin/docker
+            sudo chown -R "$USER:$USER" /opt/leonpro/bin
+            chmod +x /opt/leonpro/bin/branch-deploy.sh
+            args=(--yes)
+            if [ "$DEPLOY_DRY_RUN" = "true" ]; then
+              args+=(--dry-run)
+            fi
+            args+=(-- "$DEPLOY_BRANCH")
+            if [ -n "$DEPLOY_PROGRAMS" ]; then
+              read -r -a extra <<< "$DEPLOY_PROGRAMS"
+              args+=("${extra[@]}")
+            fi
+            bash /opt/leonpro/bin/branch-deploy.sh "${args[@]}"
