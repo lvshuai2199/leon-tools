@@ -11,9 +11,9 @@ const authNames = {
 };
 
 const viewSubs = {
-  local: "本机启停 Spring / Vue / 手机 H5",
-  remote: "SSH 隧道、部署，以及把生产表拷到开发库",
-  config: "项目目录和服务器 IP，保存后立刻生效",
+  local: "启停 Spring / Vue / 手机 H5",
+  remote: "隧道、部署、生产表拷到开发库",
+  config: "目录和服务器，保存后立刻生效",
 };
 
 const pathFields = {
@@ -57,9 +57,6 @@ function setView(view) {
   viewSub.textContent = viewSubs[currentView];
   document.querySelectorAll("#viewSwitch [data-view]").forEach((btn) => {
     btn.classList.toggle("active", btn.dataset.view === currentView);
-  });
-  document.querySelectorAll(".view-only").forEach((el) => {
-    el.classList.toggle("hidden", el.dataset.for !== currentView);
   });
 }
 
@@ -116,7 +113,7 @@ function render(state) {
       return `<div class="deploy-row">
         <div>
           <strong>${names[id]}</strong>
-          <div class="hint">${remote.dir || "未配置 DEPLOY_REMOTE_DIR"} · ${deploy.status}</div>
+          <div class="status">${remote.dir || "未配置目录"} · ${deploy.status}</div>
         </div>
         <button class="btn" data-deploy="${id}" ${deploy.status === "running" ? "disabled" : ""}>部署</button>
       </div>`;
@@ -154,16 +151,16 @@ function render(state) {
     .map((svc) => {
       const href = state.urls[svc.id];
       return `
-        <article class="svc">
-          <h2>${names[svc.id]}</h2>
-          <div class="status ${svc.status}">状态：${svc.status}${svc.pid ? ` · pid ${svc.pid}` : ""}</div>
-          <div>端口 ${svc.port}${href ? ` · <a href="${href}" target="_blank">打开</a>` : ""}</div>
-          <div class="hint">${svc.cwdExists ? svc.cwd : `目录不存在：${svc.cwd || ""}`}</div>
-          <div class="svc-actions">
+        <div class="svc-row">
+          <div>
+            <strong>${names[svc.id]}</strong>
+            <div class="status ${svc.status}">${svc.status}${svc.pid ? ` · ${svc.pid}` : ""} · ${svc.port}${href ? ` · <a href="${href}" target="_blank">打开</a>` : ""}${svc.cwdExists ? "" : " · 目录不存在"}</div>
+          </div>
+          <div class="actions">
             <button class="btn primary" data-start="${svc.id}">启动</button>
             <button class="btn" data-stop="${svc.id}">停止</button>
           </div>
-        </article>`;
+        </div>`;
     })
     .join("");
 }

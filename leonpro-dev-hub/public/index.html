@@ -3,157 +3,112 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>LeonPro 本地启动台</title>
-    <link rel="stylesheet" href="/styles.css?v=5" />
+    <title>LeonPro 启动台</title>
+    <link rel="stylesheet" href="/styles.css?v=6" />
   </head>
   <body>
     <main class="app">
       <header class="top">
-        <div>
-          <h1>LeonPro 本地启动台</h1>
-          <p id="viewSub" class="sub">本机启停 Spring / Vue / 手机 H5</p>
-        </div>
-        <div class="header-right">
-          <div class="view-switch" id="viewSwitch">
-            <button type="button" data-view="local" class="active">本机运行</button>
-            <button type="button" data-view="remote">SSH / 部署</button>
-            <button type="button" data-view="config">路径 / 服务器</button>
-          </div>
-          <div class="actions view-only" data-for="local">
-            <button id="startAll" class="btn primary">一键开启全部</button>
-            <button id="stopAll" class="btn danger">一键关闭全部</button>
-          </div>
-          <div class="actions view-only hidden" data-for="remote">
-            <button id="deployAll" class="btn primary">一键部署全部</button>
-          </div>
+        <h1>LeonPro 启动台</h1>
+        <div class="seg" id="viewSwitch">
+          <button type="button" data-view="local" class="active">本机</button>
+          <button type="button" data-view="remote">远程</button>
+          <button type="button" data-view="config">配置</button>
         </div>
       </header>
+      <p id="viewSub" class="status"></p>
 
       <div class="stage" id="stageTrack" data-view="local">
-        <div class="stage-track">
-          <section class="stage-page" data-page="local">
-            <section class="grid">
-              <article class="card">
-                <h2>Spring Boot 数据库</h2>
-                <p class="hint">只影响本机后端。会先走 SSH 隧道连服务器 MySQL（公网 3306 不通）。Prod 用 <code>leonpro_db_prod</code>。</p>
-                <div class="seg" data-group="db">
-                  <button data-value="dev">Dev 库</button>
-                  <button data-value="prod">Prod 库</button>
-                </div>
-              </article>
-              <article class="card">
-                <h2>前端接口目标</h2>
-                <p class="hint">本地走本机 8089。服务器端经 SSH 转到本机 18089（公网 8089 不通）。</p>
-                <div class="seg" data-group="frontendTarget">
-                  <button data-value="local">本地 Spring Boot</button>
-                  <button data-value="remote">服务器端</button>
-                </div>
-                <p id="apiHint" class="target"></p>
-              </article>
-            </section>
-            <section id="services" class="services"></section>
+        <section class="stage-page" data-page="local">
+          <section class="card">
+            <h2>数据库</h2>
+            <div class="seg" data-group="db">
+              <button type="button" data-value="dev">Dev</button>
+              <button type="button" data-value="prod">Prod</button>
+            </div>
+            <h2 class="gap">前端接口</h2>
+            <div class="seg" data-group="frontendTarget">
+              <button type="button" data-value="local">本机</button>
+              <button type="button" data-value="remote">服务器</button>
+            </div>
+            <p id="apiHint" class="status"></p>
           </section>
 
-          <section class="stage-page" data-page="remote">
-            <section class="grid">
-              <article class="card">
-                <h2>SSH 连接</h2>
-                <p class="hint">账号来自 bootstrap.env / 各项目 deploy.env，不会在页面显示密码。</p>
-                <p id="sshHint" class="target"></p>
-                <p id="tunnelHint" class="target"></p>
-                <div class="actions">
-                  <button id="sshTest" class="btn">测试 SSH</button>
-                  <button id="tunnelStart" class="btn primary">连接隧道</button>
-                  <button id="tunnelStop" class="btn">断开隧道</button>
-                </div>
-              </article>
-              <article class="card">
-                <h2>部署到服务器</h2>
-                <p class="hint">调用对应目录的 deploy/deploy.ps1。Spring 走 Docker，Vue 到网站根目录，手机 H5 到 /h5/。</p>
-                <label class="check">
-                  <input id="skipBuild" type="checkbox" />
-                  跳过构建，只上传已有产物
-                </label>
-                <div id="deployList" class="deploy-list"></div>
-              </article>
-            </section>
-            <section class="grid config-grid">
-              <article class="card">
-                <h2>生产库 → 开发库</h2>
-                <p class="hint">经 SSH 在服务器 <code>mysql8</code> 上，把 <code>leonpro_db_prod</code> 的表覆盖写入 <code>leonpro_db_dev</code>。行数为估算值。开发库对应表会被替换。</p>
-                <p id="dbCopyHint" class="target"></p>
-                <div class="actions">
-                  <button id="dbRefresh" class="btn">刷新表清单</button>
-                  <button id="dbSelectAll" class="btn">全选</button>
-                  <button id="dbCopy" class="btn primary">拷贝到开发库</button>
-                </div>
-                <div id="dbTableList" class="table-list"></div>
-              </article>
-            </section>
+          <section class="card">
+            <div class="row head">
+              <h2>服务</h2>
+              <div class="actions">
+                <button id="startAll" class="btn primary" type="button">全开</button>
+                <button id="stopAll" class="btn" type="button">全关</button>
+              </div>
+            </div>
+            <div id="services" class="list"></div>
+          </section>
+        </section>
+
+        <section class="stage-page" data-page="remote">
+          <section class="card">
+            <h2>SSH</h2>
+            <p id="sshHint" class="status"></p>
+            <p id="tunnelHint" class="status"></p>
+            <div class="actions">
+              <button id="sshTest" class="btn" type="button">测试</button>
+              <button id="tunnelStart" class="btn primary" type="button">连接</button>
+              <button id="tunnelStop" class="btn" type="button">断开</button>
+            </div>
           </section>
 
-          <section class="stage-page" data-page="config">
-            <section class="grid config-grid">
-              <article class="card">
-                <h2>服务器</h2>
-                <p class="hint">SSH 隧道、部署、远端 API 都用这个主机。密码仍只从 deploy.env / bootstrap.env 读取。</p>
-                <div class="form-grid">
-                  <label class="field">
-                    服务器 IP / 主机名
-                    <input id="cfgServerHost" type="text" autocomplete="off" placeholder="124.220.57.33" />
-                  </label>
-                  <label class="field">
-                    SSH 用户
-                    <input id="cfgSshUser" type="text" autocomplete="off" placeholder="ubuntu" />
-                  </label>
-                  <label class="field">
-                    SSH 端口
-                    <input id="cfgSshPort" type="text" autocomplete="off" placeholder="22" />
-                  </label>
-                </div>
-              </article>
-              <article class="card">
-                <h2>项目目录</h2>
-                <p class="hint">相对启动台目录或绝对路径。保存后立刻用于启停和部署，无需重启启动台。</p>
-                <div class="form-grid">
-                  <label class="field">
-                    Spring Boot
-                    <input id="cfgPathSpring" type="text" autocomplete="off" />
-                    <span class="path-meta" id="cfgMetaSpring"></span>
-                  </label>
-                  <label class="field">
-                    Vue
-                    <input id="cfgPathVue" type="text" autocomplete="off" />
-                    <span class="path-meta" id="cfgMetaVue"></span>
-                  </label>
-                  <label class="field">
-                    手机 H5
-                    <input id="cfgPathUni" type="text" autocomplete="off" />
-                    <span class="path-meta" id="cfgMetaUni"></span>
-                  </label>
-                  <label class="field">
-                    bootstrap.env
-                    <input id="cfgPathBootstrap" type="text" autocomplete="off" />
-                    <span class="path-meta" id="cfgMetaBootstrap"></span>
-                  </label>
-                </div>
-                <div class="actions" style="margin-top: 14px">
-                  <button id="saveConfig" class="btn primary">保存配置</button>
-                </div>
-              </article>
-            </section>
+          <section class="card">
+            <div class="row head">
+              <h2>部署</h2>
+              <button id="deployAll" class="btn primary" type="button">全部</button>
+            </div>
+            <label class="check"><input id="skipBuild" type="checkbox" />跳过构建，只上传已有产物</label>
+            <div id="deployList" class="list"></div>
           </section>
-        </div>
+
+          <section class="card">
+            <h2>生产库 → 开发库</h2>
+            <p id="dbCopyHint" class="status"></p>
+            <div class="actions">
+              <button id="dbRefresh" class="btn" type="button">刷新</button>
+              <button id="dbSelectAll" class="btn" type="button">全选</button>
+              <button id="dbCopy" class="btn primary" type="button">拷贝</button>
+            </div>
+            <div id="dbTableList" class="list"></div>
+          </section>
+        </section>
+
+        <section class="stage-page" data-page="config">
+          <section class="card">
+            <h2>服务器</h2>
+            <label>主机<input id="cfgServerHost" type="text" autocomplete="off" placeholder="124.220.57.33" /></label>
+            <div class="row">
+              <label>SSH 用户<input id="cfgSshUser" type="text" autocomplete="off" placeholder="ubuntu" /></label>
+              <label class="narrow">端口<input id="cfgSshPort" type="text" autocomplete="off" placeholder="22" /></label>
+            </div>
+          </section>
+          <section class="card">
+            <h2>目录</h2>
+            <label>Spring Boot<input id="cfgPathSpring" type="text" autocomplete="off" /><span class="path-meta" id="cfgMetaSpring"></span></label>
+            <label>Vue<input id="cfgPathVue" type="text" autocomplete="off" /><span class="path-meta" id="cfgMetaVue"></span></label>
+            <label>手机 H5<input id="cfgPathUni" type="text" autocomplete="off" /><span class="path-meta" id="cfgMetaUni"></span></label>
+            <label>bootstrap.env<input id="cfgPathBootstrap" type="text" autocomplete="off" /><span class="path-meta" id="cfgMetaBootstrap"></span></label>
+            <div class="actions">
+              <button id="saveConfig" class="btn primary" type="button">保存</button>
+            </div>
+          </section>
+        </section>
       </div>
 
-      <section class="card log-card">
-        <div class="log-head">
-          <h2>运行日志</h2>
-          <button id="clearLogs" class="btn ghost">清空</button>
+      <section class="card">
+        <div class="row head">
+          <h2>日志</h2>
+          <button id="clearLogs" class="btn" type="button">清空</button>
         </div>
-        <pre id="logs"></pre>
+        <pre id="logs" class="log"></pre>
       </section>
     </main>
-    <script src="/app.js?v=5"></script>
+    <script src="/app.js?v=6"></script>
   </body>
 </html>
