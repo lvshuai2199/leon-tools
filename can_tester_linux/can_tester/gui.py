@@ -4265,7 +4265,6 @@ class CanTesterApp(tk.Tk):
 
         self._nbm_welder_box = ttk.Frame(mid)
         self._nbm_arc = tk.BooleanVar(value=False)
-        self._nbm_welding = tk.BooleanVar(value=False)
         self._nbm_fault = tk.BooleanVar(value=False)
         self._nbm_comm = tk.BooleanVar(value=True)
         self._nbm_feeder = tk.BooleanVar(value=True)
@@ -4275,7 +4274,6 @@ class CanTesterApp(tk.Tk):
             self._nbm_welder_box,
             (
                 ("起弧成功", self._nbm_arc),
-                ("焊接状态", self._nbm_welding),
                 ("焊机故障", self._nbm_fault),
                 ("通讯就绪", self._nbm_comm),
                 ("寻位成功", self._nbm_touch),
@@ -4403,7 +4401,7 @@ class CanTesterApp(tk.Tk):
             alarm = 0
         return nbm.pack_output(
             arc_ok=bool(self._nbm_arc.get()),
-            welding=bool(self._nbm_welding.get()),
+            welding=bool(self._nbm_arc.get()),
             fault=bool(self._nbm_fault.get()),
             comm_ready=bool(self._nbm_comm.get()),
             touch_ok=bool(self._nbm_touch.get()),
@@ -4449,7 +4447,7 @@ class CanTesterApp(tk.Tk):
     def _nbm_tpdo_frames(self) -> list[tuple[int, bytes]]:
         return nbm.jte_welder_replies(
             ready=bool(self._nbm_comm.get()),
-            in_weld=bool(self._nbm_welding.get() or self._nbm_arc.get()),
+            in_weld=bool(self._nbm_arc.get()),
             current_a=int(round(self._nbm_number(self._nbm_out_i))),
             voltage_v=self._nbm_number(self._nbm_out_u),
             alarm=int(round(self._nbm_number(self._nbm_alarm))),
