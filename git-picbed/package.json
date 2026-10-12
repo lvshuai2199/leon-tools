@@ -1,0 +1,14 @@
+{
+  "name": "git-picbed",
+  "version": "1.0.0",
+  "private": true,
+  "description": "本地 Git 图床：Gitee 或 GitHub 二选一，去重、定时整理、失效清除、更新链接后推送",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

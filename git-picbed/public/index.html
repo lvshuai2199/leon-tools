@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Git 图床</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="app">
+      <header class="top">
+        <h1>Git 图床</h1>
+        <div class="actions">
+          <button id="sync" class="btn" type="button">整理</button>
+          <button id="push" class="btn primary" type="button">推送</button>
+        </div>
+      </header>
+
+      <section class="card">
+        <div class="seg" id="provider">
+          <button type="button" data-value="gitee" class="active">Gitee</button>
+          <button type="button" data-value="github">GitHub</button>
+        </div>
+        <label>仓库<input id="repoPath" placeholder="已 clone 的目录" /></label>
+        <div class="row">
+          <label>图片分支<input id="branch" value="master" /></label>
+          <label>图片目录<input id="imageDir" value="imgs" /></label>
+        </div>
+        <p id="identity" class="status"></p>
+      </section>
+
+      <section class="card">
+        <label>监听文件夹<textarea id="watchText" rows="2" placeholder="每行一个图片目录"></textarea></label>
+        <label>文档文件夹<textarea id="docText" rows="2" placeholder="每行一个 md / html 目录"></textarea></label>
+        <label class="check"><input id="clearMissing" type="checkbox" checked />缺少的图片从文档去掉</label>
+        <div class="row tight">
+          <label class="check"><input id="scheduleOn" type="checkbox" />自动推送</label>
+          <label class="narrow">间隔（分钟）<input id="interval" type="number" min="1" max="1440" value="30" /></label>
+        </div>
+        <p id="runInfo" class="status"></p>
+      </section>
+
+      <section class="card">
+        <div class="row">
+          <label>文档分支<input id="pushBranch" placeholder="留空 = 笔记当前分支" /></label>
+          <label>目录<input id="pushDir" placeholder="仓库外文档才填" /></label>
+        </div>
+      </section>
+
+      <section class="card">
+        <pre id="log" class="log">等待操作</pre>
+      </section>
+
+      <section class="card">
+        <h2>图片 <span id="imageCount" class="count"></span></h2>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>文件</th>
+                <th>信息</th>
+                <th>链接</th>
+              </tr>
+            </thead>
+            <tbody id="images"></tbody>
+          </table>
+        </div>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

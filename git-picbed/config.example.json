@@ -1,0 +1,22 @@
+{
+  "port": 3791,
+  "provider": "gitee",
+  "repoPath": "",
+  "remote": "origin",
+  "branch": "master",
+  "imageDir": "imgs",
+  "owner": "",
+  "repo": "",
+  "watchFolders": [],
+  "docFolders": [],
+  "clearMissingLinks": true,
+  "schedule": {
+    "enabled": false,
+    "intervalMinutes": 30
+  },
+  "push": {
+    "branch": "",
+    "directory": "",
+    "message": "docs: 更新图床链接"
+  }
+}
