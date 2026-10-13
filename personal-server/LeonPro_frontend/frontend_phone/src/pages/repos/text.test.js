@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { fileStatusText, formatWhen, headline, mergeText, mergeTone } from "./text.js"
+import { fileStatusText, formatWhen, headline, mergeLane, mergeText, mergeTone } from "./text.js"
 
 const now = Date.parse("2026-10-13T12:00:00Z")
 
@@ -31,6 +31,41 @@ test("分支合并情况", () => {
   assert.equal(mergeText({ name: "x", merge: "", ahead: 0, behind: 0 }, "main"), "")
   assert.equal(mergeTone({ name: "old", merge: "merged" }, "main"), "ok")
   assert.equal(mergeTone({ name: "feat", merge: "diverged" }, "main"), "open")
+})
+
+test("分支小图：实心点相对空心点的位置", () => {
+  const def = mergeLane({ name: "main", merge: "default", ahead: 0, behind: 0 }, "main")
+  assert.equal(def.kind, "default")
+  assert.equal(def.nodes.length, 1)
+  assert.equal(def.nodes[0].role, "head")
+
+  const merged = mergeLane({ name: "old", merge: "merged", ahead: 0, behind: 4 }, "main")
+  const mergedHead = merged.nodes.find((n) => n.role === "head")
+  const mergedBase = merged.nodes.find((n) => n.role === "base")
+  assert.ok(mergedHead.x < mergedBase.x)
+  assert.equal(merged.labels[0].text, "4")
+
+  const ahead = mergeLane({ name: "dev", merge: "ahead", ahead: 2, behind: 0 }, "main")
+  const aheadHead = ahead.nodes.find((n) => n.role === "head")
+  const aheadBase = ahead.nodes.find((n) => n.role === "base")
+  assert.ok(aheadHead.x > aheadBase.x)
+  assert.equal(aheadHead.y, aheadBase.y)
+
+  const fork = mergeLane({ name: "feat", merge: "diverged", ahead: 3, behind: 1 }, "main")
+  const forkHead = fork.nodes.find((n) => n.role === "head")
+  const forkBase = fork.nodes.find((n) => n.role === "base")
+  assert.ok(forkHead.y < forkBase.y)
+  assert.equal(fork.lines.length, 2)
+  assert.deepEqual(fork.labels.map((l) => l.text), ["1", "3"])
+
+  const unknown = mergeLane({ name: "wip", merge: "unmerged", ahead: 5, behind: 0 }, "main")
+  assert.equal(unknown.lines[0].dash, true)
+  assert.equal(mergeLane({ name: "x", merge: "", ahead: 0, behind: 0 }, "main"), null)
+
+  const tipX = (lane) => (lane.nodes.find((n) => n.role === "base") || lane.nodes[0]).x
+  assert.equal(tipX(def), tipX(merged))
+  assert.equal(tipX(def), tipX(ahead))
+  assert.equal(tipX(def), tipX(fork))
 })
 
 test("文件状态", () => {

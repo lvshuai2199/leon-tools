@@ -24,7 +24,8 @@ import {
   type RepoBoard,
 } from '@/api/repos'
 import { showToast } from '@/utils/ui'
-import { fileStatusText, formatWhen, headline, mergeText, mergeTone, providerText } from './text.js'
+import MergeLane from './MergeLane.vue'
+import { fileStatusText, formatWhen, headline, mergeText, providerText } from './text.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -363,6 +364,10 @@ loadBoard()
           {{ branches.defaultBranch ? `默认 ${branches.defaultBranch}` : '没有默认分支' }}
           · {{ branches.branches.length }} 个分支
         </p>
+        <p class="lane-key">
+          <i class="dot dot--base" /> 默认顶端
+          <i class="dot dot--head" /> 这条分支
+        </p>
         <p v-if="branches.truncated" class="warn">分支较多，只列出前 100 个</p>
         <p v-if="mergeIncomplete" class="warn">有的分支暂时没有和默认分支比较的结果</p>
         <StateBlock v-if="!branches.branches.length" type="empty" icon="list" compact title="这个仓库还没有分支" />
@@ -373,12 +378,12 @@ loadBoard()
                 type="button"
                 class="branch"
                 :class="{ 'is-on': b.name === selectedRef }"
+                :title="mergeText(b, branches.defaultBranch)"
+                :aria-label="`${b.name} ${mergeText(b, branches.defaultBranch)}`"
                 @click="onRefChange(b.name)"
               >
                 <span class="branch__name">{{ b.name }}</span>
-                <span v-if="mergeText(b, branches.defaultBranch)" class="tag" :class="`tag--${mergeTone(b, branches.defaultBranch)}`">
-                  {{ mergeText(b, branches.defaultBranch) }}
-                </span>
+                <MergeLane :branch="b" :default-branch="branches.defaultBranch" />
               </button>
             </li>
           </ul>
@@ -577,17 +582,27 @@ loadBoard()
   background: var(--el-fill-color);
   color: var(--el-text-color-secondary);
 }
-.tag--base {
-  background: var(--el-color-primary-light-9);
-  color: var(--el-color-primary);
+.lane-key {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 lp.$space-3;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
 }
-.tag--ok {
-  background: var(--el-color-success-light-9);
-  color: var(--el-color-success);
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
 }
-.tag--open {
-  background: var(--el-color-warning-light-9);
-  color: var(--el-color-warning);
+.dot--base {
+  box-sizing: border-box;
+  border: 2px solid var(--el-color-primary);
+  background: var(--el-bg-color);
+}
+.dot--head {
+  margin-left: lp.$space-2;
+  background: var(--el-text-color-primary);
 }
 .st--added,
 .st--add {
@@ -605,9 +620,9 @@ loadBoard()
 }
 .branch {
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
+  gap: 12px;
   width: 100%;
   min-height: 44px;
   padding: lp.$space-2 0;
@@ -621,9 +636,13 @@ loadBoard()
   }
 }
 .branch__name {
+  min-width: 0;
+  overflow: hidden;
   color: var(--el-text-color-primary);
   font-size: lp.$font-size-medium;
   font-weight: lp.$font-weight-semibold;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .commits,
 .files {

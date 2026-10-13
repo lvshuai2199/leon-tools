@@ -56,6 +56,86 @@ export function mergeTone(branch, defaultBranch) {
   return ""
 }
 
+/**
+ * 分支相对默认分支的小图。
+ * 空心点是默认分支顶端，实心点是这条分支。
+ * 实心点在左：已合并，只是落后。在右：还有提交没进去。抬高：两边都有新提交。
+ */
+export function mergeLane(branch, defaultBranch) {
+  if (!branch) return null
+  const kind = branch.name === defaultBranch ? "default" : String(branch.merge || "")
+  if (!kind) return null
+  const ahead = Math.max(0, Number(branch.ahead) || 0)
+  const behind = Math.max(0, Number(branch.behind) || 0)
+  const y = 22
+  const tip = 58
+  const left = 14
+  const right = 108
+  if (kind === "default" || kind === "identical") {
+    return {
+      kind,
+      lines: [{ x1: 12, y1: y, x2: tip, y2: y, dash: false }],
+      nodes: [{ role: "head", x: tip, y }],
+      labels: [],
+    }
+  }
+  if (kind === "merged") {
+    return {
+      kind,
+      lines: [{ x1: left, y1: y, x2: tip, y2: y, dash: false }],
+      nodes: [
+        { role: "head", x: left, y },
+        { role: "base", x: tip, y },
+      ],
+      labels: behind > 0 ? [{ text: countLabel(behind), x: (left + tip) / 2, y: 15 }] : [],
+    }
+  }
+  if (kind === "ahead") {
+    return {
+      kind,
+      lines: [{ x1: tip, y1: y, x2: right, y2: y, dash: false }],
+      nodes: [
+        { role: "base", x: tip, y },
+        { role: "head", x: right, y },
+      ],
+      labels: ahead > 0 ? [{ text: countLabel(ahead), x: (tip + right) / 2, y: 15 }] : [],
+    }
+  }
+  if (kind === "diverged") {
+    return {
+      kind,
+      lines: [
+        { x1: left, y1: y, x2: tip, y2: y, dash: false },
+        { x1: tip, y1: y, x2: right, y2: 10, dash: false },
+      ],
+      nodes: [
+        { role: "base", x: tip, y },
+        { role: "head", x: right, y: 10 },
+      ],
+      labels: [
+        ...(behind > 0 ? [{ text: countLabel(behind), x: (left + tip) / 2, y: 15 }] : []),
+        ...(ahead > 0 ? [{ text: countLabel(ahead), x: 82, y: 12 }] : []),
+      ],
+    }
+  }
+  if (kind === "unmerged") {
+    return {
+      kind,
+      lines: [{ x1: tip, y1: y, x2: right, y2: y, dash: true }],
+      nodes: [
+        { role: "base", x: tip, y },
+        { role: "head", x: right, y },
+      ],
+      labels: ahead > 0 ? [{ text: countLabel(ahead), x: (tip + right) / 2, y: 15 }] : [],
+    }
+  }
+  return null
+}
+
+function countLabel(n) {
+  return n > 99 ? "99+" : String(n)
+}
+
 function absolute(t, now) {
   const d = new Date(t)
   const p = (n) => String(n).padStart(2, "0")
