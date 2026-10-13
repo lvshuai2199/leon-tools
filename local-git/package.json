@@ -1,0 +1,14 @@
+{
+  "name": "local-git",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Windows 本机 Git 工具。双击启动.bat，在浏览器里克隆、提交、推拉、分支、变基和拣选。",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

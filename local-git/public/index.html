@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>本机 Git</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>本机 Git</h1>
+      <p>只在这台 Windows 上运行。直接打开这台电脑上已有的 Git 仓库。</p>
+    </div>
+    <div class="top__actions">
+      <button type="button" id="open-clone">克隆</button>
+      <button type="button" id="open-settings">目录和账号</button>
+    </div>
+  </header>
+  <main id="app"></main>
+  <div id="modal" class="modal" hidden></div>
+  <div id="toast" class="toast" hidden></div>
+  <script src="/app.js"></script>
+</body>
+</html>
