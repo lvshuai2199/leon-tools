@@ -1,6 +1,6 @@
 <script setup lang="ts">
 /**
- * 仓库：GitHub / Gitee 的概况、分支和提交。令牌按登录用户存在后端。
+ * 仓库：GitHub / Gitee 的概况、分支合并情况和提交。令牌按登录用户存在后端。
  * 列表 /repos，仓库 ?p=&o=&n=，提交再加 &sha=
  */
 import { computed, ref, watch } from 'vue'
@@ -24,7 +24,7 @@ import {
   type RepoBoard,
 } from '@/api/repos'
 import { showToast } from '@/utils/ui'
-import { fileStatusText, formatWhen, headline, providerText } from './text.js'
+import { fileStatusText, formatWhen, headline, mergeText, mergeTone, providerText } from './text.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -119,6 +119,11 @@ const currentCard = computed(() => {
   return board.value.repos.find((r) => r.provider === repo.p && r.owner === repo.o && r.name === repo.n) || null
 })
 const currentBranch = computed(() => branches.value?.branches.find((b) => b.name === selectedRef.value) || null)
+const mergeIncomplete = computed(() => {
+  const page = branches.value
+  if (!page) return false
+  return page.branches.some((b) => b.name !== page.defaultBranch && !mergeText(b, page.defaultBranch))
+})
 
 function githubPlaceholder() {
   return board.value?.github.configured ? `已保存，末四位 ${board.value.github.hint}` : 'GitHub Personal access token'
@@ -287,7 +292,7 @@ loadBoard()
 
 <template>
   <div class="repos">
-    <PageBar :title="title" :back="backTo" :desc="view === 'list' ? '分支、最近提交和仓库状态' : ''">
+    <PageBar :title="title" :back="backTo" :desc="view === 'list' ? '分支合并、最近提交和仓库状态' : ''">
       <template #actions="{ mobile }">
         <IconAction v-if="mobile" :icon="Refresh" label="刷新" :disabled="refreshing || branchLoading || detailLoading" @click="refresh" />
         <el-button v-else :loading="refreshing || branchLoading || detailLoading" @click="refresh">刷新</el-button>
@@ -359,20 +364,24 @@ loadBoard()
           · {{ branches.branches.length }} 个分支
         </p>
         <p v-if="branches.truncated" class="warn">分支较多，只列出前 100 个</p>
+        <p v-if="mergeIncomplete" class="warn">有的分支暂时没有和默认分支比较的结果</p>
         <StateBlock v-if="!branches.branches.length" type="empty" icon="list" compact title="这个仓库还没有分支" />
         <template v-else>
-          <div class="refs">
-            <button
-              v-for="b in branches.branches"
-              :key="b.name"
-              type="button"
-              class="ref"
-              :class="{ 'is-on': b.name === selectedRef }"
-              @click="onRefChange(b.name)"
-            >
-              {{ b.name }}
-            </button>
-          </div>
+          <ul class="branches">
+            <li v-for="b in branches.branches" :key="b.name">
+              <button
+                type="button"
+                class="branch"
+                :class="{ 'is-on': b.name === selectedRef }"
+                @click="onRefChange(b.name)"
+              >
+                <span class="branch__name">{{ b.name }}</span>
+                <span v-if="mergeText(b, branches.defaultBranch)" class="tag" :class="`tag--${mergeTone(b, branches.defaultBranch)}`">
+                  {{ mergeText(b, branches.defaultBranch) }}
+                </span>
+              </button>
+            </li>
+          </ul>
           <p v-if="currentBranch" class="sub">
             {{ currentBranch.shortSha }}
             <template v-if="currentBranch.author"> · {{ currentBranch.author }}</template>
@@ -477,8 +486,7 @@ loadBoard()
   margin-bottom: lp.$space-3;
   overflow-x: auto;
 }
-.filters button,
-.ref {
+.filters button {
   flex: none;
   min-height: 36px;
   padding: 0 lp.$space-3;
@@ -569,6 +577,18 @@ loadBoard()
   background: var(--el-fill-color);
   color: var(--el-text-color-secondary);
 }
+.tag--base {
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+}
+.tag--ok {
+  background: var(--el-color-success-light-9);
+  color: var(--el-color-success);
+}
+.tag--open {
+  background: var(--el-color-warning-light-9);
+  color: var(--el-color-warning);
+}
 .st--added,
 .st--add {
   color: var(--el-color-success);
@@ -578,11 +598,32 @@ loadBoard()
 .st--delete {
   color: var(--el-color-danger);
 }
-.refs {
+.branches {
+  margin: 0 0 lp.$space-3;
+  padding: 0;
+  list-style: none;
+}
+.branch {
   display: flex;
-  gap: lp.$space-2;
-  margin-bottom: lp.$space-3;
-  overflow-x: auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-height: 44px;
+  padding: lp.$space-2 0;
+  border: none;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  &.is-on .branch__name {
+    color: var(--el-color-primary);
+  }
+}
+.branch__name {
+  color: var(--el-text-color-primary);
+  font-size: lp.$font-size-medium;
+  font-weight: lp.$font-weight-semibold;
 }
 .commits,
 .files {

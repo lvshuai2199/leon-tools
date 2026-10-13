@@ -18,7 +18,7 @@ const TOOL_DESC: Record<string, string> = {
   '/regcode': '为客户生成对应注册码',
   '/notes': '仓库里的 Markdown，随手记写完再上传',
   '/cursor': '用自己的 Key 发任务，点名字切换预览',
-  '/repos': 'GitHub 和 Gitee 的分支、提交和最近状态',
+  '/repos': 'GitHub 和 Gitee 的分支合并、提交和最近状态',
 }
 
 const isLoggedIn = userStore.isLoggedIn

@@ -47,6 +47,10 @@ export interface RepoBranch {
   message: string
   author: string
   date: string
+  /** default / identical / merged / ahead / diverged / unmerged，空字符串表示没比出来 */
+  merge: string
+  ahead: number
+  behind: number
 }
 
 export interface BranchPage {

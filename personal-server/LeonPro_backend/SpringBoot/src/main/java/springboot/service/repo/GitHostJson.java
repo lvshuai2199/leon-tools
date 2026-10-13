@@ -13,6 +13,7 @@ import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 
 /** 把 GitHub / Gitee 的 JSON 收成手机端要用的字段。不发网络请求。 */
 public final class GitHostJson {
@@ -24,6 +25,10 @@ public final class GitHostJson {
     }
 
     public record GithubRepos(String login, boolean hasNext, String cursor, List<RepoCard> repos) {
+    }
+
+    /** ahead：head 比 base 多的提交。behindKnown 为 false 时 behind 无意义。 */
+    public record AheadBehind(int ahead, int behind, boolean behindKnown) {
     }
 
     public static GithubRepos githubRepos(JsonNode root) {
@@ -81,7 +86,7 @@ public final class GitHostJson {
                 JsonNode target = node.get("target");
                 String sha = text(target, "oid");
                 branches.add(new Branch(name, sha, shortSha(sha), headline(text(target, "messageHeadline")),
-                        authorOf(target), text(target, "committedDate")));
+                        authorOf(target), text(target, "committedDate"), "", 0, 0));
             }
         }
         return branches;
@@ -98,6 +103,81 @@ public final class GitHostJson {
             return "";
         }
         return text(repo.path("defaultBranchRef"), "name");
+    }
+
+    /**
+     * 读一次比较结果。GitHub GraphQL 用 aheadBy/behindBy（head 相对 base）。
+     * Gitee 比较接口有时只有 commits / total_commits，这时不知道落后多少。
+     */
+    public static AheadBehind readCompare(JsonNode node) {
+        if (node == null || node.isNull() || node.isMissingNode() || !node.isObject()) {
+            return null;
+        }
+        boolean camelAhead = hasNumber(node, "aheadBy");
+        boolean snakeAhead = hasNumber(node, "ahead_by");
+        boolean camelBehind = hasNumber(node, "behindBy");
+        boolean snakeBehind = hasNumber(node, "behind_by");
+        if (camelAhead || snakeAhead || camelBehind || snakeBehind) {
+            int ahead = camelAhead ? integer(node, "aheadBy") : integer(node, "ahead_by");
+            int behind = camelBehind ? integer(node, "behindBy") : integer(node, "behind_by");
+            return new AheadBehind(Math.max(ahead, 0), Math.max(behind, 0), camelBehind || snakeBehind);
+        }
+        JsonNode commits = node.get("commits");
+        if (hasNumber(node, "total_commits") || (commits != null && commits.isArray())) {
+            int ahead = hasNumber(node, "total_commits") ? integer(node, "total_commits") : commits.size();
+            return new AheadBehind(Math.max(ahead, 0), 0, false);
+        }
+        return null;
+    }
+
+    /** 把比较结果写成手机端能直接显示的 merge。比较缺失时，相同提交仍标成一致。 */
+    public static List<Branch> applyMerges(String defaultBranch, List<Branch> branches, Map<String, AheadBehind> compared) {
+        String defSha = "";
+        String def = defaultBranch == null ? "" : defaultBranch;
+        for (Branch branch : branches) {
+            if (def.equals(branch.name()) && branch.sha() != null) {
+                defSha = branch.sha();
+                break;
+            }
+        }
+        List<Branch> out = new ArrayList<>();
+        for (Branch branch : branches) {
+            AheadBehind cmp = compared == null ? null : compared.get(branch.name());
+            out.add(annotate(branch, def, defSha, cmp));
+        }
+        return out;
+    }
+
+    static Branch annotate(Branch branch, String defaultBranch, String defaultSha, AheadBehind cmp) {
+        String name = branch.name() == null ? "" : branch.name();
+        boolean sameSha = defaultSha != null && !defaultSha.isBlank() && defaultSha.equals(branch.sha());
+        String merge;
+        int ahead = 0;
+        int behind = 0;
+        if (!defaultBranch.isBlank() && defaultBranch.equals(name)) {
+            merge = "default";
+        } else if (sameSha) {
+            merge = "identical";
+        } else if (cmp == null) {
+            merge = "";
+        } else if (cmp.ahead() <= 0 && (!cmp.behindKnown() || cmp.behind() <= 0)) {
+            merge = "identical";
+        } else if (cmp.ahead() <= 0) {
+            merge = "merged";
+            behind = cmp.behind();
+        } else if (!cmp.behindKnown()) {
+            merge = "unmerged";
+            ahead = cmp.ahead();
+        } else if (cmp.behind() <= 0) {
+            merge = "ahead";
+            ahead = cmp.ahead();
+        } else {
+            merge = "diverged";
+            ahead = cmp.ahead();
+            behind = cmp.behind();
+        }
+        return new Branch(branch.name(), branch.sha(), branch.shortSha(), branch.message(), branch.author(),
+                branch.date(), merge, ahead, behind);
     }
 
     public static List<CommitBrief> commitList(JsonNode root) {
@@ -391,6 +471,21 @@ public final class GitHostJson {
             return patch;
         }
         return patch.substring(0, PATCH_LIMIT) + "\n…（后面已截断）";
+    }
+
+    private static boolean hasNumber(JsonNode node, String field) {
+        if (node == null || node.isNull() || node.isMissingNode()) {
+            return false;
+        }
+        JsonNode value = node.get(field);
+        if (value == null || value.isNull()) {
+            return false;
+        }
+        if (value.isNumber()) {
+            return true;
+        }
+        String s = value.asString();
+        return s != null && !s.isBlank();
     }
 
     private static boolean flag(JsonNode node, String field) {

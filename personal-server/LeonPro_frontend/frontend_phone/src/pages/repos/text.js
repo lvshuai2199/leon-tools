@@ -33,6 +33,29 @@ export function providerText(provider) {
   return provider === "gitee" ? "Gitee" : "GitHub"
 }
 
+/** 相对默认分支的合并情况。比不出来就返回空字符串。 */
+export function mergeText(branch, defaultBranch) {
+  if (!branch) return ""
+  const kind = branch.name === defaultBranch ? "default" : branch.merge || ""
+  const ahead = Number(branch.ahead) || 0
+  const behind = Number(branch.behind) || 0
+  if (kind === "default") return "默认分支"
+  if (kind === "identical") return "与默认分支一致"
+  if (kind === "merged") return behind > 0 ? `已合并，落后 ${behind}` : "已合并"
+  if (kind === "ahead") return `未合并，超前 ${ahead}`
+  if (kind === "diverged") return `未合并，超前 ${ahead}，落后 ${behind}`
+  if (kind === "unmerged") return ahead > 0 ? `未合并，还有 ${ahead} 个提交` : "未合并"
+  return ""
+}
+
+export function mergeTone(branch, defaultBranch) {
+  const kind = branch && branch.name === defaultBranch ? "default" : branch?.merge || ""
+  if (kind === "default") return "base"
+  if (kind === "identical" || kind === "merged") return "ok"
+  if (kind === "ahead" || kind === "diverged" || kind === "unmerged") return "open"
+  return ""
+}
+
 function absolute(t, now) {
   const d = new Date(t)
   const p = (n) => String(n).padStart(2, "0")

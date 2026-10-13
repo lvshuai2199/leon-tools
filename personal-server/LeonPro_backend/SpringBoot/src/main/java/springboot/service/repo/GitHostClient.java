@@ -10,6 +10,7 @@ import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import springboot.DTO.RepoViews.Branch;
 import springboot.DTO.RepoViews.BranchPage;
+import springboot.service.repo.GitHostJson.AheadBehind;
 import springboot.DTO.RepoViews.CommitBrief;
 import springboot.DTO.RepoViews.CommitDetail;
 import springboot.DTO.RepoViews.CommitPage;
@@ -243,7 +244,80 @@ public class GitHostClient {
             throw new BizException("不存在，或当前令牌看不到它");
         }
         String def = GitHostJson.githubDefaultBranch(root);
+        branches = GitHostJson.applyMerges(def, branches, githubAhead(token, owner, name, def, branches));
         return new BranchPage(def, GitHostJson.githubBranchesTruncated(root), GitHostJson.sortBranches(def, branches));
+    }
+
+    /**
+     * 默认分支当 base，其它分支当 head。aheadBy 就是还没进默认分支的提交。
+     * 一次比太多会顶到 GraphQL 复杂度，按 25 条拆开。比失败就留下已经比出来的。
+     */
+    private Map<String, AheadBehind> githubAhead(String token, String owner, String name, String base, List<Branch> branches) {
+        Map<String, AheadBehind> out = new LinkedHashMap<>();
+        if (base == null || base.isBlank()) {
+            return out;
+        }
+        String baseSha = "";
+        for (Branch branch : branches) {
+            if (base.equals(branch.name()) && branch.sha() != null) {
+                baseSha = branch.sha();
+                break;
+            }
+        }
+        List<String> heads = new ArrayList<>();
+        for (Branch branch : branches) {
+            if (branch.name() == null || branch.name().isBlank() || base.equals(branch.name())) {
+                continue;
+            }
+            if (!baseSha.isBlank() && baseSha.equals(branch.sha())) {
+                continue;
+            }
+            heads.add(branch.name());
+        }
+        for (int from = 0; from < heads.size(); from += 25) {
+            List<String> chunk = heads.subList(from, Math.min(heads.size(), from + 25));
+            try {
+                JsonNode ref = graphql(token, compareQuery(chunk.size()), compareVars(owner, name, base, chunk))
+                        .path("data").path("repository").path("ref");
+                if (ref.isMissingNode() || ref.isNull()) {
+                    break;
+                }
+                for (int i = 0; i < chunk.size(); i++) {
+                    AheadBehind cmp = GitHostJson.readCompare(ref.get("c" + i));
+                    if (cmp != null) {
+                        out.put(chunk.get(i), cmp);
+                    }
+                }
+            } catch (RuntimeException e) {
+                break;
+            }
+        }
+        return out;
+    }
+
+    private static String compareQuery(int n) {
+        StringBuilder q = new StringBuilder();
+        q.append("query($owner: String!, $name: String!, $base: String!");
+        for (int i = 0; i < n; i++) {
+            q.append(", $h").append(i).append(": String!");
+        }
+        q.append(") { repository(owner: $owner, name: $name) { ref(qualifiedName: $base) {");
+        for (int i = 0; i < n; i++) {
+            q.append(" c").append(i).append(": compare(headRef: $h").append(i).append(") { aheadBy behindBy status }");
+        }
+        q.append(" } } }");
+        return q.toString();
+    }
+
+    private static Map<String, Object> compareVars(String owner, String name, String base, List<String> heads) {
+        Map<String, Object> vars = new LinkedHashMap<>();
+        vars.put("owner", owner);
+        vars.put("name", name);
+        vars.put("base", "refs/heads/" + base);
+        for (int i = 0; i < heads.size(); i++) {
+            vars.put("h" + i, heads.get(i));
+        }
+        return vars;
     }
 
     private BranchPage giteeBranches(String token, String owner, String name) {
@@ -265,10 +339,10 @@ public class GitHostClient {
                     continue;
                 }
                 String sha = GitHostJson.text(item.path("commit"), "sha");
-                branches.add(new Branch(branch, sha, GitHostJson.shortSha(sha), "", "", ""));
+                branches.add(new Branch(branch, sha, GitHostJson.shortSha(sha), "", "", "", "", 0, 0));
             }
         }
-        fillBranchTips(token, owner, name, branches);
+        fillBranchTips(token, owner, name, def, branches);
         return new BranchPage(def, branches.size() >= 100, GitHostJson.sortBranches(def, branches));
     }
 
@@ -292,9 +366,17 @@ public class GitHostClient {
         }
     }
 
-    private void fillBranchTips(String token, String owner, String name, List<Branch> branches) {
+    private void fillBranchTips(String token, String owner, String name, String def, List<Branch> branches) {
+        String defSha = "";
+        for (Branch branch : branches) {
+            if (def != null && def.equals(branch.name())) {
+                defSha = branch.sha() == null ? "" : branch.sha();
+                break;
+            }
+        }
         int n = Math.min(branches.size(), 40);
         CommitBrief[] found = new CommitBrief[n];
+        AheadBehind[] merges = new AheadBehind[n];
         List<Runnable> jobs = new ArrayList<>();
         for (int i = 0; i < n; i++) {
             Branch branch = branches.get(i);
@@ -302,9 +384,17 @@ public class GitHostClient {
                 continue;
             }
             int idx = i;
-            jobs.add(() -> found[idx] = firstCommit("gitee", token, owner, name, branch.name()));
+            String head = branch.name();
+            String sha = branch.sha() == null ? "" : branch.sha();
+            boolean skipCompare = def == null || def.isBlank() || def.equals(head) || (!defSha.isBlank() && defSha.equals(sha));
+            jobs.add(() -> {
+                found[idx] = firstCommit("gitee", token, owner, name, head);
+                if (!skipCompare) {
+                    merges[idx] = giteeCompare(token, owner, name, def, head);
+                }
+            });
         }
-        parallel(jobs, Duration.ofSeconds(8));
+        parallel(jobs, Duration.ofSeconds(12));
         for (int i = 0; i < n; i++) {
             CommitBrief brief = found[i];
             if (brief == null) {
@@ -313,7 +403,31 @@ public class GitHostClient {
             Branch old = branches.get(i);
             branches.set(i, new Branch(old.name(), brief.sha().isBlank() ? old.sha() : brief.sha(),
                     brief.shortSha().isBlank() ? old.shortSha() : brief.shortSha(),
-                    brief.message(), brief.author(), brief.date()));
+                    brief.message(), brief.author(), brief.date(), "", 0, 0));
+        }
+        List<Branch> annotated = GitHostJson.applyMerges(def, branches, mergeMap(branches, merges));
+        branches.clear();
+        branches.addAll(annotated);
+    }
+
+    private static Map<String, AheadBehind> mergeMap(List<Branch> branches, AheadBehind[] merges) {
+        Map<String, AheadBehind> out = new LinkedHashMap<>();
+        int n = Math.min(branches.size(), merges.length);
+        for (int i = 0; i < n; i++) {
+            if (merges[i] != null && branches.get(i).name() != null) {
+                out.put(branches.get(i).name(), merges[i]);
+            }
+        }
+        return out;
+    }
+
+    private AheadBehind giteeCompare(String token, String owner, String name, String base, String head) {
+        try {
+            String url = "https://gitee.com/api/v5/repos/" + enc(owner) + "/" + enc(name)
+                    + "/compare/" + enc(base) + "..." + enc(head);
+            return GitHostJson.readCompare(get("gitee", token, url));
+        } catch (RuntimeException e) {
+            return null;
         }
     }
 

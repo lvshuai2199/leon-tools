@@ -23,7 +23,17 @@ type Repo = {
   stars: number
   openIssues: number
   lastCommit: Commit | null
-  branches: { name: string; sha: string; shortSha: string; message: string; author: string; date: string }[]
+  branches: {
+    name: string
+    sha: string
+    shortSha: string
+    message: string
+    author: string
+    date: string
+    merge: string
+    ahead: number
+    behind: number
+  }[]
   commits: Record<string, Commit[]>
   files: Record<string, { filename: string; status: string; additions: number; deletions: number; patch: string }[]>
 }
@@ -54,8 +64,9 @@ const REPOS: Repo[] = [
       htmlUrl: 'https://github.com/leon-lv/leon-tools/commit/abc1234def567890',
     },
     branches: [
-      { name: 'main', sha: 'abc1234def567890', shortSha: 'abc1234', message: '手机端可以看仓库状态', author: 'leon-lv', date: hoursAgo(2) },
-      { name: 'dev', sha: 'def5678abc901234', shortSha: 'def5678', message: '调整部署说明', author: 'leon-lv', date: hoursAgo(30) },
+      { name: 'main', sha: 'abc1234def567890', shortSha: 'abc1234', message: '手机端可以看仓库状态', author: 'leon-lv', date: hoursAgo(2), merge: 'default', ahead: 0, behind: 0 },
+      { name: 'dev', sha: 'def5678abc901234', shortSha: 'def5678', message: '调整部署说明', author: 'leon-lv', date: hoursAgo(30), merge: 'diverged', ahead: 2, behind: 1 },
+      { name: 'release', sha: 'ccc3333ddd444555', shortSha: 'ccc3333', message: '已经合进 main', author: 'leon-lv', date: hoursAgo(80), merge: 'merged', ahead: 0, behind: 4 },
     ],
     commits: {
       main: [
@@ -84,6 +95,16 @@ const REPOS: Repo[] = [
           author: 'leon-lv',
           date: hoursAgo(30),
           htmlUrl: 'https://github.com/leon-lv/leon-tools/commit/def5678abc901234',
+        },
+      ],
+      release: [
+        {
+          sha: 'ccc3333ddd444555',
+          shortSha: 'ccc3333',
+          message: '已经合进 main',
+          author: 'leon-lv',
+          date: hoursAgo(80),
+          htmlUrl: 'https://github.com/leon-lv/leon-tools/commit/ccc3333ddd444555',
         },
       ],
     },
@@ -122,7 +143,7 @@ const REPOS: Repo[] = [
       htmlUrl: 'https://gitee.com/sfnss/typora-pic/commit/eee9999fff000011',
     },
     branches: [
-      { name: 'master', sha: 'eee9999fff000011', shortSha: 'eee9999', message: '更新一张配图', author: 'sfnss', date: hoursAgo(20) },
+      { name: 'master', sha: 'eee9999fff000011', shortSha: 'eee9999', message: '更新一张配图', author: 'sfnss', date: hoursAgo(20), merge: 'default', ahead: 0, behind: 0 },
     ],
     commits: {
       master: [

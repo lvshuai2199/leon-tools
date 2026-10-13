@@ -3,9 +3,11 @@ package springboot.service.repo;
 import org.junit.jupiter.api.Test;
 import springboot.DTO.RepoViews.Branch;
 import springboot.DTO.RepoViews.CommitDetail;
+import springboot.service.repo.GitHostJson.AheadBehind;
 import tools.jackson.databind.json.JsonMapper;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -82,10 +84,43 @@ class GitHostJsonTest {
     @Test
     void defaultBranchStaysFirst() {
         List<Branch> sorted = GitHostJson.sortBranches("main", List.of(
-                new Branch("dev", "aaa", "aaa", "new", "a", "2026-10-13T00:00:00Z"),
-                new Branch("main", "bbb", "bbb", "old", "a", "2026-01-01T00:00:00Z"),
-                new Branch("old", "ccc", "ccc", "older", "a", "2020-01-01T00:00:00Z")));
+                new Branch("dev", "aaa", "aaa", "new", "a", "2026-10-13T00:00:00Z", "", 0, 0),
+                new Branch("main", "bbb", "bbb", "old", "a", "2026-01-01T00:00:00Z", "", 0, 0),
+                new Branch("old", "ccc", "ccc", "older", "a", "2020-01-01T00:00:00Z", "", 0, 0)));
         assertEquals(List.of("main", "dev", "old"), sorted.stream().map(Branch::name).toList());
+    }
+
+    @Test
+    void compareCountsBecomeMergeLabels() throws Exception {
+        AheadBehind both = GitHostJson.readCompare(json.readTree("{\"aheadBy\":2,\"behindBy\":4,\"status\":\"DIVERGED\"}"));
+        assertEquals(2, both.ahead());
+        assertEquals(4, both.behind());
+        assertTrue(both.behindKnown());
+
+        AheadBehind onlyAhead = GitHostJson.readCompare(json.readTree("{\"total_commits\":3,\"commits\":[{},{},{}]}"));
+        assertEquals(3, onlyAhead.ahead());
+        assertFalse(onlyAhead.behindKnown());
+        assertNull(GitHostJson.readCompare(json.readTree("null")));
+
+        List<Branch> raw = List.of(
+                new Branch("main", "bbb", "bbb", "", "", "", "", 0, 0),
+                new Branch("dev", "aaa", "aaa", "", "", "", "", 0, 0),
+                new Branch("old", "ccc", "ccc", "", "", "", "", 0, 0),
+                new Branch("same", "bbb", "bbb", "", "", "", "", 0, 0),
+                new Branch("tip", "ddd", "ddd", "", "", "", "", 0, 0));
+        List<Branch> labeled = GitHostJson.applyMerges("main", raw, Map.of(
+                "dev", new AheadBehind(2, 4, true),
+                "old", new AheadBehind(0, 5, true),
+                "tip", new AheadBehind(3, 0, false)));
+        assertEquals("default", labeled.get(0).merge());
+        assertEquals("diverged", labeled.get(1).merge());
+        assertEquals(2, labeled.get(1).ahead());
+        assertEquals(4, labeled.get(1).behind());
+        assertEquals("merged", labeled.get(2).merge());
+        assertEquals(5, labeled.get(2).behind());
+        assertEquals("identical", labeled.get(3).merge());
+        assertEquals("unmerged", labeled.get(4).merge());
+        assertEquals(3, labeled.get(4).ahead());
     }
 
     @Test

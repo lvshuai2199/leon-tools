@@ -6,6 +6,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
+import springboot.DTO.RepoViews.BranchPage;
 import springboot.utils.BizException;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -97,6 +98,37 @@ class GitHostClientTest {
         assertEquals("sfnss", list.login());
         assertEquals("add pic", list.repos().get(0).lastCommit().message());
         assertEquals("sfnss", list.repos().get(0).lastCommit().author());
+        server.verify();
+    }
+
+    @Test
+    void githubBranchesCompareAgainstDefault() {
+        RestTemplate http = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.createServer(http);
+        GitHostClient client = new GitHostClient(http, JsonMapper.builder().build());
+        server.expect(requestTo("https://api.github.com/graphql"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {"data":{"repository":{"defaultBranchRef":{"name":"main"},
+                        "refs":{"pageInfo":{"hasNextPage":false},"nodes":[
+                          {"name":"dev","target":{"oid":"aaa1111bbbb","messageHeadline":"wip","committedDate":"2026-10-13T00:00:00Z","author":{"name":"a"}}},
+                          {"name":"main","target":{"oid":"bbb2222cccc","messageHeadline":"ship","committedDate":"2026-10-01T00:00:00Z","author":{"name":"a"}}}
+                        ]}}}}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://api.github.com/graphql"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("""
+                        {"data":{"repository":{"ref":{"c0":{"aheadBy":2,"behindBy":1,"status":"DIVERGED"}}}}}
+                        """, MediaType.APPLICATION_JSON));
+
+        BranchPage page = client.branches("github", TOKEN, "leon-lv", "leon-tools");
+        assertEquals("main", page.defaultBranch());
+        assertEquals("main", page.branches().get(0).name());
+        assertEquals("default", page.branches().get(0).merge());
+        assertEquals("dev", page.branches().get(1).name());
+        assertEquals("diverged", page.branches().get(1).merge());
+        assertEquals(2, page.branches().get(1).ahead());
+        assertEquals(1, page.branches().get(1).behind());
         server.verify();
     }
 }
