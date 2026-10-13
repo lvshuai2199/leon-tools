@@ -5,7 +5,7 @@
  * 示例账号：
  *   任意用户名 + 6 位以上密码可登录（密码写 wrong123 模拟“用户名或密码错误”）
  *   账号只靠 appMenus 区分（和后端一致，不再有 canUseCrab / canUseRegCode）：
- *   demo 等其他用户名 → 出货 + 注册码 + Cursor 任务
+ *   demo 等其他用户名 → 出货 + 注册码 + Cursor 任务 + 笔记 + 仓库
  *   用户名 crabonly → 只有螃蟹出货
  *   用户名 nomenu → 没有任何用户端菜单（首页看不到工具，直接进 /crab 被拒）
  *   用户名 empty  → 螃蟹出货没有任何记录（空状态）
@@ -13,6 +13,7 @@
  */
 import * as wp from './wallpaper'
 import { handleCursor } from './cursor'
+import { handleRepos } from './repos'
 import { REGCODE_ONLY_USERS, handleRegCode, regCodeMe } from './regcode'
 
 type Body = Record<string, unknown> | unknown[] | null
@@ -33,6 +34,7 @@ const MENU_CRAB_DETAIL = { id: 103, menuName: '出货单详情', menuUrl: '/crab
 const MENU_REGCODE = { id: 104, menuName: '注册码生成', menuUrl: '/regcode', parentId: 0, sortOrder: 4, icon: 'key', visible: 1, menuType: 'C', permission: 'app:regcode:gen', component: 'regcode/index', routeName: 'regcode' }
 const MENU_CURSOR = { id: 105, menuName: 'Cursor 任务', menuUrl: '/cursor', parentId: 0, sortOrder: 6, icon: 'cursor', visible: 1, menuType: 'C', permission: 'app:cursor:use', component: 'cursor/index', routeName: 'cursorTasks' }
 const MENU_NOTES = { id: 106, menuName: '笔记', menuUrl: '/notes', parentId: 0, sortOrder: 7, icon: 'document', visible: 1, menuType: 'C', permission: 'app:notes:list', component: 'notes', routeName: 'notes' }
+const MENU_REPOS = { id: 107, menuName: '仓库', menuUrl: '/repos', parentId: 0, sortOrder: 8, icon: 'repos', visible: 1, menuType: 'C', permission: 'app:repos:use', component: 'repos/index', routeName: 'repos' }
 const CRAB_MENUS = [MENU_CRAB, MENU_CRAB_NEW, MENU_CRAB_DETAIL]
 
 const NICKNAMES: Record<string, string> = {
@@ -65,7 +67,7 @@ function menusOf(username: string) {
   if (username === 'nomenu') return []
   if (username === 'crabonly') return CRAB_MENUS
   if (REGCODE_ONLY_USERS.has(username)) return [MENU_REGCODE]
-  return [...CRAB_MENUS, MENU_REGCODE, MENU_CURSOR, MENU_NOTES]
+  return [...CRAB_MENUS, MENU_REGCODE, MENU_CURSOR, MENU_NOTES, MENU_REPOS]
 }
 
 /** 当前账号能用的菜单路径（mock 接口按它返回 403） */
@@ -203,6 +205,12 @@ export async function mockFetch(pathWithQuery: string, init: RequestInit): Promi
     if (!allowed.has('/regcode')) return forbidden()
     const r = handleRegCode(username, path, method, body)
     if (r) return json(r.status, r.body as Body)
+  }
+
+  if (path.startsWith('/app/repos')) {
+    if (!allowed.has('/repos')) return forbidden()
+    const repos = handleRepos(username, path, method, q, body)
+    if (repos) return json(repos.status, repos.body as Body)
   }
 
   if (path.startsWith('/app/notes')) {

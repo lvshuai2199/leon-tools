@@ -250,6 +250,7 @@ public class OperationLogFilter extends OncePerRequestFilter implements Ordered 
         map.put("/systemData", "系统数据");
         map.put("/wallpaper", "壁纸管理");
         map.put("/app/cursor", "Cursor 任务");
+        map.put("/app/repos", "仓库");
         for (Map.Entry<String, String> e : map.entrySet()) {
             if (uri.startsWith(e.getKey()) || uri.contains(e.getKey())) {
                 return e.getValue();

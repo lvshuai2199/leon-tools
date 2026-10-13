@@ -5,7 +5,7 @@ import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import springboot.service.NoteSourceService;
 
-/** 定时看远程分支有没有新提交，有就重新拉取并重建 Markdown 索引。 */
+/** 每半天看一次远程分支有没有新提交，有就重新拉取并重建 Markdown 索引。 */
 @Slf4j
 @Component
 public class NoteSyncScheduler {
@@ -16,7 +16,7 @@ public class NoteSyncScheduler {
         this.noteSourceService = noteSourceService;
     }
 
-    @Scheduled(fixedDelayString = "${app.notes.poll-millis:60000}",
+    @Scheduled(fixedDelayString = "${app.notes.poll-millis:43200000}",
             initialDelayString = "${app.notes.poll-initial-millis:20000}")
     public void poll() {
         try {

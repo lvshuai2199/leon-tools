@@ -35,6 +35,7 @@ public class SchemaPatcher implements CommandLineRunner {
         ensureWallpaperTables();
         ensureNoteTables();
         ensureCursorTables();
+        ensureRepoTokenTable();
         ensureMenuSyncColumns();
     }
 
@@ -70,6 +71,19 @@ public class SchemaPatcher implements CommandLineRunner {
                         + "UNIQUE KEY `uk_cursor_agent_owner` (`user_id`, `agent_id`),"
                         + "KEY `idx_cursor_agent_user_time` (`user_id`, `update_time`)"
                         + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户发起的 Cursor Cloud Agent'");
+    }
+
+    /** GitHub / Gitee 令牌：每人每个平台一行，加密方式与 Cursor Key 相同。 */
+    private void ensureRepoTokenTable() {
+        ensureTable("repo_user_token",
+                "CREATE TABLE `repo_user_token` ("
+                        + "`user_id` VARCHAR(64) NOT NULL COMMENT '系统用户ID',"
+                        + "`provider` VARCHAR(16) NOT NULL COMMENT 'github 或 gitee',"
+                        + "`token_cipher` VARCHAR(900) NOT NULL COMMENT 'AES-GCM 加密后的访问令牌',"
+                        + "`token_hint` VARCHAR(8) NOT NULL COMMENT '令牌末四位',"
+                        + "`update_time` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',"
+                        + "PRIMARY KEY (`user_id`, `provider`)"
+                        + ") ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户自己的 GitHub / Gitee 令牌'");
     }
 
     /**

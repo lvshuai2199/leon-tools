@@ -115,5 +115,18 @@
     "keepAlive": false,
     "client": "app",
     "routeName": "notes"
+  },
+  {
+    "path": "/repos",
+    "name": "仓库",
+    "parent": null,
+    "type": "page",
+    "component": "repos/index",
+    "icon": "repos",
+    "sort": 8,
+    "hidden": false,
+    "keepAlive": false,
+    "client": "app",
+    "routeName": "repos"
   }
 ]

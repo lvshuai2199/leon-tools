@@ -29,7 +29,8 @@ app:
   notes:
     # 克隆下来的仓库目录。旁边会写一个 {目录名}.source 记录当前地址和分支，换地址时整目录重克隆
     storage-dir: ${NOTES_DIR:./data/notes-repo}
-    poll-millis: ${NOTES_POLL_MILLIS:60000}
+    # 默认每 12 小时向远程查一次新提交。管理端「立即检查」不受这个间隔限制。
+    poll-millis: ${NOTES_POLL_MILLIS:43200000}
     poll-initial-millis: 20000
     max-files: 8000
     max-file-bytes: 1048576

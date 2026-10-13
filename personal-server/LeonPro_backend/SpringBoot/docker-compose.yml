@@ -27,6 +27,8 @@ services:
       MENU_SYNC_ALLOW_MISSING_MANIFEST: ${MENU_SYNC_ALLOW_MISSING_MANIFEST:-}
       # 加密用户 Cursor Key。只写在服务器 /opt/leonpro/backend/.env，不要提交明文。
       CURSOR_KEY_SECRET: ${CURSOR_KEY_SECRET:-}
+      # 笔记仓库检查间隔，毫秒。默认 12 小时。写在服务器 .env 里即可覆盖。
+      NOTES_POLL_MILLIS: ${NOTES_POLL_MILLIS:-43200000}
     volumes:
       # 壁纸等上传文件持久化（容器工作目录 /app，对应 app.wallpaper.storage-dir=./uploads/wallpaper）
       - ./uploads:/app/uploads
