@@ -65,6 +65,7 @@ const openFile = ref('')
 let repoSeq = 0
 let commitSeq = 0
 let detailSeq = 0
+let preferAll = false
 
 function queryRepo() {
   const p = String(route.query.p || '')
@@ -152,7 +153,12 @@ const mergeReady = computed(() => !!mergeHead.value && !!mergeBase.value && merg
 function initialRef(data: GraphPage, want: string) {
   const names = data.branches.map((b) => b.name)
   if (want && names.includes(want)) return want
-  return names.includes(data.defaultBranch) ? data.defaultBranch : names[0] || ''
+  return ''
+}
+
+function wantedRef() {
+  if (preferAll) return ''
+  return String(route.query.ref || selectedRef.value || '')
 }
 
 function githubPlaceholder() {
@@ -188,6 +194,10 @@ async function loadBoard(refresh = false) {
 function applyGraph(data: GraphPage, want: string) {
   graph.value = data
   selectedRef.value = initialRef(data, want)
+  if (!selectedRef.value) {
+    commits.value = []
+    commitError.value = ''
+  }
 }
 
 async function loadRepo(refresh = false) {
@@ -205,15 +215,15 @@ async function loadRepo(refresh = false) {
     if (!refresh) {
       const data = await fetchGraph(repo.p, repo.o, repo.n, false)
       if (id !== repoSeq) return
-      applyGraph(data, selectedRef.value || String(route.query.ref || ''))
-      void loadCommits(true)
+      applyGraph(data, wantedRef())
+      if (selectedRef.value) void loadCommits(true)
       if (!data.stale) return
     }
     refreshing.value = true
     const fresh = await fetchGraph(repo.p, repo.o, repo.n, true)
     if (id !== repoSeq) return
-    applyGraph(fresh, selectedRef.value || String(route.query.ref || ''))
-    void loadCommits(true, true)
+    applyGraph(fresh, wantedRef())
+    if (selectedRef.value) void loadCommits(true, true)
   } catch (e) {
     if (id !== repoSeq) return
     if (!graph.value) branchError.value = errorMessage(e)
@@ -290,8 +300,20 @@ function queryWithout(drop: string, extra: Record<string, string> = {}) {
   return { ...query, ...extra }
 }
 
+function showAll() {
+  if (!selectedRef.value) return
+  preferAll = true
+  selectedRef.value = ''
+  commitSeq += 1
+  commits.value = []
+  commitError.value = ''
+  commitLoading.value = false
+  router.replace({ path: '/repos', query: queryWithout('ref') })
+}
+
 function onBranch(name: string) {
   if (!name || name === selectedRef.value || !graph.value?.branches.some((b) => b.name === name)) return
+  preferAll = false
   selectedRef.value = name
   router.replace({ path: '/repos', query: queryWithout('sha', { ref: name }) })
   loadCommits(true)
@@ -326,7 +348,9 @@ async function submitMerge() {
 }
 
 function openCommit(id: string) {
-  router.push({ path: '/repos', query: { ...route.query, ref: selectedRef.value, sha: id } })
+  const extra: Record<string, string> = { sha: id }
+  if (selectedRef.value) extra.ref = selectedRef.value
+  router.push({ path: '/repos', query: queryWithout('sha', extra) })
 }
 
 function refresh() {
@@ -362,13 +386,28 @@ async function onClear(which: 'github' | 'gitee') {
   }
 }
 
-watch(repoKey, () => loadRepo(), { immediate: true })
+watch(repoKey, () => {
+  preferAll = false
+  loadRepo()
+}, { immediate: true })
 watch(sha, () => loadDetail(), { immediate: true })
 watch(
   () => String(route.query.ref || ''),
   (ref) => {
-    if (!ref || ref === selectedRef.value || !graph.value) return
+    if (!graph.value) return
+    if (!ref) {
+      if (!selectedRef.value) return
+      preferAll = true
+      selectedRef.value = ''
+      commitSeq += 1
+      commits.value = []
+      commitError.value = ''
+      commitLoading.value = false
+      return
+    }
+    if (ref === selectedRef.value) return
     if (!graph.value.branches.some((b) => b.name === ref)) return
+    preferAll = false
     selectedRef.value = ref
     loadCommits(true)
   },
@@ -448,9 +487,10 @@ loadBoard()
         <p class="sub">
           {{ branches.defaultBranch ? `默认 ${branches.defaultBranch}` : '没有默认分支' }}
           · {{ branches.branches.length }} 个分支
-          · 选一个分支看它的提交。合并要在窗口里点确定
+          · 全部看各分支的图，点一个分支看它自己的提交。合并要在窗口里点确定
         </p>
         <div v-if="branches.branches.length" class="filters">
+          <button type="button" :class="{ 'is-on': !selectedRef }" @click="showAll">全部</button>
           <button
             v-for="b in branches.branches"
             :key="b.name"
@@ -459,29 +499,32 @@ loadBoard()
             @click="onBranch(b.name)"
           >{{ b.name }}</button>
         </div>
-        <p v-if="selectedRef" class="sub">{{ selectedRef }} 的提交</p>
-        <StateBlock v-if="commitError" type="error" :title="commitError" @retry="loadCommits(true)" />
-        <StateBlock v-else-if="commitLoading && !commits.length" type="loading" title="正在读取提交" />
-        <StateBlock v-else-if="selectedRef && !commits.length" type="empty" icon="list" compact title="这个分支还没有提交" />
-        <ul v-else-if="commits.length" class="commits">
-          <li v-for="c in commits" :key="c.sha">
-            <button type="button" class="commit" @click="openCommit(c.sha)">
-              <span class="commit__msg">{{ headline(c.message) }}</span>
-              <span class="commit__meta">{{ c.shortSha }} · {{ c.author || '未知作者' }} · {{ formatWhen(c.date) }}</span>
-            </button>
-          </li>
-        </ul>
-        <el-button v-if="commits.length && !commitDone" class="more" :loading="commitLoading" @click="loadCommits(false)">更早的提交</el-button>
-        <p v-if="branches.truncated" class="warn">分支或提交较多，图上只画出最近一段</p>
-        <p v-if="mergeIncomplete" class="warn">有的分支暂时没有和默认分支比较的结果</p>
-        <StateBlock v-if="!graph || !graph.commits.length" type="empty" icon="list" compact title="这个仓库还没有提交" />
-        <template v-else>
-          <CommitGraph :commits="graph.commits" :selected="selectedRef" @open="openCommit" @branch="onBranch" />
-          <div v-if="showMerge" class="merge-bar">
-            <p v-if="currentBranch" class="sub">{{ currentBranch.name }} · {{ mergeText(currentBranch, branches.defaultBranch) }}</p>
-            <el-button @click="openMerge">合并</el-button>
-          </div>
+        <template v-if="!selectedRef">
+          <p class="sub">全部分支</p>
+          <p v-if="branches.truncated" class="warn">分支或提交较多，图上只画出最近一段</p>
+          <p v-if="mergeIncomplete" class="warn">有的分支暂时没有和默认分支比较的结果</p>
+          <StateBlock v-if="!graph || !graph.commits.length" type="empty" icon="list" compact title="这个仓库还没有提交" />
+          <CommitGraph v-else :commits="graph.commits" @open="openCommit" @branch="onBranch" />
         </template>
+        <template v-else>
+          <p class="sub">{{ selectedRef }} 的提交</p>
+          <StateBlock v-if="commitError" type="error" :title="commitError" @retry="loadCommits(true)" />
+          <StateBlock v-else-if="commitLoading && !commits.length" type="loading" title="正在读取提交" />
+          <StateBlock v-else-if="!commits.length" type="empty" icon="list" compact title="这个分支还没有提交" />
+          <ul v-else class="commits">
+            <li v-for="c in commits" :key="c.sha">
+              <button type="button" class="commit" @click="openCommit(c.sha)">
+                <span class="commit__msg">{{ headline(c.message) }}</span>
+                <span class="commit__meta">{{ c.shortSha }} · {{ c.author || '未知作者' }} · {{ formatWhen(c.date) }}</span>
+              </button>
+            </li>
+          </ul>
+          <el-button v-if="commits.length && !commitDone" class="more" :loading="commitLoading" @click="loadCommits(false)">更早的提交</el-button>
+        </template>
+        <div v-if="showMerge" class="merge-bar">
+          <p v-if="currentBranch" class="sub">{{ currentBranch.name }} · {{ mergeText(currentBranch, branches.defaultBranch) }}</p>
+          <el-button @click="openMerge">合并</el-button>
+        </div>
       </template>
     </template>
 
