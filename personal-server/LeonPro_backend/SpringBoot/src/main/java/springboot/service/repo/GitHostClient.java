@@ -14,6 +14,9 @@ import springboot.service.repo.GitHostJson.AheadBehind;
 import springboot.DTO.RepoViews.CommitBrief;
 import springboot.DTO.RepoViews.CommitDetail;
 import springboot.DTO.RepoViews.CommitPage;
+import springboot.DTO.RepoViews.GraphCommit;
+import springboot.DTO.RepoViews.GraphPage;
+import springboot.DTO.RepoViews.MergeResult;
 import springboot.DTO.RepoViews.RepoCard;
 import springboot.utils.BizException;
 import tools.jackson.databind.JsonNode;
@@ -26,6 +29,7 @@ import java.time.Duration;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -173,7 +177,7 @@ public class GitHostClient {
         if (root != null && !root.isArray()) {
             throw new BizException(nameOf(provider) + " 没有返回提交");
         }
-        return new CommitPage(ref, page, GitHostJson.commitList(root));
+        return new CommitPage(ref, page, GitHostJson.commitList(root), false);
     }
 
     public CommitDetail commit(String provider, String token, String owner, String name, String sha) {
@@ -185,6 +189,219 @@ public class GitHostClient {
             throw new BizException("提交不存在，或当前令牌看不到它");
         }
         return detail;
+    }
+
+    public GraphPage graph(String provider, String token, String owner, String name) {
+        BranchPage page = branches(provider, token, owner, name);
+        List<String> refs = GitHostJson.graphRefs(page.defaultBranch(), page.branches(), 8);
+        Map<String, GraphCommit> bySha = new LinkedHashMap<>();
+        boolean truncated = page.truncated();
+        long deadline = System.nanoTime() + Duration.ofSeconds(12).toNanos();
+        for (String ref : refs) {
+            if (System.nanoTime() > deadline) {
+                truncated = true;
+                break;
+            }
+            for (GraphCommit commit : history(provider, token, owner, name, ref)) {
+                bySha.putIfAbsent(commit.sha(), commit);
+            }
+        }
+        for (Branch branch : page.branches()) {
+            if (branch.sha() == null || branch.sha().isBlank() || bySha.containsKey(branch.sha())) {
+                continue;
+            }
+            bySha.put(branch.sha(), new GraphCommit(branch.sha(), branch.shortSha(), branch.message(),
+                    branch.author(), branch.date(), List.of(), List.of()));
+        }
+        Map<String, List<String>> labels = new LinkedHashMap<>();
+        for (Branch branch : page.branches()) {
+            if (branch.sha() == null || branch.sha().isBlank() || branch.name() == null || branch.name().isBlank()) {
+                continue;
+            }
+            labels.computeIfAbsent(branch.sha(), key -> new ArrayList<>()).add(branch.name());
+        }
+        List<GraphCommit> all = new ArrayList<>();
+        for (GraphCommit commit : bySha.values()) {
+            List<String> names = labels.getOrDefault(commit.sha(), List.of());
+            all.add(names.isEmpty() ? commit : new GraphCommit(commit.sha(), commit.shortSha(), commit.message(),
+                    commit.author(), commit.date(), commit.parents(), List.copyOf(names)));
+        }
+        all.sort((a, b) -> GitHostJson.instant(b.date()).compareTo(GitHostJson.instant(a.date())));
+        List<GraphCommit> kept = new ArrayList<>();
+        for (GraphCommit commit : all) {
+            boolean tip = commit.branches() != null && !commit.branches().isEmpty();
+            if (kept.size() >= 36 && !tip) {
+                truncated = true;
+                continue;
+            }
+            if (kept.size() >= 48) {
+                truncated = true;
+                break;
+            }
+            kept.add(commit);
+        }
+        kept.sort((a, b) -> GitHostJson.instant(b.date()).compareTo(GitHostJson.instant(a.date())));
+        return new GraphPage(page.defaultBranch(), truncated, page.branches(), kept, false);
+    }
+
+    public MergeResult merge(String provider, String token, String owner, String name, String base, String head) {
+        if (base.equals(head)) {
+            throw new BizException("不能把分支合并到自己");
+        }
+        if ("github".equals(provider)) {
+            return githubMerge(token, owner, name, base, head);
+        }
+        return giteeMerge(token, owner, name, base, head);
+    }
+
+    private MergeResult githubMerge(String token, String owner, String name, String base, String head) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("base", base);
+        body.put("head", head);
+        body.put("commit_message", "Merge " + head + " into " + base);
+        String url = "https://api.github.com/repos/" + enc(owner) + "/" + enc(name) + "/merges";
+        return mergeOutcome(call("github", token, HttpMethod.POST, url, body), base);
+    }
+
+    private MergeResult giteeMerge(String token, String owner, String name, String base, String head) {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("title", "合并 " + head + " 到 " + base);
+        body.put("head", head);
+        body.put("base", base);
+        body.put("body", "从手机合并");
+        String pulls = "https://gitee.com/api/v5/repos/" + enc(owner) + "/" + enc(name) + "/pulls";
+        int number;
+        try {
+            number = numberOf(call("gitee", token, HttpMethod.POST, pulls, body).body());
+        } catch (BizException e) {
+            if (!alreadyOpen(e)) {
+                throw e;
+            }
+            number = findOpenPull(token, owner, name, base, head);
+            if (number <= 0) {
+                throw e;
+            }
+        }
+        if (number <= 0) {
+            throw new BizException("Gitee 没有返回 Pull Request");
+        }
+        Map<String, Object> mergeBody = new LinkedHashMap<>();
+        mergeBody.put("merge_method", "merge");
+        Reply reply = call("gitee", token, HttpMethod.PUT, pulls + "/" + number + "/merge", mergeBody);
+        return mergeOutcome(reply, base);
+    }
+
+    private int findOpenPull(String token, String owner, String name, String base, String head) {
+        String url = "https://gitee.com/api/v5/repos/" + enc(owner) + "/" + enc(name) + "/pulls?state=open&page=1&per_page=50";
+        JsonNode arr = get("gitee", token, url);
+        if (arr == null || !arr.isArray()) {
+            return 0;
+        }
+        for (JsonNode item : arr) {
+            if (branchSide(item.get("base"), base) && branchSide(item.get("head"), head)) {
+                return numberOf(item);
+            }
+        }
+        return 0;
+    }
+
+    private List<GraphCommit> history(String provider, String token, String owner, String name, String ref) {
+        try {
+            return GitHostJson.graphCommits(get(provider, token, commitsUrl(provider, owner, name, ref, 1, 12)));
+        } catch (BizException e) {
+            if (stop(e)) {
+                throw e;
+            }
+            return List.of();
+        } catch (RuntimeException e) {
+            return List.of();
+        }
+    }
+
+    private Reply call(String provider, String token, HttpMethod method, String url, Object body) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.setAccept(List.of(MediaType.APPLICATION_JSON));
+        headers.set("User-Agent", "LeonPro");
+        if ("github".equals(provider)) {
+            headers.setBearerAuth(token);
+            headers.set("X-GitHub-Api-Version", "2022-11-28");
+        } else {
+            headers.set(HttpHeaders.AUTHORIZATION, "token " + token);
+        }
+        String payload = null;
+        if (body != null) {
+            headers.setContentType(MediaType.APPLICATION_JSON);
+            payload = json.writeValueAsString(body);
+        }
+        try {
+            var response = http.exchange(URI.create(url), method, new HttpEntity<>(payload, headers), String.class);
+            return new Reply(response.getStatusCode().value(), read(response.getBody(), provider));
+        } catch (HttpStatusCodeException e) {
+            throw mergeFailure(provider, token, e);
+        } catch (ResourceAccessException e) {
+            throw new BizException(nameOf(provider) + " 连接超时，请稍后再试");
+        }
+    }
+
+    private BizException mergeFailure(String provider, String token, HttpStatusCodeException error) {
+        int status = error.getStatusCode().value();
+        String remote = remoteMessage(error.getResponseBodyAsString());
+        String message = GitHostJson.httpMessage(provider, status, remote, token);
+        String low = (remote + " " + message).toLowerCase(Locale.ROOT);
+        if (status == 409 || low.contains("conflict") || message.contains("冲突") || remote.contains("冲突")) {
+            return new BizException("有冲突，需要在电脑上处理");
+        }
+        if (status == 401 || status == 403) {
+            return new BizException(nameOf(provider) + " 令牌没有写入权限");
+        }
+        if (status == 404) {
+            return new BizException("分支不存在，或当前令牌看不到它");
+        }
+        return new BizException(message);
+    }
+
+    private static MergeResult mergeOutcome(Reply reply, String base) {
+        if (reply.status == 204) {
+            return new MergeResult("already", "", "已经在 " + base + " 里");
+        }
+        String sha = GitHostJson.text(reply.body, "sha");
+        if (sha.isBlank()) {
+            sha = GitHostJson.text(reply.body, "merge_commit_sha");
+        }
+        return new MergeResult("merged", sha, "已合并进 " + base);
+    }
+
+    private static int numberOf(JsonNode node) {
+        if (node == null || node.isNull()) {
+            return 0;
+        }
+        JsonNode number = node.get("number");
+        if (number == null || number.isNull()) {
+            return 0;
+        }
+        try {
+            return Integer.parseInt(number.asString());
+        } catch (NumberFormatException e) {
+            return 0;
+        }
+    }
+
+    private static boolean branchSide(JsonNode side, String name) {
+        if (side == null || side.isNull()) {
+            return false;
+        }
+        if (side.isTextual()) {
+            String text = side.asString();
+            return name.equals(text) || (text != null && text.endsWith(":" + name));
+        }
+        String ref = GitHostJson.text(side, "ref");
+        String label = GitHostJson.text(side, "label");
+        return name.equals(ref) || name.equals(label) || label.endsWith(":" + name);
+    }
+
+    private static boolean alreadyOpen(BizException error) {
+        String message = error.getMessage() == null ? "" : error.getMessage();
+        return message.contains("存在") || message.toLowerCase(Locale.ROOT).contains("already");
     }
 
     private RemoteList viaGraphql(String token) {
@@ -595,5 +812,8 @@ public class GitHostClient {
     }
 
     public record RemoteList(String login, List<RepoCard> repos) {
+    }
+
+    private record Reply(int status, JsonNode body) {
     }
 }

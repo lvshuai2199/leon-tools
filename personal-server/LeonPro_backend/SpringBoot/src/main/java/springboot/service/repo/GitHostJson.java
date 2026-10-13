@@ -4,6 +4,7 @@ import springboot.DTO.RepoViews.Branch;
 import springboot.DTO.RepoViews.CommitBrief;
 import springboot.DTO.RepoViews.CommitDetail;
 import springboot.DTO.RepoViews.FileChange;
+import springboot.DTO.RepoViews.GraphCommit;
 import springboot.DTO.RepoViews.RepoCard;
 import tools.jackson.databind.JsonNode;
 
@@ -11,6 +12,7 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -178,6 +180,55 @@ public final class GitHostJson {
         }
         return new Branch(branch.name(), branch.sha(), branch.shortSha(), branch.message(), branch.author(),
                 branch.date(), merge, ahead, behind);
+    }
+
+    /**
+     * 图上要拉历史的分支。默认分支优先，其次是还没合并的，相同提交的分支不用再拉。
+     */
+    public static List<String> graphRefs(String defaultBranch, List<Branch> branches, int limit) {
+        int cap = Math.max(1, limit);
+        LinkedHashSet<String> refs = new LinkedHashSet<>();
+        if (defaultBranch != null && !defaultBranch.isBlank()) {
+            refs.add(defaultBranch);
+        }
+        if (branches == null) {
+            return new ArrayList<>(refs);
+        }
+        for (Branch branch : branches) {
+            if (refs.size() >= cap) {
+                break;
+            }
+            String merge = branch.merge() == null ? "" : branch.merge();
+            if ("ahead".equals(merge) || "diverged".equals(merge) || "unmerged".equals(merge)) {
+                addRef(refs, branch.name());
+            }
+        }
+        for (Branch branch : branches) {
+            if (refs.size() >= cap) {
+                break;
+            }
+            if ("identical".equals(branch.merge())) {
+                continue;
+            }
+            addRef(refs, branch.name());
+        }
+        return new ArrayList<>(refs);
+    }
+
+    public static List<GraphCommit> graphCommits(JsonNode root) {
+        List<GraphCommit> list = new ArrayList<>();
+        if (root == null || !root.isArray()) {
+            return list;
+        }
+        for (JsonNode item : root) {
+            CommitBrief brief = briefOf(item);
+            if (brief == null) {
+                continue;
+            }
+            list.add(new GraphCommit(brief.sha(), brief.shortSha(), brief.message(), brief.author(), brief.date(),
+                    parentsOf(item), List.of()));
+        }
+        return list;
     }
 
     public static List<CommitBrief> commitList(JsonNode root) {
@@ -382,6 +433,30 @@ public final class GitHostJson {
                 clip(text(node, "description"), 300), text(node, "default_branch"), text(node, "language"),
                 text(node, "html_url"), text(node, "pushed_at"), integer(node, "stargazers_count"),
                 integer(node, "open_issues_count"), null);
+    }
+
+    private static void addRef(LinkedHashSet<String> refs, String name) {
+        if (name != null && !name.isBlank()) {
+            refs.add(name);
+        }
+    }
+
+    private static List<String> parentsOf(JsonNode item) {
+        JsonNode parents = item == null ? null : item.get("parents");
+        if (parents == null || !parents.isArray()) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (JsonNode parent : parents) {
+            String sha = text(parent, "sha");
+            if (sha.isBlank()) {
+                sha = text(parent, "oid");
+            }
+            if (!sha.isBlank() && out.size() < 2) {
+                out.add(sha);
+            }
+        }
+        return out;
     }
 
     private static CommitBrief briefOf(JsonNode item) {

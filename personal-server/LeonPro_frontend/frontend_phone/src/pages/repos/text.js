@@ -142,3 +142,114 @@ function absolute(t, now) {
   const md = `${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`
   return d.getFullYear() === new Date(now).getFullYear() ? md : `${d.getFullYear()}-${md}`
 }
+
+const LANE_COLORS = ["#1f6feb", "#cf222e", "#8250df", "#1a7f37", "#9a6700", "#0550ae"]
+
+/** 还能合并进默认分支：超前、分叉，或只知道还有提交没进去。 */
+export function canMerge(branch, defaultBranch) {
+  if (!branch || !defaultBranch || branch.name === defaultBranch) return false
+  const kind = branch.merge || ""
+  return kind === "ahead" || kind === "diverged" || kind === "unmerged"
+}
+
+/**
+ * 把带父提交的列表画成 Git 图。新的在上。
+ * 同一列的父子是直线，分叉再汇合是曲线。
+ */
+export function layoutGraph(commits) {
+  const list = (Array.isArray(commits) ? commits : []).filter((commit) => commit && commit.sha)
+  list.sort((a, b) => {
+    const ta = Date.parse(a.date || "") || 0
+    const tb = Date.parse(b.date || "") || 0
+    if (ta === tb) return 0
+    return tb - ta
+  })
+  const columns = []
+  const placed = []
+  for (const commit of list) {
+    const sha = String(commit.sha)
+    const hits = []
+    for (let i = 0; i < columns.length; i++) {
+      if (columns[i] === sha) hits.push(i)
+    }
+    let col
+    if (hits.length) col = hits[0]
+    else {
+      col = columns.findIndex((item) => item == null)
+      if (col < 0) {
+        col = columns.length
+        columns.push(null)
+      }
+    }
+    const parents = (commit.parents || []).map(String).filter(Boolean).slice(0, 2)
+    const next = columns.slice()
+    while (next.length <= col) next.push(null)
+    for (const extra of hits.slice(1)) next[extra] = null
+    if (!parents.length) next[col] = null
+    else {
+      next[col] = parents[0]
+      for (let p = 1; p < parents.length; p++) {
+        let parentCol = next.indexOf(parents[p])
+        if (parentCol < 0) {
+          parentCol = next.findIndex((item, idx) => item == null && idx !== col)
+          if (parentCol < 0) next.push(parents[p])
+          else next[parentCol] = parents[p]
+        }
+      }
+    }
+    for (let i = 0; i < next.length; i++) {
+      if (i !== col && next[i] === sha) next[i] = null
+    }
+    placed.push({ commit, col, parents })
+    columns.splice(0, columns.length, ...next)
+  }
+
+  const index = new Map(placed.map((row, i) => [String(row.commit.sha), i]))
+  const rowHeight = 52
+  const colWidth = 16
+  const pad = 10
+  const xOf = (col) => pad + col * colWidth
+  const yOf = (i) => i * rowHeight + rowHeight / 2
+  let maxCol = 0
+  const lines = []
+  const rows = placed.map((row, i) => {
+    maxCol = Math.max(maxCol, row.col)
+    const color = LANE_COLORS[row.col % LANE_COLORS.length]
+    const x = xOf(row.col)
+    const y = yOf(i)
+    for (const parentSha of row.parents) {
+      const parentIndex = index.get(parentSha)
+      if (parentIndex == null || parentIndex <= i) {
+        lines.push({ d: `M ${x} ${y} L ${x} ${y + 16}`, color })
+        continue
+      }
+      const parent = placed[parentIndex]
+      const x2 = xOf(parent.col)
+      const y2 = yOf(parentIndex)
+      if (parent.col === row.col) lines.push({ d: `M ${x} ${y} L ${x2} ${y2}`, color })
+      else {
+        const mid = Math.min(y + 18, (y + y2) / 2)
+        lines.push({ d: `M ${x} ${y} C ${x} ${mid}, ${x2} ${y2 - 16}, ${x2} ${y2}`, color })
+      }
+    }
+    return {
+      sha: String(row.commit.sha),
+      shortSha: row.commit.shortSha || String(row.commit.sha).slice(0, 7),
+      message: row.commit.message || "",
+      author: row.commit.author || "",
+      date: row.commit.date || "",
+      branches: Array.isArray(row.commit.branches) ? row.commit.branches : [],
+      col: row.col,
+      color,
+      x,
+      y,
+    }
+  })
+  return {
+    rowHeight,
+    width: pad * 2 + Math.max(1, maxCol + 1) * colWidth,
+    height: Math.max(rowHeight, rows.length * rowHeight),
+    rows,
+    lines,
+  }
+}

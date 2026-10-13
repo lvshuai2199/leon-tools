@@ -7,7 +7,9 @@ import springboot.DTO.RepoViews.Board;
 import springboot.DTO.RepoViews.BranchPage;
 import springboot.DTO.RepoViews.CommitDetail;
 import springboot.DTO.RepoViews.CommitPage;
+import springboot.DTO.RepoViews.GraphPage;
 import springboot.DTO.RepoViews.Host;
+import springboot.DTO.RepoViews.MergeResult;
 import springboot.DTO.RepoViews.RepoCard;
 import springboot.domain.SysUsers;
 import springboot.service.RegCodeAccessService;
@@ -20,6 +22,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Supplier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
@@ -32,13 +35,17 @@ import java.util.concurrent.TimeoutException;
 @Service
 public class RepoWatchService {
 
-    private static final long CACHE_MS = 60_000L;
+    /** 列表、提交图、分支提交都先用缓存。超过半天再标成过期，页面先显示旧的，拉到新的再换上。 */
+    private static final long HALF_DAY_MS = 12 * 60 * 60 * 1000L;
 
     private final JdbcTemplate jdbc;
     private final CursorKeyCipher cipher;
     private final GitHostClient client;
     private final RegCodeAccessService access;
-    private final ConcurrentHashMap<String, Cache> cache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Timed<Board>> boardCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Timed<GraphPage>> graphCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Timed<CommitPage>> commitCache = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Object> locks = new ConcurrentHashMap<>();
 
     public RepoWatchService(JdbcTemplate jdbc, CursorKeyCipher cipher, GitHostClient client, RegCodeAccessService access) {
         this.jdbc = jdbc;
@@ -73,28 +80,7 @@ public class RepoWatchService {
     }
 
     public Board board(String userId, boolean refresh) {
-        if (!refresh) {
-            Cache hit = cache.get(userId);
-            if (hit != null && System.currentTimeMillis() - hit.at < CACHE_MS) {
-                return hit.board;
-            }
-        }
-        ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor();
-        try {
-            Future<Slice> github = exec.submit(() -> slice(userId, "github"));
-            Future<Slice> gitee = exec.submit(() -> slice(userId, "gitee"));
-            Slice left = await(github);
-            Slice right = await(gitee);
-            List<RepoCard> repos = new ArrayList<>();
-            repos.addAll(left.repos);
-            repos.addAll(right.repos);
-            repos.sort(Comparator.comparing((RepoCard card) -> GitHostJson.instant(card.pushedAt())).reversed());
-            Board board = new Board(left.host, right.host, repos);
-            cache.put(userId, new Cache(System.currentTimeMillis(), board));
-            return board;
-        } finally {
-            exec.shutdownNow();
-        }
+        return load(boardCache, userId, refresh, () -> fetchBoard(userId), RepoWatchService::freshBoard, RepoWatchService::staleBoard);
     }
 
     public Board saveToken(String userId, String provider, String token) {
@@ -118,14 +104,14 @@ public class RepoWatchService {
                 "INSERT INTO repo_user_token (user_id, provider, token_cipher, token_hint, update_time) VALUES (?, ?, ?, ?, NOW()) "
                         + "ON DUPLICATE KEY UPDATE token_cipher = VALUES(token_cipher), token_hint = VALUES(token_hint), update_time = NOW()",
                 userId, p, packed, hint);
-        cache.remove(userId);
+        dropUser(userId);
         return board(userId, true);
     }
 
     public Board clearToken(String userId, String provider) {
         String p = arg(provider, RepoRefs::provider);
         jdbc.update("DELETE FROM repo_user_token WHERE user_id = ? AND provider = ?", userId, p);
-        cache.remove(userId);
+        dropUser(userId);
         return board(userId, true);
     }
 
@@ -136,12 +122,16 @@ public class RepoWatchService {
         return client.branches(p, requireToken(userId, p), o, n);
     }
 
-    public CommitPage commits(String userId, String provider, String owner, String name, String ref, int page) {
+    public CommitPage commits(String userId, String provider, String owner, String name, String ref, int page, boolean refresh) {
         String p = arg(provider, RepoRefs::provider);
         String o = arg(owner, v -> RepoRefs.slug(v, "所有者"));
         String n = arg(name, v -> RepoRefs.slug(v, "仓库名"));
         String branch = arg(ref, RepoRefs::ref);
-        return client.commits(p, requireToken(userId, p), o, n, branch, RepoRefs.page(page));
+        int pageNo = RepoRefs.page(page);
+        String key = userId + "|" + p + "|" + o + "|" + n + "|" + branch + "|" + pageNo;
+        return load(commitCache, key, refresh,
+                () -> client.commits(p, requireToken(userId, p), o, n, branch, pageNo),
+                RepoWatchService::freshCommits, RepoWatchService::staleCommits);
     }
 
     public CommitDetail commit(String userId, String provider, String owner, String name, String sha) {
@@ -150,6 +140,100 @@ public class RepoWatchService {
         String n = arg(name, v -> RepoRefs.slug(v, "仓库名"));
         String id = arg(sha, RepoRefs::sha);
         return client.commit(p, requireToken(userId, p), o, n, id);
+    }
+
+    public GraphPage graph(String userId, String provider, String owner, String name, boolean refresh) {
+        String p = arg(provider, RepoRefs::provider);
+        String o = arg(owner, v -> RepoRefs.slug(v, "所有者"));
+        String n = arg(name, v -> RepoRefs.slug(v, "仓库名"));
+        String key = userId + "|" + p + "|" + o + "|" + n;
+        return load(graphCache, key, refresh,
+                () -> client.graph(p, requireToken(userId, p), o, n),
+                RepoWatchService::freshGraph, RepoWatchService::staleGraph);
+    }
+
+    public MergeResult merge(String userId, String provider, String owner, String name, String base, String head) {
+        String p = arg(provider, RepoRefs::provider);
+        String o = arg(owner, v -> RepoRefs.slug(v, "所有者"));
+        String n = arg(name, v -> RepoRefs.slug(v, "仓库名"));
+        String b = arg(base, RepoRefs::ref);
+        String h = arg(head, RepoRefs::ref);
+        MergeResult result = client.merge(p, requireToken(userId, p), o, n, b, h);
+        String prefix = userId + "|" + p + "|" + o + "|" + n;
+        graphCache.remove(prefix);
+        commitCache.keySet().removeIf(key -> key.startsWith(prefix + "|"));
+        boardCache.remove(userId);
+        return result;
+    }
+
+    private Board fetchBoard(String userId) {
+        ExecutorService exec = Executors.newVirtualThreadPerTaskExecutor();
+        try {
+            Future<Slice> github = exec.submit(() -> slice(userId, "github"));
+            Future<Slice> gitee = exec.submit(() -> slice(userId, "gitee"));
+            Slice left = await(github);
+            Slice right = await(gitee);
+            List<RepoCard> repos = new ArrayList<>();
+            repos.addAll(left.repos);
+            repos.addAll(right.repos);
+            repos.sort(Comparator.comparing((RepoCard card) -> GitHostJson.instant(card.pushedAt())).reversed());
+            return new Board(left.host, right.host, repos, false);
+        } finally {
+            exec.shutdownNow();
+        }
+    }
+
+    private <T> T load(ConcurrentHashMap<String, Timed<T>> cache, String key, boolean refresh,
+                       Supplier<T> fetch, java.util.function.UnaryOperator<T> fresh, java.util.function.UnaryOperator<T> stale) {
+        Object lock = locks.computeIfAbsent(key, ignored -> new Object());
+        synchronized (lock) {
+            Timed<T> hit = cache.get(key);
+            long now = System.currentTimeMillis();
+            if (!refresh && hit != null) {
+                return now - hit.at < HALF_DAY_MS ? fresh.apply(hit.value) : stale.apply(hit.value);
+            }
+            try {
+                T value = fresh.apply(fetch.get());
+                cache.put(key, new Timed<>(now, value));
+                return value;
+            } catch (RuntimeException e) {
+                if (hit != null && !refresh) {
+                    return stale.apply(hit.value);
+                }
+                throw e;
+            }
+        }
+    }
+
+    private void dropUser(String userId) {
+        boardCache.remove(userId);
+        String prefix = userId + "|";
+        graphCache.keySet().removeIf(key -> key.startsWith(prefix));
+        commitCache.keySet().removeIf(key -> key.startsWith(prefix));
+    }
+
+    private static Board freshBoard(Board board) {
+        return board.stale() ? new Board(board.github(), board.gitee(), board.repos(), false) : board;
+    }
+
+    private static Board staleBoard(Board board) {
+        return board.stale() ? board : new Board(board.github(), board.gitee(), board.repos(), true);
+    }
+
+    private static GraphPage freshGraph(GraphPage page) {
+        return page.stale() ? new GraphPage(page.defaultBranch(), page.truncated(), page.branches(), page.commits(), false) : page;
+    }
+
+    private static GraphPage staleGraph(GraphPage page) {
+        return page.stale() ? page : new GraphPage(page.defaultBranch(), page.truncated(), page.branches(), page.commits(), true);
+    }
+
+    private static CommitPage freshCommits(CommitPage page) {
+        return page.stale() ? new CommitPage(page.ref(), page.page(), page.commits(), false) : page;
+    }
+
+    private static CommitPage staleCommits(CommitPage page) {
+        return page.stale() ? page : new CommitPage(page.ref(), page.page(), page.commits(), true);
     }
 
     private Slice slice(String userId, String provider) {
@@ -226,7 +310,7 @@ public class RepoWatchService {
     private record TokenRow(String cipher, String hint) {
     }
 
-    private record Cache(long at, Board board) {
+    private record Timed<T>(long at, T value) {
     }
 
     private static final class Slice {

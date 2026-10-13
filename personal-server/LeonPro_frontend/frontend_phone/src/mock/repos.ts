@@ -36,6 +36,15 @@ type Repo = {
   }[]
   commits: Record<string, Commit[]>
   files: Record<string, { filename: string; status: string; additions: number; deletions: number; patch: string }[]>
+  history: {
+    sha: string
+    shortSha: string
+    message: string
+    author: string
+    date: string
+    parents: string[]
+    branches: string[]
+  }[]
 }
 
 const hoursAgo = (h: number) => new Date(Date.now() - h * 3600_000).toISOString()
@@ -66,7 +75,7 @@ const REPOS: Repo[] = [
     branches: [
       { name: 'main', sha: 'abc1234def567890', shortSha: 'abc1234', message: '手机端可以看仓库状态', author: 'leon-lv', date: hoursAgo(2), merge: 'default', ahead: 0, behind: 0 },
       { name: 'dev', sha: 'def5678abc901234', shortSha: 'def5678', message: '调整部署说明', author: 'leon-lv', date: hoursAgo(30), merge: 'diverged', ahead: 2, behind: 1 },
-      { name: 'release', sha: 'ccc3333ddd444555', shortSha: 'ccc3333', message: '已经合进 main', author: 'leon-lv', date: hoursAgo(80), merge: 'merged', ahead: 0, behind: 4 },
+      { name: 'release', sha: 'bbb2222ccc333444', shortSha: 'bbb2222', message: '补笔记同步', author: 'leon-lv', date: hoursAgo(26), merge: 'merged', ahead: 0, behind: 4 },
     ],
     commits: {
       main: [
@@ -108,6 +117,13 @@ const REPOS: Repo[] = [
         },
       ],
     },
+    history: [
+      { sha: 'def5678abc901234', shortSha: 'def5678', message: '调整部署说明', author: 'leon-lv', date: hoursAgo(1), parents: ['ddd4444eee555666'], branches: ['dev'] },
+      { sha: 'abc1234def567890', shortSha: 'abc1234', message: '手机端可以看仓库状态', author: 'leon-lv', date: hoursAgo(2), parents: ['bbb2222ccc333444'], branches: ['main'] },
+      { sha: 'ddd4444eee555666', shortSha: 'ddd4444', message: '分支上的修改', author: 'leon-lv', date: hoursAgo(10), parents: ['bbb2222ccc333444'], branches: [] },
+      { sha: 'bbb2222ccc333444', shortSha: 'bbb2222', message: '补笔记同步', author: 'leon-lv', date: hoursAgo(26), parents: ['aaa0000bbb111222'], branches: ['release'] },
+      { sha: 'aaa0000bbb111222', shortSha: 'aaa0000', message: '初始提交', author: 'leon-lv', date: hoursAgo(80), parents: [], branches: [] },
+    ],
     files: {
       abc1234def567890: [
         {
@@ -157,6 +173,9 @@ const REPOS: Repo[] = [
         },
       ],
     },
+    history: [
+      { sha: 'eee9999fff000011', shortSha: 'eee9999', message: '更新一张配图', author: 'sfnss', date: hoursAgo(20), parents: [], branches: ['master'] },
+    ],
     files: {},
   },
 ]
@@ -180,8 +199,25 @@ function host(tokens: Tokens, provider: 'github' | 'gitee') {
 }
 
 function card(repo: Repo) {
-  const { branches: _b, commits: _c, files: _f, ...rest } = repo
+  const { branches: _b, commits: _c, files: _f, history: _h, ...rest } = repo
   return rest
+}
+
+function flatCommits(repo: Repo) {
+  const list = Object.values(repo.commits).flat()
+  for (const item of repo.history || []) {
+    if (!list.some((commit) => commit.sha === item.sha)) {
+      list.push({
+        sha: item.sha,
+        shortSha: item.shortSha,
+        message: item.message,
+        author: item.author,
+        date: item.date,
+        htmlUrl: '',
+      })
+    }
+  }
+  return list
 }
 
 function board(tokens: Tokens) {
@@ -189,6 +225,7 @@ function board(tokens: Tokens) {
     github: host(tokens, 'github'),
     gitee: host(tokens, 'gitee'),
     repos: REPOS.filter((r) => tokens[r.provider as 'github' | 'gitee']).map(card),
+    stale: false,
   }
 }
 
@@ -217,21 +254,64 @@ export function handleRepos(username: string, path: string, method: string, q: U
     return ok(board(tokens))
   }
 
-  const m = /^\/app\/repos\/(github|gitee)\/([^/]+)\/([^/]+)\/(branches|commits)(?:\/([^/]+))?$/.exec(path)
-  if (!m || method !== 'GET') return null
+  const m = /^\/app\/repos\/(github|gitee)\/([^/]+)\/([^/]+)\/(branches|commits|graph|merge)(?:\/([^/]+))?$/.exec(path)
+  if (!m) return null
   const provider = m[1] as 'github' | 'gitee'
   const owner = decodeURIComponent(m[2])
   const name = decodeURIComponent(m[3])
   const kind = m[4]
   const sha = m[5] ? decodeURIComponent(m[5]) : ''
+  if (kind === 'merge' ? method !== 'POST' : method !== 'GET') return null
   if (!tokens[provider]) return fail(`先保存 ${provider === 'github' ? 'GitHub' : 'Gitee'} 令牌`)
   const repo = findRepo(provider, owner, name)
   if (!repo) return fail('不存在，或当前令牌看不到它')
   if (kind === 'branches') {
     return ok({ defaultBranch: repo.defaultBranch, truncated: false, branches: repo.branches })
   }
+  if (kind === 'graph') {
+    return ok({ defaultBranch: repo.defaultBranch, truncated: false, branches: repo.branches, commits: repo.history, stale: false })
+  }
+  if (kind === 'merge') {
+    const baseName = String(body.base || '')
+    const headName = String(body.head || '')
+    const base = repo.branches.find((branch) => branch.name === baseName)
+    const head = repo.branches.find((branch) => branch.name === headName)
+    if (!base || !head) return fail('分支不存在，或当前令牌看不到它')
+    if (baseName === headName) return fail('不能把分支合并到自己')
+    if (head.merge === 'merged' || head.merge === 'identical' || head.sha === base.sha) {
+      return ok({ outcome: 'already', sha: '', message: `已经在 ${baseName} 里` })
+    }
+    const mergedSha = 'fff0000aaa111222'
+    for (const item of repo.history) item.branches = item.branches.filter((branch) => branch !== baseName)
+    repo.history.unshift({
+      sha: mergedSha,
+      shortSha: 'fff0000',
+      message: `Merge ${headName} into ${baseName}`,
+      author: 'leon-lv',
+      date: new Date().toISOString(),
+      parents: [base.sha, head.sha],
+      branches: [baseName],
+    })
+    const merged: Commit = {
+      sha: mergedSha,
+      shortSha: 'fff0000',
+      message: `Merge ${headName} into ${baseName}`,
+      author: 'leon-lv',
+      date: new Date().toISOString(),
+      htmlUrl: `${repo.htmlUrl}/commit/${mergedSha}`,
+    }
+    repo.commits[baseName] = [merged, ...(repo.commits[baseName] || [])]
+    repo.lastCommit = merged
+    base.sha = mergedSha
+    base.shortSha = 'fff0000'
+    base.message = merged.message
+    base.date = merged.date
+    head.merge = 'merged'
+    head.ahead = 0
+    return ok({ outcome: 'merged', sha: mergedSha, message: `已合并进 ${baseName}` })
+  }
   if (sha) {
-    const commit = Object.values(repo.commits).flat().find((c) => c.sha === sha)
+    const commit = flatCommits(repo).find((c) => c.sha === sha)
     if (!commit) return fail('提交不存在，或当前令牌看不到它')
     const files = repo.files[sha] || []
     const additions = files.reduce((n, f) => n + f.additions, 0)
@@ -241,5 +321,5 @@ export function handleRepos(username: string, path: string, method: string, q: U
   const ref = q.get('ref') || repo.defaultBranch
   const page = Number(q.get('page') || 1)
   const list = repo.commits[ref] || []
-  return ok({ ref, page, commits: page > 1 ? [] : list })
+  return ok({ ref, page, commits: page > 1 ? [] : list, stale: false })
 }

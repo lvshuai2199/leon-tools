@@ -38,6 +38,8 @@ export interface RepoBoard {
   github: RepoHost
   gitee: RepoHost
   repos: RepoCard[]
+  /** 超过半天的缓存。页面先显示，再拉新的换上。 */
+  stale?: boolean
 }
 
 export interface RepoBranch {
@@ -63,6 +65,7 @@ export interface CommitPage {
   ref: string
   page: number
   commits: CommitBrief[]
+  stale?: boolean
 }
 
 export interface FileChange {
@@ -114,10 +117,42 @@ export function fetchBranches(provider: string, owner: string, name: string) {
   return http.get<BranchPage>(`${repoPath(provider, owner, name)}/branches`, undefined, slow)
 }
 
-export function fetchCommits(provider: string, owner: string, name: string, ref: string, page: number) {
-  return http.get<CommitPage>(`${repoPath(provider, owner, name)}/commits`, { ref, page }, slow)
+export function fetchCommits(provider: string, owner: string, name: string, ref: string, page: number, refresh = false) {
+  return http.get<CommitPage>(`${repoPath(provider, owner, name)}/commits`, { ref, page, refresh: refresh || undefined }, slow)
 }
 
 export function fetchCommit(provider: string, owner: string, name: string, sha: string) {
   return http.get<CommitDetail>(`${repoPath(provider, owner, name)}/commits/${seg(sha)}`, undefined, slow)
+}
+
+export interface GraphCommit {
+  sha: string
+  shortSha: string
+  message: string
+  author: string
+  date: string
+  parents: string[]
+  branches: string[]
+}
+
+export interface GraphPage {
+  defaultBranch: string
+  truncated: boolean
+  branches: RepoBranch[]
+  commits: GraphCommit[]
+  stale?: boolean
+}
+
+export interface MergeResult {
+  outcome: string
+  sha: string
+  message: string
+}
+
+export function fetchGraph(provider: string, owner: string, name: string, refresh = false) {
+  return http.get<GraphPage>(`${repoPath(provider, owner, name)}/graph`, refresh ? { refresh: true } : undefined, slow)
+}
+
+export function mergeBranches(provider: string, owner: string, name: string, base: string, head: string) {
+  return http.post<MergeResult>(`${repoPath(provider, owner, name)}/merge`, { base, head }, { timeout: 40_000 })
 }

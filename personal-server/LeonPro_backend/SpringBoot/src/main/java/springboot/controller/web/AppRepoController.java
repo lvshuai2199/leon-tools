@@ -59,9 +59,10 @@ public class AppRepoController {
     public ApiResponse commits(@PathVariable String provider, @PathVariable String owner, @PathVariable String name,
                                @RequestParam(name = "ref") String ref,
                                @RequestParam(name = "page", defaultValue = "1") int page,
+                               @RequestParam(name = "refresh", defaultValue = "false") boolean refresh,
                                HttpServletRequest request) {
         SysUsers user = repos.requireUser(request);
-        return ApiResponse.success(repos.commits(user.getId(), provider, owner, name, ref, page));
+        return ApiResponse.success(repos.commits(user.getId(), provider, owner, name, ref, page, refresh));
     }
 
     @GetMapping("/{provider}/{owner}/{name}/commits/{sha}")
@@ -71,9 +72,31 @@ public class AppRepoController {
         return ApiResponse.success(repos.commit(user.getId(), provider, owner, name, sha));
     }
 
+    @GetMapping("/{provider}/{owner}/{name}/graph")
+    public ApiResponse graph(@PathVariable String provider, @PathVariable String owner, @PathVariable String name,
+                             @RequestParam(name = "refresh", defaultValue = "false") boolean refresh,
+                             HttpServletRequest request) {
+        SysUsers user = repos.requireUser(request);
+        return ApiResponse.success(repos.graph(user.getId(), provider, owner, name, refresh));
+    }
+
+    @PostMapping("/{provider}/{owner}/{name}/merge")
+    public ApiResponse merge(@PathVariable String provider, @PathVariable String owner, @PathVariable String name,
+                             @RequestBody MergeBody body, HttpServletRequest request) {
+        SysUsers user = repos.requireUser(request);
+        MergeBody req = body == null ? new MergeBody() : body;
+        return ApiResponse.success(repos.merge(user.getId(), provider, owner, name, req.getBase(), req.getHead()));
+    }
+
     @Data
     public static class TokenBody {
         private String provider;
         private String token;
+    }
+
+    @Data
+    public static class MergeBody {
+        private String base;
+        private String head;
     }
 }

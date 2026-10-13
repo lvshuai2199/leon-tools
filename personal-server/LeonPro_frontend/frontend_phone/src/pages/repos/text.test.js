@@ -1,6 +1,6 @@
 import test from "node:test"
 import assert from "node:assert/strict"
-import { fileStatusText, formatWhen, headline, mergeLane, mergeText, mergeTone } from "./text.js"
+import { canMerge, fileStatusText, formatWhen, headline, layoutGraph, mergeLane, mergeText, mergeTone } from "./text.js"
 
 const now = Date.parse("2026-10-13T12:00:00Z")
 
@@ -73,4 +73,30 @@ test("文件状态", () => {
   assert.equal(fileStatusText("removed"), "删除")
   assert.equal(fileStatusText("renamed"), "重命名")
   assert.equal(fileStatusText("modified"), "修改")
+})
+
+test("还能合并进默认分支", () => {
+  assert.equal(canMerge({ name: "main", merge: "default" }, "main"), false)
+  assert.equal(canMerge({ name: "old", merge: "merged" }, "main"), false)
+  assert.equal(canMerge({ name: "dev", merge: "diverged" }, "main"), true)
+  assert.equal(canMerge({ name: "feat", merge: "ahead" }, "main"), true)
+  assert.equal(canMerge({ name: "wip", merge: "unmerged" }, "main"), true)
+})
+
+test("提交图：分叉再汇到同一点", () => {
+  const lane = layoutGraph([
+    { sha: "E", date: "2026-10-13T04:00:00Z", parents: ["D"], branches: ["dev"], message: "dev" },
+    { sha: "C", date: "2026-10-13T03:00:00Z", parents: ["B"], branches: ["main"], message: "main" },
+    { sha: "D", date: "2026-10-13T02:00:00Z", parents: ["B"], branches: [], message: "d" },
+    { sha: "B", date: "2026-10-13T01:00:00Z", parents: ["A"], branches: ["release"], message: "b" },
+    { sha: "A", date: "2026-10-13T00:00:00Z", parents: [], branches: [], message: "a" },
+  ])
+  const col = Object.fromEntries(lane.rows.map((row) => [row.sha, row.col]))
+  assert.equal(col.E, 0)
+  assert.equal(col.D, 0)
+  assert.equal(col.C, 1)
+  assert.equal(col.B, 0)
+  assert.equal(lane.rows[0].branches[0], "dev")
+  assert.equal(lane.rows[1].x > lane.rows[0].x, true)
+  assert.ok(lane.lines.some((line) => line.d.includes("C")))
 })

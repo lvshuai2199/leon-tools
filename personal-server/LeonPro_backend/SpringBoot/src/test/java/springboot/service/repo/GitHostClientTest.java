@@ -7,8 +7,12 @@ import org.springframework.http.MediaType;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 import springboot.DTO.RepoViews.BranchPage;
+import springboot.DTO.RepoViews.GraphPage;
+import springboot.DTO.RepoViews.MergeResult;
 import springboot.utils.BizException;
 import tools.jackson.databind.json.JsonMapper;
+
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -18,6 +22,7 @@ import static org.springframework.test.web.client.match.MockRestRequestMatchers.
 import static org.springframework.test.web.client.match.MockRestRequestMatchers.requestTo;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withStatus;
 import static org.springframework.test.web.client.response.MockRestResponseCreators.withSuccess;
+import static org.springframework.http.HttpStatus.CONFLICT;
 import static org.springframework.http.HttpStatus.UNAUTHORIZED;
 
 class GitHostClientTest {
@@ -129,6 +134,81 @@ class GitHostClientTest {
         assertEquals("diverged", page.branches().get(1).merge());
         assertEquals(2, page.branches().get(1).ahead());
         assertEquals(1, page.branches().get(1).behind());
+        server.verify();
+    }
+
+    @Test
+    void githubGraphJoinsBranchHistory() {
+        RestTemplate http = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.createServer(http);
+        GitHostClient client = new GitHostClient(http, JsonMapper.builder().build());
+        server.expect(requestTo("https://api.github.com/graphql"))
+                .andRespond(withSuccess("""
+                        {"data":{"repository":{"defaultBranchRef":{"name":"main"},
+                        "refs":{"pageInfo":{"hasNextPage":false},"nodes":[
+                          {"name":"dev","target":{"oid":"aaa1111bbbb","messageHeadline":"wip","committedDate":"2026-10-13T00:00:00Z","author":{"name":"a"}}},
+                          {"name":"main","target":{"oid":"bbb2222cccc","messageHeadline":"ship","committedDate":"2026-10-01T00:00:00Z","author":{"name":"a"}}}
+                        ]}}}}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://api.github.com/graphql"))
+                .andRespond(withSuccess("""
+                        {"data":{"repository":{"ref":{"c0":{"aheadBy":2,"behindBy":1,"status":"DIVERGED"}}}}}
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://api.github.com/repos/leon-lv/leon-tools/commits?sha=main&page=1&per_page=12"))
+                .andRespond(withSuccess("""
+                        [{"sha":"bbb2222cccc","parents":[{"sha":"ccc3333dddd"}],
+                          "commit":{"message":"ship","author":{"name":"a","date":"2026-10-01T00:00:00Z"}}},
+                         {"sha":"ccc3333dddd","parents":[],
+                          "commit":{"message":"base","author":{"name":"a","date":"2026-09-01T00:00:00Z"}}}]
+                        """, MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://api.github.com/repos/leon-lv/leon-tools/commits?sha=dev&page=1&per_page=12"))
+                .andRespond(withSuccess("""
+                        [{"sha":"aaa1111bbbb","parents":[{"sha":"ccc3333dddd"}],
+                          "commit":{"message":"wip","author":{"name":"a","date":"2026-10-13T00:00:00Z"}}}]
+                        """, MediaType.APPLICATION_JSON));
+
+        GraphPage page = client.graph("github", TOKEN, "leon-lv", "leon-tools");
+        assertEquals("main", page.defaultBranch());
+        assertEquals("aaa1111bbbb", page.commits().get(0).sha());
+        assertEquals(List.of("dev"), page.commits().get(0).branches());
+        assertEquals(List.of("ccc3333dddd"), page.commits().get(0).parents());
+        assertEquals(List.of("main"), page.commits().get(1).branches());
+        server.verify();
+    }
+
+    @Test
+    void githubMergeConflictDoesNotEchoToken() {
+        RestTemplate http = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.createServer(http);
+        GitHostClient client = new GitHostClient(http, JsonMapper.builder().build());
+        server.expect(requestTo("https://api.github.com/repos/leon-lv/leon-tools/merges"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withStatus(CONFLICT).contentType(MediaType.APPLICATION_JSON)
+                        .body("{\"message\":\"Merge conflict " + TOKEN + "\"}"));
+
+        BizException ex = assertThrows(BizException.class,
+                () -> client.merge("github", TOKEN, "leon-lv", "leon-tools", "main", "dev"));
+        assertEquals("有冲突，需要在电脑上处理", ex.getMessage());
+        assertFalse(ex.getMessage().contains(TOKEN));
+        server.verify();
+    }
+
+    @Test
+    void giteeMergeCreatesPullThenMerges() {
+        RestTemplate http = new RestTemplate();
+        MockRestServiceServer server = MockRestServiceServer.createServer(http);
+        GitHostClient client = new GitHostClient(http, JsonMapper.builder().build());
+        server.expect(requestTo("https://gitee.com/api/v5/repos/sfnss/pic/pulls"))
+                .andExpect(method(HttpMethod.POST))
+                .andRespond(withSuccess("{\"number\":7}", MediaType.APPLICATION_JSON));
+        server.expect(requestTo("https://gitee.com/api/v5/repos/sfnss/pic/pulls/7/merge"))
+                .andExpect(method(HttpMethod.PUT))
+                .andRespond(withSuccess("{\"merge_commit_sha\":\"abc1234def\"}", MediaType.APPLICATION_JSON));
+
+        MergeResult result = client.merge("gitee", TOKEN, "sfnss", "pic", "master", "dev");
+        assertEquals("merged", result.outcome());
+        assertEquals("abc1234def", result.sha());
+        assertEquals("已合并进 master", result.message());
         server.verify();
     }
 }

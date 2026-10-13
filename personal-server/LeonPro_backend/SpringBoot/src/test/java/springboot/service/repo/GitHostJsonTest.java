@@ -3,6 +3,7 @@ package springboot.service.repo;
 import org.junit.jupiter.api.Test;
 import springboot.DTO.RepoViews.Branch;
 import springboot.DTO.RepoViews.CommitDetail;
+import springboot.DTO.RepoViews.GraphCommit;
 import springboot.service.repo.GitHostJson.AheadBehind;
 import tools.jackson.databind.json.JsonMapper;
 
@@ -121,6 +122,26 @@ class GitHostJsonTest {
         assertEquals("identical", labeled.get(3).merge());
         assertEquals("unmerged", labeled.get(4).merge());
         assertEquals(3, labeled.get(4).ahead());
+    }
+
+    @Test
+    void graphRefsPreferUnmergedAndParseParents() throws Exception {
+        List<Branch> branches = List.of(
+                new Branch("main", "bbb", "bbb", "", "", "", "default", 0, 0),
+                new Branch("same", "bbb", "bbb", "", "", "", "identical", 0, 0),
+                new Branch("dev", "aaa", "aaa", "", "", "", "diverged", 2, 1),
+                new Branch("old", "ccc", "ccc", "", "", "", "merged", 0, 4));
+        assertEquals(List.of("main", "dev", "old"), GitHostJson.graphRefs("main", branches, 8));
+
+        List<GraphCommit> commits = GitHostJson.graphCommits(json.readTree("""
+                [{"sha":"aaa1111bbbb2222","parents":[{"sha":"bbb2222cccc3333"},{"sha":"ccc3333dddd4444"}],
+                  "commit":{"message":"merge\\nbody","author":{"name":"a","date":"2026-10-13T00:00:00Z"}},
+                  "author":{"login":"leon"}}]
+                """));
+        assertEquals(1, commits.size());
+        assertEquals(List.of("bbb2222cccc3333", "ccc3333dddd4444"), commits.get(0).parents());
+        assertEquals("merge", commits.get(0).message());
+        assertEquals("leon", commits.get(0).author());
     }
 
     @Test

@@ -32,7 +32,8 @@ public final class RepoViews {
     ) {
     }
 
-    public record Board(Host github, Host gitee, List<RepoCard> repos) {
+    /** stale 为 true 时这是超过半天的缓存，页面可以先显示，再拉新的替换。 */
+    public record Board(Host github, Host gitee, List<RepoCard> repos, boolean stale) {
     }
 
     /**
@@ -47,7 +48,19 @@ public final class RepoViews {
     public record BranchPage(String defaultBranch, boolean truncated, List<Branch> branches) {
     }
 
-    public record CommitPage(String ref, int page, List<CommitBrief> commits) {
+    public record CommitPage(String ref, int page, List<CommitBrief> commits, boolean stale) {
+    }
+
+    /** parents 是父提交。branches 是顶端正好落在这次提交上的分支名。 */
+    public record GraphCommit(String sha, String shortSha, String message, String author, String date,
+                              List<String> parents, List<String> branches) {
+    }
+
+    public record GraphPage(String defaultBranch, boolean truncated, List<Branch> branches, List<GraphCommit> commits, boolean stale) {
+    }
+
+    /** outcome：merged 刚合并，already 本来就在目标分支里。 */
+    public record MergeResult(String outcome, String sha, String message) {
     }
 
     public record FileChange(String filename, String status, int additions, int deletions, String patch) {
