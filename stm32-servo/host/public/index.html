@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>舵机控制</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="panel">
+    <header>
+      <div>
+        <p class="eyebrow">STM32F103 · PA0 · 50Hz</p>
+        <h1>舵机控制</h1>
+      </div>
+      <p id="link" class="link">未连接</p>
+    </header>
+
+    <section class="connect">
+      <label class="grow">
+        串口
+        <input id="port" list="ports" placeholder="COM3" spellcheck="false">
+        <datalist id="ports"></datalist>
+      </label>
+      <button id="refresh" type="button">刷新</button>
+      <button id="serial" type="button">连接</button>
+      <button id="sim" type="button">仿真</button>
+      <button id="disconnect" type="button" disabled>断开</button>
+    </section>
+
+    <section class="stage">
+      <svg viewBox="0 0 220 130" aria-hidden="true">
+        <path d="M24 108 A86 86 0 0 1 196 108" class="track"></path>
+        <g id="needle">
+          <line x1="110" y1="108" x2="110" y2="30"></line>
+          <circle cx="110" cy="108" r="5"></circle>
+        </g>
+        <text x="20" y="124">0°</text>
+        <text x="110" y="18" text-anchor="middle">90°</text>
+        <text x="200" y="124" text-anchor="end">180°</text>
+      </svg>
+      <div class="readout">
+        <strong id="angle">--</strong>
+        <span id="target-line">目标 --</span>
+        <span id="pulse-line">脉宽 --</span>
+      </div>
+    </section>
+
+    <section class="controls" id="controls">
+      <label>
+        目标角度
+        <input id="target" type="number" min="0" max="180" step="0.1" value="90">
+      </label>
+      <input id="slider" type="range" min="0" max="180" step="0.1" value="90">
+      <label>
+        速度 °/s
+        <input id="speed" type="number" min="0" max="360" step="1" value="90">
+      </label>
+      <input id="speed-slider" type="range" min="0" max="360" step="1" value="90">
+      <p class="hint">速度 0 会立刻到位，其余按匀速转到目标角。</p>
+      <div class="row">
+        <button type="button" data-preset="0">0°</button>
+        <button type="button" data-preset="90">90°</button>
+        <button type="button" data-preset="180">180°</button>
+        <button id="go" type="button" class="go">转到</button>
+        <button id="stop" type="button" class="stop">停止</button>
+      </div>
+      <details>
+        <summary>脉宽标定</summary>
+        <div class="cal">
+          <label>最小 µs <input id="min-us" type="number" min="100" max="2900" step="1" value="500"></label>
+          <label>最大 µs <input id="max-us" type="number" min="200" max="3000" step="1" value="2500"></label>
+          <button id="apply-cal" type="button">写入</button>
+        </div>
+      </details>
+    </section>
+    <pre id="log">等待指令</pre>
+  </main>
+  <script src="/app.js"></script>
+</body>
+</html>
