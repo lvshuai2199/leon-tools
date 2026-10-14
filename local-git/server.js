@@ -83,7 +83,9 @@ async function route(req, res) {
   else if (req.method === "POST" && url.pathname === "/api/settings") data = await service.saveSettings(body);
   else if (req.method === "POST" && url.pathname === "/api/clone") data = await service.clone(body.url);
   else if (req.method === "GET" && url.pathname === "/api/workspace") data = await service.workspace(repo);
-  else if (req.method === "GET" && url.pathname === "/api/log") data = await service.log(repo, url.searchParams.get("max"));
+  else if (req.method === "GET" && url.pathname === "/api/log") {
+    data = await service.log(repo, url.searchParams.get("max"), url.searchParams.get("ref") || "");
+  }
   else if (req.method === "GET" && url.pathname === "/api/diff") {
     data = await service.diff(repo, url.searchParams.get("rev") || "", url.searchParams.get("target") || "", url.searchParams.get("scope") || "", url.searchParams.get("file") || "");
   } else if (req.method === "POST" && url.pathname === "/api/commit") data = await service.commit(repo, body.message);
@@ -93,10 +95,18 @@ async function route(req, res) {
   else if (req.method === "POST" && url.pathname === "/api/pull") data = await service.pull(repo);
   else if (req.method === "POST" && url.pathname === "/api/push") data = await service.push(repo);
   else if (req.method === "POST" && url.pathname === "/api/branch") data = await service.branch(repo, body.name);
+  else if (req.method === "POST" && url.pathname === "/api/branch-at") data = await service.branchAt(repo, body.name, body.sha);
   else if (req.method === "POST" && url.pathname === "/api/checkout") data = await service.checkout(repo, body.name, body.stash === true);
-  else if (req.method === "POST" && url.pathname === "/api/delete-branch") data = await service.deleteBranch(repo, body.name);
+  else if (req.method === "POST" && url.pathname === "/api/delete-branch") data = await service.deleteBranch(repo, body.name, body.force === true);
   else if (req.method === "POST" && url.pathname === "/api/merge") data = await service.merge(repo, body.branch);
   else if (req.method === "POST" && url.pathname === "/api/rebase") data = await service.rebase(repo, body.onto);
+  else if (req.method === "POST" && url.pathname === "/api/rebase-from") data = await service.rebaseFrom(repo, body.sha, body.onto);
+  else if (req.method === "GET" && url.pathname === "/api/history-range") {
+    data = await service.historyRange(repo, url.searchParams.get("mode") || "", url.searchParams.get("onto") || "", url.searchParams.get("rev") || "");
+  } else if (req.method === "POST" && url.pathname === "/api/squash") data = await service.squash(repo, body.shas, body.message);
+  else if (req.method === "POST" && url.pathname === "/api/rebase-squash") {
+    data = await service.rebaseSquash(repo, body.onto, body.shas, body.message);
+  }
   else if (req.method === "POST" && url.pathname === "/api/cherry-pick") data = await service.cherryPick(repo, body.sha, body.target);
   else if (req.method === "POST" && url.pathname === "/api/cherry-pick/partial") {
     data = await service.cherryPickPartial(repo, body.sha, body.target, body.hunks, body.message);

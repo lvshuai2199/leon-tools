@@ -428,10 +428,378 @@ test("porcelain -z 认重命名的新旧路径", () => {
   assert.equal(entries[1].path, "c.txt");
 });
 
+function rev(dir, spec = "HEAD") {
+  return execFileSync("git", ["rev-parse", spec], { cwd: dir, encoding: "utf8" }).trim();
+}
+
+function subjectOf(dir, spec = "HEAD") {
+  return execFileSync("git", ["log", "-1", "--format=%s", spec], { cwd: dir, encoding: "utf8" }).trim();
+}
+
+function porcelain(dir) {
+  return execFileSync("git", ["status", "--porcelain"], { cwd: dir, encoding: "utf8" }).trim();
+}
+
+function branchOf(dir) {
+  return execFileSync("git", ["branch", "--show-current"], { cwd: dir, encoding: "utf8" }).trim();
+}
+
+function commitFile(dir, file, content, message) {
+  fs.writeFileSync(path.join(dir, file), content);
+  gitCmd(dir, ["add", file]);
+  gitCmd(dir, ["commit", "-m", message]);
+}
+
+function progressLeft(dir) {
+  const gitDir = path.join(dir, ".git");
+  return ["CHERRY_PICK_HEAD", "MERGE_HEAD", "rebase-merge", "rebase-apply", "sequencer"].some((name) => fs.existsSync(path.join(gitDir, name)));
+}
+
+test("当前分支只有根提交时不能合成", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-range-${Date.now()}`));
+  const range = await git.historyRange(dir, "squash");
+  assert.deepEqual(range.commits, []);
+  assert.match(range.reason, /至少要有两笔自己的提交才能合成/);
+});
+
+test("三笔提交只合成最新两笔", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-squash-${Date.now()}`));
+  const oldest = rev(dir);
+  gitCmd(dir, ["branch", "other", oldest]);
+  commitFile(dir, "a.txt", "second\n", "second");
+  commitFile(dir, "b.txt", "third\n", "third");
+  const beforeTree = rev(dir, "HEAD^{tree}");
+  const otherSha = rev(dir, "other");
+  const range = await git.historyRange(dir, "squash");
+  assert.equal(range.commits.length, 2);
+  assert.equal(range.commits[0].sha, rev(dir));
+  assert.equal(range.commits[0].message, "third");
+  assert.equal(range.commits[0].parentCount, 1);
+  assert.equal(range.commits.some((commit) => commit.sha === oldest), false);
+  assert.ok(range.commits.every((commit) => !commit.sha.includes("\n") && commit.onRemote === false));
+  const op = await git.squashTip(dir, "repo", [range.commits[0].sha, range.commits[1].sha], "合成这两笔");
+  assert.match(op.notice, /已把 2 笔合成一个/);
+  assert.equal(rev(dir, "HEAD^"), oldest);
+  assert.equal(rev(dir, "HEAD^{tree}"), beforeTree);
+  assert.equal(subjectOf(dir), "合成这两笔");
+  assert.equal(rev(dir, "other"), otherSha);
+  assert.equal(porcelain(dir), "");
+  assert.equal(op.workspace.branch, "main");
+  assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "second\n");
+  assert.equal(fs.readFileSync(path.join(dir, "b.txt"), "utf8"), "third\n");
+});
+
+test("不连续、只有一笔或含根提交时拒绝且不改仓库", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-squash-reject-${Date.now()}`));
+  const root = rev(dir);
+  commitFile(dir, "a.txt", "second\n", "second");
+  commitFile(dir, "b.txt", "third\n", "third");
+  commitFile(dir, "c.txt", "fourth\n", "fourth");
+  const range = await git.historyRange(dir, "squash");
+  assert.equal(range.commits.length, 3);
+  const head = rev(dir);
+  const clean = porcelain(dir);
+  await assert.rejects(git.squashTip(dir, "repo", [range.commits[0].sha, range.commits[2].sha], "跳过"), /中间不能空/);
+  await assert.rejects(git.squashTip(dir, "repo", [range.commits[0].sha], "一笔"), /中间不能空/);
+  await assert.rejects(git.squashTip(dir, "repo", [range.commits[0].sha, range.commits[1].sha, range.commits[2].sha, root], "含根"), /中间不能空/);
+  assert.equal(rev(dir), head);
+  assert.equal(porcelain(dir), clean);
+  assert.equal(subjectOf(dir), "fourth");
+});
+
+test("含合并提交不能合成", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-squash-merge-${Date.now()}`));
+  gitCmd(dir, ["switch", "-c", "feature"]);
+  commitFile(dir, "a.txt", "feature\n", "feature-edit");
+  const featureSha = rev(dir);
+  gitCmd(dir, ["switch", "main"]);
+  commitFile(dir, "b.txt", "main\n", "main-edit");
+  gitCmd(dir, ["merge", "--no-edit", "feature"]);
+  commitFile(dir, "c.txt", "after\n", "after");
+  const head = rev(dir);
+  const merge = rev(dir, "HEAD^");
+  const replay = await git.historyRange(dir, "replay", "feature");
+  assert.equal(replay.hasMerges, true);
+  assert.equal(replay.commits.some((commit) => commit.sha === merge), false);
+  await assert.rejects(git.squashTip(dir, "repo", [head, merge], "不要合成合并"), /合并提交/);
+  assert.equal(rev(dir), head);
+  assert.equal(porcelain(dir), "");
+  assert.equal(rev(dir, "feature"), featureSha);
+  assert.equal(subjectOf(dir), "after");
+});
+
+test("脏工作区不能合成也不能接到后面", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-squash-dirty-${Date.now()}`));
+  gitCmd(dir, ["branch", "other"]);
+  commitFile(dir, "c.txt", "c\n", "second");
+  commitFile(dir, "d.txt", "d\n", "third");
+  const head = rev(dir);
+  fs.writeFileSync(path.join(dir, "a.txt"), "dirty\n");
+  await assert.rejects(git.squashTip(dir, "repo", [], ""), /未提交/);
+  await assert.rejects(git.rebaseSquash(dir, "repo", "other", [], ""), /未提交/);
+  assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "dirty\n");
+  assert.equal(rev(dir), head);
+  assert.equal(progressLeft(dir), false);
+});
+
+test("接到后面时把最新连续几笔合成一个", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-replay-${Date.now()}`));
+  const fork = rev(dir);
+  commitFile(dir, "a.txt", "main\n", "main-extra");
+  const mainSha = rev(dir);
+  gitCmd(dir, ["switch", "-c", "feature", fork]);
+  commitFile(dir, "c.txt", "A\n", "A");
+  commitFile(dir, "b.txt", "B\n", "B");
+  commitFile(dir, "d.txt", "C\n", "C");
+  const range = await git.historyRange(dir, "replay", "main");
+  assert.deepEqual(range.commits.map((commit) => commit.message), ["C", "B", "A"]);
+  assert.equal(range.truncated, false);
+  assert.equal(range.hasMerges, false);
+  const op = await git.rebaseSquash(dir, "repo", "main", [range.commits[0].sha, range.commits[1].sha], "BC一起");
+  assert.match(op.notice, /已接到 main 后面，并把 2 笔合成一个/);
+  assert.equal(branchOf(dir), "feature");
+  assert.equal(op.workspace.branch, "feature");
+  assert.equal(rev(dir, "main"), mainSha);
+  assert.equal(subjectOf(dir), "BC一起");
+  assert.equal(subjectOf(dir, "HEAD^"), "A");
+  assert.equal(rev(dir, "HEAD^^"), mainSha);
+  assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "main\n");
+  assert.equal(fs.readFileSync(path.join(dir, "c.txt"), "utf8"), "A\n");
+  assert.equal(fs.readFileSync(path.join(dir, "b.txt"), "utf8"), "B\n");
+  assert.equal(fs.readFileSync(path.join(dir, "d.txt"), "utf8"), "C\n");
+  assert.equal(porcelain(dir), "");
+  assert.equal(progressLeft(dir), false);
+});
+
+test("接到后面发生冲突时回到操作前", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-replay-conflict-${Date.now()}`));
+  const fork = rev(dir);
+  commitFile(dir, "a.txt", "main\n", "main-extra");
+  const mainSha = rev(dir);
+  gitCmd(dir, ["switch", "-c", "feature", fork]);
+  commitFile(dir, "c.txt", "A\n", "A");
+  commitFile(dir, "a.txt", "feature\n", "B");
+  commitFile(dir, "d.txt", "C\n", "C");
+  const head = rev(dir);
+  const shas = execFileSync("git", ["rev-list", "--reverse", "main..HEAD"], { cwd: dir, encoding: "utf8" })
+    .trim()
+    .split(/\r?\n/);
+  await assert.rejects(git.rebaseSquash(dir, "repo", "main", [shas[2], shas[1]], "不要"), /接到后面没有完成，已取消/);
+  assert.equal(rev(dir), head);
+  assert.equal(branchOf(dir), "feature");
+  assert.equal(porcelain(dir), "");
+  assert.equal(rev(dir, "main"), mainSha);
+  assert.equal(progressLeft(dir), false);
+  assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "feature\n");
+});
+
+test("空 shas 不能合成也不能接到后面", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-empty-shas-${Date.now()}`));
+  gitCmd(dir, ["branch", "other"]);
+  commitFile(dir, "c.txt", "c\n", "second");
+  commitFile(dir, "d.txt", "d\n", "third");
+  const head = rev(dir);
+  await assert.rejects(git.squashTip(dir, "repo", [], "有说明"), /中间不能空/);
+  await assert.rejects(git.rebaseSquash(dir, "repo", "other", [], "有说明"), /中间不能空/);
+  assert.equal(rev(dir), head);
+  assert.equal(porcelain(dir), "");
+  assert.equal(subjectOf(dir), "third");
+});
+
+test("push 的参数仍是 push -u origin HEAD", async () => {
+  const source = fs.readFileSync(path.join(__dirname, "../lib/git.js"), "utf8");
+  assert.match(source, /\["push", "-u", "origin", "HEAD"\]/);
+  assert.doesNotMatch(source, /push",\s*"--force/);
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-push-${Date.now()}`));
+  const bare = path.join(os.tmpdir(), `local-git-bare-${Date.now()}`);
+  execFileSync("git", ["init", "--bare", "-b", "main", bare], { windowsHide: true, stdio: "pipe" });
+  gitCmd(dir, ["remote", "add", "origin", bare]);
+  const op = await git.push(dir, "repo", {});
+  assert.match(op.notice, /已推送/);
+  assert.equal(execFileSync("git", ["rev-parse", "--abbrev-ref", "@{upstream}"], { cwd: dir, encoding: "utf8" }).trim(), "origin/main");
+});
+
 test("新建分支可以带着未提交改动", async () => {
   const dir = initRepo(path.join(os.tmpdir(), `local-git-carry-${Date.now()}`));
   fs.writeFileSync(path.join(dir, "a.txt"), "dirty\na2\na3\n");
   const op = await git.createBranch(dir, "repo", "topic");
   assert.equal(op.workspace.branch, "topic");
   assert.match(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), /^dirty/);
+});
+
+test("logArgs 空 ref 用 --all，有 ref 不用 --all", () => {
+  const all = git.logArgs("", 10);
+  assert.equal(all[0], "log");
+  assert.equal(all[1], "--all");
+  assert.ok(all.includes("--topo-order"));
+  assert.equal(all[all.indexOf("-n") + 1], "11");
+  for (const ref of ["feature", "upstream/topic"]) {
+    const args = git.logArgs(ref, 10);
+    assert.equal(args[1], ref);
+    assert.equal(args.includes("--all"), false);
+    assert.ok(args.includes("--topo-order"));
+    assert.equal(args[args.indexOf("-n") + 1], "11");
+  }
+});
+
+test("单分支日志只走到这条 ref，另一条独有提交不在里面", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-logref-${Date.now()}`));
+  gitCmd(dir, ["switch", "-c", "feature"]);
+  commitFile(dir, "c.txt", "feature\n", "feature-only");
+  gitCmd(dir, ["switch", "main"]);
+  commitFile(dir, "d.txt", "main\n", "main-only");
+  const all = await git.log(dir, 10);
+  assert.ok(all.commits.some((commit) => commit.message.startsWith("feature-only")));
+  assert.ok(all.commits.some((commit) => commit.message.startsWith("main-only")));
+  const mainLog = await git.log(dir, 10, "main");
+  assert.equal(mainLog.commits.some((commit) => commit.message.startsWith("feature-only")), false);
+  assert.ok(mainLog.commits.some((commit) => commit.message.startsWith("main-only")));
+  const featureLog = await git.log(dir, 10, "feature");
+  assert.ok(featureLog.commits.some((commit) => commit.message.startsWith("feature-only")));
+  assert.ok(featureLog.commits.some((commit) => commit.message.startsWith("init")));
+  assert.equal(featureLog.commits.some((commit) => commit.message.startsWith("main-only")), false);
+  assert.equal(featureLog.graph.length, featureLog.commits.length);
+  assert.ok(featureLog.graph.some((row) => (row.links || []).some((link) => link.kind !== "bottom")));
+});
+
+test("远程 ref 的日志包含那条远程提交", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-logremote-${Date.now()}`));
+  const remote = initRepo(path.join(os.tmpdir(), `local-git-logremote-up-${Date.now()}`));
+  gitCmd(remote, ["switch", "-c", "topic"]);
+  commitFile(remote, "t.txt", "topic\n", "remote-topic");
+  gitCmd(dir, ["remote", "add", "upstream", remote]);
+  gitCmd(dir, ["fetch", "upstream"]);
+  const history = await git.log(dir, 10, "upstream/topic");
+  assert.ok(history.commits.some((commit) => commit.message.startsWith("remote-topic")));
+});
+
+test("非法 ref 和未知分支不改 HEAD", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-logbad-${Date.now()}`));
+  const head = rev(dir);
+  for (const bad of ["a..b", "a b", "a\\b", "origin/HEAD"]) {
+    await assert.rejects(git.log(dir, 10, bad), /分支名不对/);
+    assert.equal(rev(dir), head);
+  }
+  await assert.rejects(git.log(dir, 10, "no-such-branch"), /没有这条分支/);
+  assert.equal(rev(dir), head);
+  assert.equal(branchOf(dir), "main");
+});
+
+test("单分支超过上限时 truncated 且只留上限条数", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-logcap-${Date.now()}`));
+  commitFile(dir, "c.txt", "c\n", "second");
+  const page = await git.log(dir, 1, "main");
+  assert.equal(page.truncated, true);
+  assert.equal(page.commits.length, 1);
+});
+
+test("提交差异列出全部文件，只展开请求的那一个", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-difffile-${Date.now()}`));
+  commitFile(dir, "c.txt", "c\n", "add-c");
+  fs.writeFileSync(path.join(dir, "a.txt"), "changed\n");
+  fs.writeFileSync(path.join(dir, "b.txt"), "changed-b\n");
+  gitCmd(dir, ["add", "."]);
+  gitCmd(dir, ["commit", "-m", "two-files"]);
+  const sha = rev(dir);
+  const page = await git.diffPage(dir, sha, "");
+  assert.equal(page.files.length, 2);
+  assert.deepEqual(page.files.map((file) => file.path).sort(), ["a.txt", "b.txt"]);
+  const opened = page.files.filter((file) => (file.hunks || []).length > 0);
+  assert.equal(opened.length, 1);
+  const other = page.files.find((file) => file.path !== opened[0].path);
+  const again = await git.diffPage(dir, sha, "", { file: other.path });
+  assert.equal(again.files.length, 2);
+  assert.ok((again.files.find((file) => file.path === other.path).hunks || []).length >= 1);
+  assert.equal((again.files.find((file) => file.path === opened[0].path).hunks || []).length, 0);
+  assert.equal(again.file, other.path);
+});
+
+test("从选定提交变基，更早的不跟着走，目标分支不动", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-from-${Date.now()}`));
+  gitCmd(dir, ["switch", "-c", "feature"]);
+  commitFile(dir, "d.txt", "stay\n", "stay");
+  const stay = rev(dir);
+  gitCmd(dir, ["branch", "kept", stay]);
+  commitFile(dir, "b.txt", "b-feature\n", "from-b");
+  const start = rev(dir);
+  commitFile(dir, "c.txt", "c\n", "from-c");
+  gitCmd(dir, ["switch", "main"]);
+  commitFile(dir, "a.txt", "main\na2\na3\n", "main-change");
+  const mainSha = rev(dir);
+  gitCmd(dir, ["switch", "feature"]);
+  const op = await git.rebaseFrom(dir, "repo", start, "main");
+  assert.match(op.notice, /开始变基到 main/);
+  assert.equal(branchOf(dir), "feature");
+  assert.equal(rev(dir, "main"), mainSha);
+  assert.equal(rev(dir, "kept"), stay);
+  assert.equal(fs.readFileSync(path.join(dir, "a.txt"), "utf8"), "main\na2\na3\n");
+  assert.equal(fs.readFileSync(path.join(dir, "c.txt"), "utf8"), "c\n");
+  const history = await git.log(dir, 20, "feature");
+  const messages = history.commits.map((commit) => commit.message);
+  assert.ok(messages.includes("from-b"));
+  assert.ok(messages.includes("from-c"));
+  assert.ok(messages.includes("main-change"));
+  assert.equal(messages.includes("stay"), false);
+});
+
+test("不在当前分支上不能从这里变基", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-from-off-${Date.now()}`));
+  gitCmd(dir, ["switch", "-c", "feature"]);
+  commitFile(dir, "c.txt", "c\n", "only-feature");
+  gitCmd(dir, ["switch", "main"]);
+  commitFile(dir, "a.txt", "main\na2\na3\n", "only-main");
+  const mainSha = rev(dir);
+  gitCmd(dir, ["switch", "feature"]);
+  const head = rev(dir);
+  await assert.rejects(git.rebaseFrom(dir, "repo", mainSha, "main"), /不在当前分支/);
+  assert.equal(rev(dir), head);
+  assert.equal(branchOf(dir), "feature");
+});
+
+test("从这里变基冲突会取消", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-from-conflict-${Date.now()}`));
+  gitCmd(dir, ["switch", "-c", "feature"]);
+  commitFile(dir, "a.txt", "feature\na2\na3\n", "feature-a");
+  const start = rev(dir);
+  gitCmd(dir, ["switch", "main"]);
+  commitFile(dir, "a.txt", "main\na2\na3\n", "main-a");
+  gitCmd(dir, ["switch", "feature"]);
+  const head = rev(dir);
+  await assert.rejects(git.rebaseFrom(dir, "repo", start, "main"), /冲突|已取消/);
+  assert.equal(rev(dir), head);
+  assert.equal(branchOf(dir), "feature");
+  assert.equal((await git.workspace(dir, "repo")).changes.length, 0);
+});
+
+test("没合并的本地分支要确认后才删除，另一条指着同一提交的分支还在", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-del-${Date.now()}`));
+  const base = rev(dir);
+  gitCmd(dir, ["switch", "-c", "side"]);
+  commitFile(dir, "c.txt", "c\n", "only-on-side");
+  const sideTip = rev(dir);
+  gitCmd(dir, ["branch", "same", sideTip]);
+  gitCmd(dir, ["switch", "main"]);
+  await assert.rejects(git.deleteBranch(dir, "repo", "same"), /还没合并/);
+  assert.equal(branchOf(dir), "main");
+  assert.equal(rev(dir), base);
+  await git.deleteBranch(dir, "repo", "same", { force: true });
+  const names = execFileSync("git", ["branch", "--format=%(refname:short)"], { cwd: dir, windowsHide: true, encoding: "utf8" });
+  assert.equal(names.includes("same"), false);
+  assert.equal(rev(dir, "side"), sideTip);
+  assert.equal(branchOf(dir), "main");
+  await assert.rejects(git.deleteBranch(dir, "repo", "main", { force: true }), /不能删除当前分支/);
+});
+
+test("从某次提交新建分支，当前分支和 HEAD 不动", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-branch-at-${Date.now()}`));
+  const first = rev(dir);
+  commitFile(dir, "c.txt", "c\n", "second");
+  const head = rev(dir);
+  const op = await git.createBranchAt(dir, "repo", "from-old", first);
+  assert.match(op.notice, /from-old/);
+  assert.equal(branchOf(dir), "main");
+  assert.equal(rev(dir), head);
+  assert.equal(rev(dir, "from-old"), first);
+  await assert.rejects(git.createBranchAt(dir, "repo", "from-old", first), /已经有这个分支/);
+  assert.equal(rev(dir), head);
 });

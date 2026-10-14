@@ -10,7 +10,7 @@ const state = {
   ws: null,
   log: null,
   diff: null,
-  tab: "changes",
+  tab: "log",
   file: "",
   logFile: "",
   sha: "",
@@ -20,6 +20,7 @@ const state = {
   message: "",
   busy: "",
   selectedBranch: "",
+  graphRef: "",
   branchFilter: "",
   stashId: "",
   stashDiff: null,
@@ -135,14 +136,23 @@ async function loadHome() {
   if (!state.repo && state.home.repos?.length) state.repo = state.home.repos[0].id;
 }
 
+let graphSeq = 0;
+
+function logUrl(repo, ref) {
+  const base = `/api/log?repo=${encodeURIComponent(repo)}`;
+  return ref ? `${base}&ref=${encodeURIComponent(ref)}` : base;
+}
+
 async function loadRepo() {
+  graphSeq += 1;
   state.ws = null;
   state.log = null;
   state.diff = null;
   if (!state.repo) return;
   localStorage.setItem("local-git-repo", state.repo);
   state.ws = await api(`/api/workspace?repo=${encodeURIComponent(state.repo)}`);
-  state.log = await api(`/api/log?repo=${encodeURIComponent(state.repo)}`);
+  if (state.graphRef && !findLeaf(state.ws.branchTree, state.graphRef)) state.graphRef = "";
+  state.log = await api(logUrl(state.repo, state.graphRef));
   const locals = (state.ws.branches || []).filter((branch) => !branch.remote);
   const other = locals.find((branch) => !branch.current);
   if (!state.target || !locals.some((branch) => branch.name === state.target)) state.target = other?.name || state.ws.branch || "";
@@ -176,10 +186,12 @@ async function loadDiff() {
   const seq = ++diffSeq;
   if (state.tab === "log" && state.sha) {
     const target = encodeURIComponent(state.target || "");
-    const data = await api(`/api/diff?repo=${encodeURIComponent(state.repo)}&rev=${encodeURIComponent(state.sha)}&target=${target}`);
+    const file = state.logFile ? `&file=${encodeURIComponent(state.logFile)}` : "";
+    const data = await api(`/api/diff?repo=${encodeURIComponent(state.repo)}&rev=${encodeURIComponent(state.sha)}&target=${target}${file}`);
     if (seq !== diffSeq) return;
     state.diff = data;
     if (state.logFile && !(state.diff.files || []).some((file) => file.path === state.logFile)) state.logFile = "";
+    if (!state.logFile && (state.diff.files || []).length) state.logFile = state.diff.files[0].path;
     return;
   }
   if (state.tab === "changes") {
@@ -207,6 +219,7 @@ async function loadStash(id) {
     if (state.stashId !== id) return;
     state.stashDiff = page;
     state.stashError = "";
+    state.logFile = (page.files || [])[0]?.path || "";
   } catch (error) {
     if (state.stashId !== id) return;
     state.stashDiff = null;
@@ -216,9 +229,35 @@ async function loadStash(id) {
   render();
 }
 
-async function refresh(notice) {
-  await loadHome();
+async function loadGraph() {
+  if (!state.repo) return;
+  const seq = ++graphSeq;
+  const ref = state.graphRef;
+  const repo = state.repo;
+  try {
+    const data = await api(logUrl(repo, ref));
+    if (seq !== graphSeq || state.graphRef !== ref || state.repo !== repo) return;
+    state.log = data;
+    render();
+  } catch (error) {
+    if (seq !== graphSeq || state.graphRef !== ref || state.repo !== repo) return;
+    showToast(error.message || "失败");
+  }
+}
+
+function syncRepoBranch() {
+  const repos = state.home && state.home.repos;
+  if (!repos || !state.repo || !state.ws) return;
+  const item = repos.find((repo) => repo.id === state.repo);
+  if (!item) return;
+  item.branch = state.ws.detached ? "" : state.ws.branch || "";
+}
+
+async function refresh(notice, options) {
+  const scan = !options || options.home !== false;
+  if (scan) await loadHome();
   if (state.repo) await loadRepo();
+  syncRepoBranch();
   render();
   if (notice) showToast(notice);
 }
@@ -230,7 +269,8 @@ async function run(label, fn) {
   try {
     const result = await fn();
     if (result?.repoId) state.repo = result.repoId;
-    await refresh(result?.notice);
+    const scan = label === "repo" || label === "clone" || label === "settings";
+    await refresh(result?.notice, { home: scan });
   } catch (error) {
     showToast(error.message || "失败");
     render();
@@ -241,6 +281,7 @@ async function run(label, fn) {
 }
 
 function render() {
+  hideMenu();
   const home = state.home;
   if (!home) {
     app.innerHTML = `<p class="empty">正在读取这台电脑上的仓库…</p>`;
@@ -257,26 +298,22 @@ function render() {
     .join("");
   const track = !ws ? "" : ws.upstream ? `上游 ${ws.upstream}，超前 ${ws.ahead}，落后 ${ws.behind}` : "没有上游";
   const meta = ws ? `${ws.detached ? "游离 HEAD" : ws.branch} · ${track}${ws.dirty ? " · 有未提交改动" : ""}` : "";
-  const rollback = state.tab === "changes" ? `<button type="button" data-act="restore-file" ${dis()}>回滚</button>` : "";
   const changeCount = ws ? (ws.changes || []).length : null;
   const changeTab = changeCount == null ? "变更" : `变更 (${changeCount})`;
-  const screen = state.tab === "log" ? logScreen() : state.tab === "branches" ? branchScreen() : changeScreen();
+  const screen = state.tab === "log" ? logScreen() : changeScreen();
   app.innerHTML = `
     <div class="toolbar">
       <select id="repo-select" class="repo-select" ${dis()}>${options || `<option value="">没有仓库</option>`}</select>
-      <button type="button" data-act="fetch" ${dis()}>获取</button>
+      <button type="button" data-act="fetch" title="只下载远程的新提交，不改你现在的分支。" ${dis()}>获取</button>
       <button type="button" data-act="pull" ${dis()}>拉取</button>
       <button type="button" data-act="push" ${dis()}>推送</button>
       ${commitButton("提交")}
       <button type="button" data-act="branch" ${dis()}>新建分支</button>
-      <button type="button" data-act="compare" ${dis()}>对比</button>
-      ${rollback}
       <p class="meta toolbar-meta">${esc(meta)}</p>
     </div>
     <div class="tabs">
+      <button type="button" data-tab="log" class="${state.tab === "log" ? "is-on" : ""}">历史</button>
       <button type="button" data-tab="changes" class="${state.tab === "changes" ? "is-on" : ""}">${changeTab}</button>
-      <button type="button" data-tab="log" class="${state.tab === "log" ? "is-on" : ""}">日志</button>
-      <button type="button" data-tab="branches" class="${state.tab === "branches" ? "is-on" : ""}">分支</button>
     </div>
     ${screen}`;
   bind();
@@ -299,11 +336,7 @@ function changeScreen() {
 }
 
 function logScreen() {
-  return `<div class="screen-scroll"><div class="screen cols-3"><section class="pane col">${treePane()}</section><section class="pane graph-pane">${renderGraph()}</section><section class="pane diff-pane log-pane">${logRight()}</section></div></div>`;
-}
-
-function branchScreen() {
-  return `<div class="screen cols-2"><section class="pane col">${treePane()}</section><section class="pane"><p class="meta">检出、合并、变基和删除都作用在当前仓库。合并和变基如果冲突会直接取消，工作区保持原样。</p>${stashDiffHtml()}</section></div>`;
+  return `<div class="screen history"><section class="pane col history-branches">${treePane()}</section><section class="pane graph-pane history-graph">${renderGraph()}</section><section class="pane col history-files">${historyFiles()}</section><section class="pane diff-pane history-diff">${historyDiff()}</section></div>`;
 }
 
 function changeRow(change, side) {
@@ -358,33 +391,49 @@ function changesDiff() {
   return hint + renderSide(file, allowHunk);
 }
 
-function logRight() {
-  if (state.preferStash && state.stashId) return `<div class="diff-scroll">${stashDiffHtml()}</div>`;
-  if (!state.sha) return `<p class="empty">点一次提交查看文件</p>`;
-  const hints = state.diff?.hints || [];
+function fileButtons(files) {
+  if (!files.length) return `<p class="empty">没有文件差异</p>`;
+  return `<div class="list file-list">${files
+    .map((file) => `<button type="button" class="item ${state.logFile === file.path ? "is-on" : ""}" data-log-file="${esc(file.path)}" title="${esc(file.path)}"><span class="grow"><b>${esc(file.path)}</b><small>${esc((file.hints || []).join(" · "))}</small></span></button>`)
+    .join("")}</div>`;
+}
+
+function pickControls() {
   const locals = (state.ws?.branches || []).filter((branch) => !branch.remote);
   const options = locals
     .map((branch) => `<option value="${esc(branch.name)}" ${branch.name === state.target ? "selected" : ""}>${esc(branch.name)}${branch.current ? "（当前）" : ""}</option>`)
     .join("");
-  const pickBar = `<div class="field"><label>拣选到</label><select id="target">${options}</select></div><div class="row"><button type="button" data-act="pick-all" ${dis()}>拣选整次提交</button><button type="button" class="primary" data-act="pick-part" ${dis()}>拣选勾选片段</button></div>`;
-  const files = state.diff?.files || [];
-  const list = files.length
-    ? files
-        .map((file) => `<button type="button" class="item ${state.logFile === file.path ? "is-on" : ""}" data-log-file="${esc(file.path)}"><span class="grow"><b>${esc(file.path)}</b><small>${esc((file.hints || []).join(" · "))}</small></span></button>`)
-        .join("")
-    : `<p class="empty">这次提交没有文件差异</p>`;
-  const selected = files.find((file) => file.path === state.logFile);
-  const body = selected ? renderFile(selected) : `<p class="empty">点一个文件查看差异</p>`;
-  return `<div class="hint ${hintTone(hints) === "warn" ? "is-warn" : ""}">${esc(hints.join("\n"))}</div>${pickBar}<div class="list file-list">${list}</div><div class="diff-scroll">${body}</div>`;
+  return `<label>拣选到</label><select id="target">${options}</select><button type="button" data-act="pick-all" ${dis()}>整次拿到所选分支</button><button type="button" class="primary" data-act="pick-part" ${dis()}>只拿勾选的片段</button>`;
 }
 
-function stashDiffHtml() {
-  if (!state.stashId) return `<p class="empty">选一条贮藏查看差异</p>`;
-  if (state.stashError) return `<p class="empty">${esc(state.stashError)}</p>`;
-  if (!state.stashDiff) return `<p class="empty">正在读取贮藏差异…</p>`;
-  const page = state.stashDiff;
-  const files = (page.files || []).map((file) => renderFile(file)).join("") || `<p class="empty">没有差异</p>`;
-  return `<div class="hint">${esc((page.hints || []).join("\n"))}</div><p class="meta">${esc(page.message || "")}</p>${files}`;
+function historyFiles() {
+  if (state.preferStash && state.stashId) {
+    if (state.stashError) return `<p class="empty">${esc(state.stashError)}</p>`;
+    if (!state.stashDiff) return `<p class="empty">正在读取贮藏…</p>`;
+    return `<p class="meta">${esc(state.stashDiff.message || "贮藏")}</p>${fileButtons(state.stashDiff.files || [])}`;
+  }
+  if (!state.sha) return `<p class="empty">点上面一次提交，这里列出改动的文件</p>`;
+  const hints = commitHints();
+  const hint = hints.length ? `<span class="history-hint ${hintTone(hints) === "warn" ? "is-warn" : ""}" title="${esc(hints.join("\n"))}">${esc(hints.join(" · "))}</span>` : "";
+  const files = state.diff ? fileButtons(state.diff.files || []) : `<p class="empty">正在读取这次提交…</p>`;
+  return `<div class="history-bar">${hint}${pickControls()}</div>${files}`;
+}
+
+function commitHints() {
+  const hints = [...(state.diff?.hints || [])];
+  if (state.ws?.dirty && !hints.some((text) => String(text).includes("未提交"))) hints.push("工作区还有未提交改动");
+  return hints;
+}
+
+function historyDiff() {
+  const stashView = state.preferStash && state.stashId;
+  const files = stashView ? state.stashDiff?.files || [] : state.diff?.files || [];
+  const selected = files.find((file) => file.path === state.logFile);
+  if (!selected) return `<p class="empty">点左边的文件查看差异</p>`;
+  if (!stashView && state.sha && !selected.binary && !(selected.hunks || []).length && state.diff?.file !== selected.path) {
+    return `<p class="empty">正在读取差异…</p>`;
+  }
+  return `<div class="diff-scroll">${renderFile(selected)}</div>`;
 }
 
 function renderSide(file, allowHunk) {
@@ -431,11 +480,44 @@ function shortWhen(iso) {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
+function graphBranchNames() {
+  const names = [];
+  const seen = new Set();
+  const walk = (nodes) => {
+    for (const node of nodes || []) {
+      if (node.children) walk(node.children);
+      if (!node.checkout || node.detached || seen.has(node.checkout)) continue;
+      seen.add(node.checkout);
+      names.push(node.checkout);
+    }
+  };
+  for (const group of state.ws?.branchTree?.groups || []) walk(group.nodes);
+  return names;
+}
+
+function graphHead() {
+  const watching = state.graphRef || "全部";
+  const label = `正在看：${watching}`;
+  const options = [`<option value="" ${state.graphRef ? "" : "selected"}>全部</option>`]
+    .concat(graphBranchNames().map((name) => `<option value="${esc(name)}" ${name === state.graphRef ? "selected" : ""}>${esc(name)}</option>`))
+    .join("");
+  return `<div class="graph-head"><b>分支图</b><span title="${esc(label)}">${esc(label)}</span><button type="button" data-graph-all class="${state.graphRef ? "" : "is-on"}" ${dis()}>全部</button><select id="graph-ref" ${dis()}>${options}</select></div>`;
+}
+
 function renderGraph() {
+  const head = graphHead();
   const commits = state.log?.commits || [];
   const rows = state.log?.graph || [];
-  if (!commits.length) return `<p class="empty">还没有提交</p>`;
-  const rowHeight = 56;
+  if (!commits.length) return `${head}<p class="empty">还没有提交</p>`;
+  const focusColors = new Set();
+  if (state.graphRef) {
+    commits.forEach((commit, index) => {
+      const hit = (commit.refs || []).some((ref) => ref && ref.name === state.graphRef && ref.kind !== "tag");
+      if (hit && rows[index]) focusColors.add(rows[index].color || 0);
+    });
+  }
+  const band = (color) => focusColors.has(color || 0);
+  const rowHeight = 32;
   const colWidth = 22;
   const pad = 12;
   let lanes = 1;
@@ -454,23 +536,24 @@ function renderGraph() {
     const color = LANE_COLORS[(row.color || 0) % LANE_COLORS.length];
     for (const link of row.links || []) {
       const stroke = LANE_COLORS[(link.color || 0) % LANE_COLORS.length];
+      const width = band(link.color) ? 4.5 : link.kind === "bottom" ? 2 : 2.5;
       const x1 = x(link.from || 0);
       const y1 = y(index);
       if (link.kind === "bottom") {
-        marks += `<line x1="${x1}" y1="${y1}" x2="${x1}" y2="${y1 + rowHeight / 2 - 2}" stroke="${stroke}" stroke-width="2" />`;
+        marks += `<line x1="${x1}" y1="${y1}" x2="${x1}" y2="${y1 + rowHeight / 2 - 2}" stroke="${stroke}" stroke-width="${width}" />`;
         continue;
       }
       const x2 = x(link.to || 0);
       const y2 = y(index + 1);
-      if (link.from === link.to) marks += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" />`;
+      if (link.from === link.to) marks += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" />`;
       else {
         const mid = (y1 + y2) / 2;
-        marks += `<path d="M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}" fill="none" stroke="${stroke}" stroke-width="2.5" stroke-linecap="round" />`;
+        marks += `<path d="M ${x1} ${y1} C ${x1} ${mid}, ${x2} ${mid}, ${x2} ${y2}" fill="none" stroke="${stroke}" stroke-width="${width}" stroke-linecap="round" />`;
       }
     }
     const cx = x(row.lane || 0);
     const cy = y(index);
-    marks += `<circle cx="${cx}" cy="${cy}" r="6" fill="#fff" stroke="${color}" stroke-width="3" />`;
+    marks += `<circle cx="${cx}" cy="${cy}" r="4.5" fill="#fff" stroke="${color}" stroke-width="${band(row.color) ? 4 : 2.5}" />`;
   });
   const lines = commits
     .map((commit) => {
@@ -478,15 +561,18 @@ function renderGraph() {
         .map((ref) => {
           const kind = ref && ref.kind ? ref.kind : "local";
           const label = ref && ref.name ? ref.name : ref;
-          return `<span class="tag tag-${esc(kind)}">${esc(label)}</span>`;
+          const on = state.graphRef && label === state.graphRef ? " is-on" : "";
+          const click = kind === "local" || kind === "remote" ? ` data-graph-ref="${esc(label)}"` : "";
+          return `<span class="tag tag-${esc(kind)}${on}"${click}>${esc(label)}</span>`;
         })
         .join("");
       const when = shortWhen(commit.date);
-      return `<button type="button" class="graph-line ${state.sha === commit.sha ? "is-on" : ""}" data-sha="${esc(commit.sha)}" style="height:${rowHeight}px" title="${esc(commit.message || "")}"><span class="graph-msg"><span class="graph-subject"><b>${esc(commit.message || "（没有说明）")}</b> ${tags}</span><small>${esc(commit.shortSha)} · ${esc(commit.author)}${when ? ` · ${esc(when)}` : ""}</small></span></button>`;
+      const meta = `<small class="graph-meta"><span class="graph-sha">${esc(commit.shortSha)}</span><span class="graph-author">${esc(commit.author)}</span>${when ? `<span class="graph-when">${esc(when)}</span>` : ""}</small>`;
+      return `<button type="button" class="graph-line ${state.sha === commit.sha ? "is-on" : ""}" data-sha="${esc(commit.sha)}" style="height:${rowHeight}px" title="${esc(commit.message || "")}"><span class="graph-msg"><span class="graph-subject"><b>${esc(commit.message || "（没有说明）")}</b> ${tags}</span>${meta}</span></button>`;
     })
     .join("");
   const note = state.log?.truncated ? `<p class="meta">只显示最近 ${commits.length} 条</p>` : "";
-  return `<div class="graph-head"><b>分支图</b><span>本地和远程提交在同一棵树上</span></div><div class="graph-scroll"><div class="graph-body" style="height:${height}px"><svg class="graph-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${marks}</svg><div class="graph-rows">${lines}</div></div>${note}</div>`;
+  return `${head}<div class="graph-scroll"><div class="graph-body" style="height:${height}px"><svg class="graph-svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}">${marks}</svg><div class="graph-rows">${lines}</div></div>${note}</div>`;
 }
 
 function treePane() {
@@ -494,7 +580,7 @@ function treePane() {
   if (!tree) return `<p class="empty">先选择仓库</p>`;
   const groups = (tree.groups || []).map(renderGroup).join("");
   const visible = groups.trim();
-  return `<input id="branch-filter" placeholder="过滤分支" value="${esc(state.branchFilter)}" />${branchActions(findLeaf(tree, state.selectedBranch))}<div class="list grow">${visible || `<p class="empty">${state.branchFilter.trim() ? "没有匹配的分支" : "没有分支"}</p>`}</div>${stashBlock()}`;
+  return `<input id="branch-filter" placeholder="过滤分支" value="${esc(state.branchFilter)}" /><div class="list grow">${visible || `<p class="empty">${state.branchFilter.trim() ? "没有匹配的分支" : "没有分支"}</p>`}</div>${stashBlock()}`;
 }
 
 function renderGroup(group) {
@@ -558,17 +644,19 @@ function findLeaf(tree, checkout) {
   }
 }
 
-function branchActions(leaf) {
-  if (!leaf || leaf.detached || !leaf.checkout) return "";
-  if (leaf.current && !leaf.remote) return `<p class="meta">当前分支 ${esc(leaf.checkout)}</p>`;
-  const name = esc(leaf.checkout);
-  const buttons = [
-    `<button type="button" data-act="checkout" data-name="${name}" ${dis()}>检出</button>`,
-    `<button type="button" data-act="merge" data-name="${name}" ${dis()}>合并</button>`,
-    `<button type="button" data-act="rebase" data-name="${name}" ${dis()}>变基</button>`,
+function branchMenu(leaf) {
+  if (!leaf || leaf.detached || !leaf.checkout) return [];
+  if (leaf.current && !leaf.remote) {
+    if (state.ws?.detached) return [];
+    return [{ label: "合成最近几次", act: "squash" }];
+  }
+  const items = [
+    { label: "切过去", act: "checkout", name: leaf.checkout },
+    { label: "合进来", act: "merge", name: leaf.checkout },
+    { label: "接到后面", act: "replay", name: leaf.checkout },
   ];
-  if (!leaf.remote) buttons.push(`<button type="button" data-act="delete" data-name="${name}" ${dis()}>删除</button>`);
-  return `<div class="branch-actions">${buttons.join("")}</div>`;
+  if (!leaf.remote) items.push({ label: "删除", act: "delete", name: leaf.checkout, danger: true });
+  return items;
 }
 
 function stashBlock() {
@@ -578,11 +666,47 @@ function stashBlock() {
         .map((stash) => `<button type="button" class="tree-leaf ${state.stashId === stash.id ? "is-on" : ""}" data-stash="${esc(stash.id)}"><span class="grow"><b>${esc(stash.selector || stash.id.slice(0, 7))}</b><small>${esc(stash.message || "（没有说明）")}</small></span></button>`)
         .join("")
     : `<p class="empty">没有贮藏</p>`;
-  const selected = stashes.find((stash) => stash.id === state.stashId);
-  const actions = selected
-    ? `<div class="branch-actions"><button type="button" data-act="stash-apply" ${dis()}>还原</button><button type="button" data-act="stash-drop" ${dis()}>丢弃</button></div>`
-    : "";
-  return `<div class="stash-block"><div class="tree-label">贮藏</div>${items}${actions}</div>`;
+  return `<div class="stash-block"><div class="tree-label">贮藏</div>${items}</div>`;
+}
+
+function hideMenu() {
+  const menu = document.querySelector("#context-menu");
+  if (menu) menu.hidden = true;
+}
+
+function ensureMenu() {
+  let menu = document.querySelector("#context-menu");
+  if (menu) return menu;
+  menu = document.createElement("div");
+  menu.id = "context-menu";
+  menu.hidden = true;
+  document.body.appendChild(menu);
+  document.addEventListener("click", (event) => {
+    if (!menu.hidden && !menu.contains(event.target)) hideMenu();
+  });
+  document.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") hideMenu();
+  });
+  window.addEventListener("resize", hideMenu);
+  return menu;
+}
+
+function showMenu(x, y, items) {
+  if (state.busy || !items.length) return;
+  const menu = ensureMenu();
+  menu.innerHTML = items
+    .map(
+      (item) =>
+        `<button type="button" data-act="${esc(item.act)}" data-name="${esc(item.name || "")}" data-sha="${esc(item.sha || "")}" data-stash="${esc(item.stash || "")}" class="${item.danger ? "is-danger" : ""}">${esc(item.label)}</button>`
+    )
+    .join("");
+  menu.hidden = false;
+  menu.style.left = "0px";
+  menu.style.top = "0px";
+  const rect = menu.getBoundingClientRect();
+  menu.style.left = `${Math.max(8, Math.min(x, window.innerWidth - rect.width - 8))}px`;
+  menu.style.top = `${Math.max(8, Math.min(y, window.innerHeight - rect.height - 8))}px`;
+  bindActs(menu);
 }
 
 function bind() {
@@ -596,13 +720,11 @@ function bind() {
       state.logFile = "";
       state.picks = {};
       state.selectedBranch = "";
+      state.graphRef = "";
       state.stashId = "";
       state.stashDiff = null;
       state.preferStash = false;
-      run("repo", async () => {
-        await loadRepo();
-        return null;
-      });
+      run("repo", async () => null);
     };
   }
   const filter = app.querySelector("#branch-filter");
@@ -644,6 +766,12 @@ function bind() {
       }
       render();
     };
+    node.oncontextmenu = (event) => {
+      event.preventDefault();
+      const file = node.dataset.file || "";
+      if (!file) return;
+      showMenu(event.clientX, event.clientY, [{ label: "回滚这个文件", act: "restore-file", name: file }]);
+    };
   });
   app.querySelectorAll("[data-check]").forEach((node) => {
     node.onchange = () => {
@@ -654,21 +782,48 @@ function bind() {
     };
   });
   app.querySelectorAll("[data-sha]").forEach((node) => {
-    node.onclick = () => {
+    node.onclick = async () => {
+      if (state.busy) return;
       state.sha = node.dataset.sha;
       state.logFile = "";
       state.picks = {};
       state.preferStash = false;
-      run("diff", async () => {
+      state.diff = null;
+      render();
+      try {
         await loadDiff();
-        return null;
-      });
+      } catch (error) {
+        showToast(error.message || "失败");
+      }
+      render();
+    };
+    node.oncontextmenu = (event) => {
+      event.preventDefault();
+      const sha = node.dataset.sha || "";
+      if (!sha) return;
+      showMenu(event.clientX, event.clientY, [
+        { label: "拣选到当前分支", act: "pick-here", sha },
+        { label: "从这里开始变基", act: "rebase-from", sha },
+        { label: "从这次新建", act: "branch-at", sha },
+      ]);
     };
   });
   app.querySelectorAll("[data-log-file]").forEach((node) => {
-    node.onclick = () => {
-      state.logFile = node.dataset.logFile;
+    node.onclick = async () => {
+      const file = node.dataset.logFile;
+      const fromStash = state.preferStash && state.stashId;
+      state.logFile = file;
       state.preferStash = false;
+      const current = !fromStash && (state.diff?.files || []).find((item) => item.path === file);
+      const need = Boolean(state.sha && current && !current.binary && !(current.hunks || []).length && state.diff?.file !== file);
+      if (need) {
+        render();
+        try {
+          await loadDiff();
+        } catch (error) {
+          showToast(error.message || "失败");
+        }
+      }
       render();
     };
   });
@@ -686,26 +841,84 @@ function bind() {
   });
   app.querySelectorAll("[data-leaf]").forEach((node) => {
     node.onclick = () => {
-      if (!node.dataset.leaf) return;
-      state.selectedBranch = node.dataset.leaf;
+      if (state.busy || !node.dataset.leaf) return;
+      const name = node.dataset.leaf;
+      const same = state.selectedBranch === name && state.graphRef === name && !state.stashId && !state.preferStash;
+      state.selectedBranch = name;
       state.stashId = "";
       state.preferStash = false;
-      render();
+      if (state.graphRef !== name) {
+        state.graphRef = name;
+        render();
+        loadGraph();
+        return;
+      }
+      if (!same) render();
+    };
+    node.oncontextmenu = (event) => {
+      event.preventDefault();
+      const leaf = findLeaf(state.ws?.branchTree, node.dataset.leaf || "");
+      const items = branchMenu(leaf);
+      if (!items.length) return;
+      state.selectedBranch = leaf.checkout;
+      showMenu(event.clientX, event.clientY, items);
     };
   });
+  app.querySelectorAll("[data-graph-ref]").forEach((node) => {
+    node.onclick = (event) => {
+      event.stopPropagation();
+      if (state.busy) return;
+      const name = node.dataset.graphRef || "";
+      if (!name || name === state.graphRef) return;
+      state.graphRef = name;
+      render();
+      loadGraph();
+    };
+  });
+  app.querySelectorAll("[data-graph-all]").forEach((node) => {
+    node.onclick = () => {
+      if (state.busy || !state.graphRef) return;
+      state.graphRef = "";
+      render();
+      loadGraph();
+    };
+  });
+  const graphSelect = app.querySelector("#graph-ref");
+  if (graphSelect) {
+    graphSelect.onchange = () => {
+      if (state.busy) return;
+      const name = graphSelect.value;
+      if (name === state.graphRef) return;
+      state.graphRef = name;
+      render();
+      loadGraph();
+    };
+  }
   app.querySelectorAll("[data-stash]").forEach((node) => {
     node.onclick = () => loadStash(node.dataset.stash);
+    node.oncontextmenu = (event) => {
+      event.preventDefault();
+      const id = node.dataset.stash || "";
+      if (!id) return;
+      showMenu(event.clientX, event.clientY, [
+        { label: "还原", act: "stash-apply", stash: id },
+        { label: "丢弃", act: "stash-drop", stash: id, danger: true },
+      ]);
+    };
   });
   const target = app.querySelector("#target");
   if (target) {
-    target.onchange = () => {
+    target.onchange = async () => {
       state.target = target.value;
-      if (state.sha) {
-        run("diff", async () => {
-          await loadDiff();
-          return null;
-        });
+      if (!state.sha || state.busy) return;
+      state.diff = null;
+      render();
+      try {
+        await loadDiff();
+      } catch (error) {
+        showToast(error.message || "失败");
       }
+      render();
     };
   }
   const message = app.querySelector("#message");
@@ -714,18 +927,223 @@ function bind() {
       state.message = message.value;
     };
   }
-  app.querySelectorAll("[data-act]").forEach((node) => {
-    node.onclick = () => action(node.dataset.act, node.dataset.name);
+  bindActs(app);
+}
+
+function bindActs(root) {
+  root.querySelectorAll("[data-act]").forEach((node) => {
+    node.onclick = (event) => {
+      if (node.closest("#context-menu")) event.stopPropagation();
+      hideMenu();
+      action(node.dataset.act, node.dataset.name, { sha: node.dataset.sha || "", stash: node.dataset.stash || "" });
+    };
   });
 }
 
-async function action(name, arg) {
+const REMOTE_WARN = "这里面有的提交已经推送到远程。合成会改写它们，之后普通推送会被拒绝。这个工具不会强制推送。";
+
+function hereName() {
+  if (!state.ws || state.ws.detached || !state.ws.branch) return "游离 HEAD";
+  return state.ws.branch;
+}
+
+function dirtyBlocked() {
+  if (!state.ws?.dirty) return false;
+  showToast("工作区有未提交改动，请先提交");
+  return true;
+}
+
+function rangeBox(options) {
+  const commits = options.commits || [];
+  const plain = options.plainText ? `<button type="button" data-plain>${esc(options.plainText)}</button>` : "";
+  const rows = commits
+    .map((commit, index) => {
+      const when = shortWhen(commit.date);
+      const checked = index < (options.defaultCount || 0) ? "checked" : "";
+      const subject = commit.message || "（没有说明）";
+      return `<label class="range-row"><input type="checkbox" data-range="${esc(commit.sha)}" ${checked} /><span class="range-subject" title="${esc(subject)}">${esc(subject)}</span><span class="range-sha">${esc(commit.shortSha || "")}</span><span class="range-author" title="${esc(commit.author || "")}">${esc(commit.author || "")}</span><span class="range-when">${esc(when)}</span></label>`;
+    })
+    .join("");
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      modal.hidden = true;
+      modal.onclick = null;
+      resolve(value);
+    };
+    modal.hidden = false;
+    modal.onclick = null;
+    modal.innerHTML = `<div class="modal__card is-commits"><h2>${esc(options.title || "")}</h2><p class="range-note" title="${esc(options.intro || "")}">${esc(options.intro || "")}</p><p id="range-warn" class="range-warn" hidden>${esc(REMOTE_WARN)}</p><div class="range-list">${rows}</div><label class="field">提交说明<textarea id="range-message">${esc(commits[0]?.message || "")}</textarea></label><div class="modal__actions"><span class="range-hint">只能从最新一笔往下连续选，至少两笔</span><button type="button" data-no>取消</button>${plain}<button type="button" class="primary" data-squash>${esc(options.squashText || "合成一个")}</button></div></div>`;
+    const boxes = [...modal.querySelectorAll("[data-range]")];
+    const warn = modal.querySelector("#range-warn");
+    const squashBtn = modal.querySelector("[data-squash]");
+    const message = modal.querySelector("#range-message");
+    const list = modal.querySelector(".range-list");
+    if (list) list.onclick = (event) => event.stopPropagation();
+    const update = () => {
+      const count = boxes.filter((box) => box.checked).length;
+      const contiguous = boxes.every((box, index) => box.checked === index < count);
+      if (squashBtn) squashBtn.disabled = count < 2 || !contiguous || Boolean(options.truncated);
+      const remote = options.mode === "replay" ? commits.some((commit) => commit.onRemote) : boxes.some((box, index) => box.checked && commits[index]?.onRemote);
+      if (warn) warn.hidden = !remote;
+    };
+    boxes.forEach((box, index) => {
+      box.onchange = () => {
+        if (box.checked) {
+          for (let i = 0; i <= index; i++) boxes[i].checked = true;
+        } else {
+          for (let i = index; i < boxes.length; i++) boxes[i].checked = false;
+        }
+        update();
+      };
+    });
+    update();
+    modal.onclick = (event) => {
+      const squash = event.target.closest("[data-squash]");
+      const plainBtn = event.target.closest("[data-plain]");
+      const no = event.target.closest("[data-no]");
+      if (squash) {
+        if (squash.disabled) return;
+        const text = message ? message.value : "";
+        if (!String(text).trim()) return showToast("先写提交说明");
+        finish({
+          kind: "squash",
+          shas: boxes.filter((box) => box.checked).map((box) => box.dataset.range),
+          message: text,
+        });
+        return;
+      }
+      if (plainBtn) {
+        finish({ kind: "plain" });
+        return;
+      }
+      if (no || event.target === modal) finish(null);
+    };
+  });
+}
+
+function fromBox(options) {
+  const rows = (options.commits || [])
+    .map((commit) => {
+      const when = shortWhen(commit.date);
+      const subject = commit.message || "（没有说明）";
+      return `<div class="range-row"><span class="range-subject" title="${esc(subject)}">${esc(subject)}</span><span class="range-sha">${esc(commit.shortSha || "")}</span><span class="range-author" title="${esc(commit.author || "")}">${esc(commit.author || "")}</span><span class="range-when">${esc(when)}</span></div>`;
+    })
+    .join("");
+  const choices = (options.branches || [])
+    .map((name) => `<option value="${esc(name)}">${esc(name)}</option>`)
+    .join("");
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      modal.hidden = true;
+      modal.onclick = null;
+      resolve(value);
+    };
+    modal.hidden = false;
+    modal.onclick = null;
+    modal.innerHTML = `<div class="modal__card is-commits"><h2>从这次提交开始变基</h2><p class="range-note" title="${esc(options.intro || "")}">${esc(options.intro || "")}</p><div class="range-list">${rows}</div><label class="field">接到<select name="onto">${choices}</select></label><div class="modal__actions"><button type="button" data-no>取消</button><button type="button" class="primary" data-yes>开始变基</button></div></div>`;
+    const list = modal.querySelector(".range-list");
+    if (list) list.onclick = (event) => event.stopPropagation();
+    modal.onclick = (event) => {
+      if (event.target.closest("[data-yes]")) {
+        const onto = modal.querySelector("select")?.value || "";
+        if (!onto) return;
+        finish({ onto });
+        return;
+      }
+      if (event.target.closest("[data-no]") || event.target === modal) finish(null);
+    };
+  });
+}
+
+async function openRebaseFrom(rev) {
+  if (state.busy) return;
+  if (!rev) return showToast("先点一次提交");
+  if (!state.ws?.branch || state.ws.detached) return showToast("先检出一个分支");
+  if (dirtyBlocked()) return;
+  const branches = graphBranchNames().filter((name) => name !== state.ws.branch);
+  if (!branches.length) return showToast("没有可以接过去的分支");
+  let data;
+  try {
+    data = await api(`/api/history-range?repo=${encodeURIComponent(state.repo)}&mode=from&rev=${encodeURIComponent(rev)}`);
+  } catch (error) {
+    return showToast(error.message || "失败");
+  }
+  if (!data.commits?.length) return showToast(data.reason || "没有需要变基的提交");
+  let intro = `从 ${(data.rev || rev).slice(0, 7)} 到当前分支最新的提交，会接到所选分支后面。这次之前的提交不会跟着过去。其他分支不动。有冲突会取消，仓库回到现在这样。`;
+  if (data.root) intro += "这是根提交，整段历史都会接过去。";
+  if (data.hasMerges) intro += "其中有合并提交。变基会跳过合并点。";
+  if (data.truncated) intro += "列表只显示最近 30 笔，更早的也会一起接过去。";
+  if (data.commits.some((commit) => commit.onRemote)) intro += "这里面有的提交已经推送到远程。变基会改写它们，之后普通推送会被拒绝。这个工具不会强制推送。";
+  const picked = await fromBox({ intro, commits: data.commits, branches });
+  if (!picked?.onto) return;
+  return run("rebase-from", () => api("/api/rebase-from", { body: { repo: state.repo, sha: rev, onto: picked.onto } }));
+}
+
+async function openSquash() {
+  if (state.busy) return;
+  if (!state.ws?.branch || state.ws.detached) return showToast("先检出一个分支");
+  if (dirtyBlocked()) return;
+  let data;
+  try {
+    data = await api(`/api/history-range?repo=${encodeURIComponent(state.repo)}&mode=squash`);
+  } catch (error) {
+    return showToast(error.message || "失败");
+  }
+  if (!data.commits?.length) return showToast(data.reason || "当前分支上至少要有两笔自己的提交才能合成");
+  const picked = await rangeBox({
+    mode: "squash",
+    title: "合成最近几次提交",
+    intro: "把当前分支最新的连续几笔收成一个新提交。没勾的更旧提交留在原地。其他分支不动。有冲突或失败会回到现在这样。勾较旧的一笔就自动勾上比它新的全部；取消较新的一笔就自动取消比它旧的全部。",
+    commits: data.commits,
+    defaultCount: 2,
+    squashText: "合成一个",
+  });
+  if (!picked || picked.kind !== "squash") return;
+  return run("squash", () => api("/api/squash", { body: { repo: state.repo, shas: picked.shas, message: picked.message } }));
+}
+
+async function openReplay(onto) {
+  if (state.busy) return;
+  if (!onto) return showToast("先选择分支");
+  if (dirtyBlocked()) return;
+  let data;
+  try {
+    data = await api(`/api/history-range?repo=${encodeURIComponent(state.repo)}&mode=replay&onto=${encodeURIComponent(onto)}`);
+  } catch (error) {
+    return showToast(error.message || "失败");
+  }
+  if (!data.commits?.length) return showToast(data.reason || "没有可以接过去的提交。当前分支的改动目标里都有了。");
+  let intro = `这些是当前分支上、「${onto}」还没有的提交。不勾选就原样接过去。从最新一笔往下连续勾选，可以把那几笔收成一个再接过去；没勾的更旧提交会一笔笔照原样接上，不丢掉。其他分支不动。有冲突会取消，仓库回到现在这样。`;
+  if (data.hasMerges) intro += "\n其中有合并提交。原样接过去时会跳过合并点。要合成的话，请只勾没有合并点的最新连续几笔；勾到合并提交会被拒绝。";
+  if (data.truncated) intro += "\n超过 30 笔，这次只能原样接过去。";
+  const picked = await rangeBox({
+    mode: "replay",
+    title: `接到「${onto}」后面`,
+    intro,
+    commits: data.commits,
+    defaultCount: 0,
+    truncated: Boolean(data.truncated),
+    squashText: "合成勾选的再接过去",
+    plainText: "原样接过去",
+  });
+  if (!picked) return;
+  if (picked.kind === "plain") return run("rebase", () => api("/api/rebase", { body: { repo: state.repo, onto } }));
+  return run("rebase-squash", () => api("/api/rebase-squash", { body: { repo: state.repo, onto, shas: picked.shas, message: picked.message } }));
+}
+
+async function action(name, arg, extra = {}) {
   if (!state.repo) return showToast("先选择仓库");
   if (name === "fetch") return run("fetch", () => api("/api/fetch", { body: { repo: state.repo } }));
   if (name === "pull") {
     if (state.ws?.dirty) return showToast("工作区有未提交改动，请先提交");
     const text = state.ws?.upstream ? `当前分支落后 ${state.ws.behind} 个提交` : "从 origin 拉取当前分支";
-    if (!(await confirmBox("拉取", text))) return;
+    if (!(await confirmBox("拉取", `${text}\n有冲突会取消。`))) return;
     return run("pull", () => api("/api/pull", { body: { repo: state.repo } }));
   }
   if (name === "push") {
@@ -744,24 +1162,19 @@ async function action(name, arg) {
     if (!data?.name) return;
     return run("branch", () => api("/api/branch", { body: { repo: state.repo, name: data.name } }));
   }
-  if (name === "compare") {
-    const known = (state.ws?.changes || []).find((change) => change.path === state.file);
-    if (!known) return showToast("先点一个文件");
-    if (state.fileSide !== "staged" && state.fileSide !== "unstaged") state.fileSide = isUnstaged(known) ? "unstaged" : "staged";
-    state.tab = "changes";
-    state.preferStash = false;
-    try {
-      await loadDiff();
-    } catch (error) {
-      return showToast(error.message);
-    }
-    render();
-    return;
+  if (name === "branch-at") {
+    const rev = extra.sha || state.sha;
+    if (!rev) return showToast("先点一次提交");
+    const short = rev.slice(0, 7);
+    const data = await formBox("从这次提交新建分支", `<p class="meta">${esc(short)}。新建后仍停在当前分支。</p><label class="field">分支名<input name="name" required /></label>`);
+    if (!data?.name) return;
+    return run("branch-at", () => api("/api/branch-at", { body: { repo: state.repo, name: data.name, sha: rev } }));
   }
   if (name === "restore-file") {
-    if (!state.file || !(state.ws?.changes || []).some((change) => change.path === state.file)) return showToast("先点一个文件");
-    if (!(await confirmBox("回滚", state.file, "回滚"))) return;
-    return run("restore", () => api("/api/restore", { body: { repo: state.repo, files: [state.file] } }));
+    const file = arg || state.file;
+    if (!file || !(state.ws?.changes || []).some((change) => change.path === file)) return showToast("先点一个文件");
+    if (!(await confirmBox("回滚", file, "回滚"))) return;
+    return run("restore", () => api("/api/restore", { body: { repo: state.repo, files: [file] } }));
   }
   if (name === "restore-hunk") {
     if (!arg?.file) return showToast("先点一个文件");
@@ -770,27 +1183,37 @@ async function action(name, arg) {
   }
   if (name === "checkout") {
     if (!arg) return showToast("先选择分支");
+    const text = `转到「${arg}」。你现在在「${hereName()}」。`;
     if (state.ws?.dirty) {
-      if (!(await confirmBox("检出", `${arg}\n工作区有未提交改动。`, "贮藏并切换"))) return;
+      if (!(await confirmBox("切过去", text, "先藏起改动再切换"))) return;
       return run("checkout", () => api("/api/checkout", { body: { repo: state.repo, name: arg, stash: true } }));
     }
-    if (!(await confirmBox("检出", arg))) return;
+    if (!(await confirmBox("切过去", text))) return;
     return run("checkout", () => api("/api/checkout", { body: { repo: state.repo, name: arg } }));
   }
   if (name === "merge") {
-    if (!(await confirmBox("合并", `把 ${arg} 合并进当前分支。有冲突会取消。`))) return;
+    if (!(await confirmBox("合进来", `把「${arg}」合并进当前分支「${hereName()}」。有冲突会取消，仓库回到现在这样。`))) return;
     return run("merge", () => api("/api/merge", { body: { repo: state.repo, branch: arg } }));
   }
-  if (name === "rebase") {
-    if (!(await confirmBox("变基", `把当前分支变基到 ${arg}。有冲突会取消。`))) return;
-    return run("rebase", () => api("/api/rebase", { body: { repo: state.repo, onto: arg } }));
-  }
+  if (name === "squash") return openSquash();
+  if (name === "replay") return openReplay(arg);
   if (name === "delete") {
-    if (!(await confirmBox("删除分支", arg, "删除"))) return;
-    return run("delete", () => api("/api/delete-branch", { body: { repo: state.repo, name: arg } }));
+    if (!arg) return showToast("先选择分支");
+    if (!(await confirmBox("删除", `删除本地分支「${arg}」。当前分支不会动。远程不会删。`, "删除"))) return;
+    const call = (force) => api("/api/delete-branch", { body: { repo: state.repo, name: arg, force: force === true } });
+    try {
+      await call(false);
+    } catch (error) {
+      const message = error.message || "失败";
+      if (!message.includes("还没合并")) return showToast(message);
+      if (!(await confirmBox("仍要删除", `「${arg}」还没合并进当前分支。别的分支如果也指着这些提交，提交还在。否则删除后不容易找回来。远程不会删。`, "仍要删除"))) return;
+      return run("delete", () => call(true));
+    }
+    return run("delete", async () => ({ notice: `已删除 ${arg}` }));
   }
   if (name === "stash-apply" || name === "stash-drop") {
-    const stash = (state.ws?.stashes || []).find((item) => item.id === state.stashId);
+    const id = extra.stash || state.stashId;
+    const stash = (state.ws?.stashes || []).find((item) => item.id === id);
     if (!stash) return showToast("先选择贮藏");
     if (name === "stash-drop") {
       if (!(await confirmBox("丢弃贮藏", `${stash.selector || ""}\n${stash.message || ""}`, "丢弃"))) return;
@@ -798,6 +1221,16 @@ async function action(name, arg) {
     }
     if (!(await confirmBox("还原贮藏", `${stash.selector || ""}\n${stash.message || ""}`, "还原"))) return;
     return run("stash", () => api("/api/stash/apply", { body: { repo: state.repo, stash: stash.id } }));
+  }
+  if (name === "rebase-from") return openRebaseFrom(extra.sha || state.sha);
+  if (name === "pick-here") {
+    const rev = extra.sha || state.sha;
+    if (!rev) return showToast("先点一次提交");
+    if (state.ws?.detached || !state.ws?.branch) return showToast("游离 HEAD 不能拣选");
+    if (state.ws?.dirty) return showToast("工作区有未提交改动，请先提交");
+    const branch = state.ws.branch;
+    if (!(await confirmBox("拣选到当前分支", `把 ${rev.slice(0, 7)} 拣选到当前分支「${branch}」。有冲突会取消，仓库回到现在这样。`))) return;
+    return run("pick", () => api("/api/cherry-pick", { body: { repo: state.repo, sha: rev, target: branch } }));
   }
   if (name === "pick-all" || name === "pick-part") {
     if (!state.sha) return showToast("先选择提交");
@@ -809,9 +1242,10 @@ async function action(name, arg) {
         return { index: Number(key.slice(0, nl)), file: key.slice(nl + 1) };
       });
     if (name === "pick-part" && !hunks.length) return showToast("先勾选要拣选的片段");
-    const hints = (state.diff?.hints || []).join("\n");
-    const title = name === "pick-all" ? "拣选整次提交" : "拣选片段";
-    if (!(await confirmBox(title, `${hints}\n\n目标分支：${state.target}`))) return;
+    const hints = (state.diff?.hints || []).filter(Boolean).join("\n");
+    const title = name === "pick-all" ? "整次拿到所选分支" : "只拿勾选的片段";
+    const doing = name === "pick-all" ? `把这次提交整次拿到「${state.target}」。` : `只把勾选的片段拿到「${state.target}」。`;
+    if (!(await confirmBox(title, `${doing}\n做完仍回到当前分支「${hereName()}」。${hints ? `\n${hints}` : ""}`))) return;
     const path = name === "pick-all" ? "/api/cherry-pick" : "/api/cherry-pick/partial";
     const body = { repo: state.repo, sha: state.sha, target: state.target, hunks, message: `拣选 ${state.sha.slice(0, 7)} 的部分改动` };
     return run("pick", async () => {

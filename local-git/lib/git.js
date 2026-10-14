@@ -259,23 +259,35 @@ async function workspace(repo, id) {
   };
 }
 
-async function log(repo, max = 50) {
+function logArgs(ref, limit) {
+  const name = String(ref || "").trim();
+  return [
+    "log",
+    name ? name : "--all",
+    "--topo-order",
+    "-n",
+    String(Number(limit) + 1),
+    "--pretty=format:%H%x1f%h%x1f%an%x1f%aI%x1f%D%x1f%P%x1f%s%x1e",
+  ];
+}
+
+async function log(repo, max = 50, ref = "") {
   const limit = Math.min(Math.max(Number(max) || 50, 1), 80);
+  const name = String(ref || "").trim();
+  let checked = "";
+  if (name) {
+    checked = branchName(name);
+    if (isRemoteHead(checked)) throw new Error("分支名不对");
+  }
   const remotes = await listRemotes(repo);
   let text = "";
   try {
-    text = (
-      await git(repo, [
-        "log",
-        "--all",
-        "--topo-order",
-        "-n",
-        String(limit + 1),
-        "--pretty=format:%H%x1f%h%x1f%an%x1f%aI%x1f%D%x1f%P%x1f%s%x1e",
-      ])
-    ).stdout;
-  } catch {
-    return { commits: [], graph: [], truncated: false };
+    text = (await git(repo, logArgs(checked, limit))).stdout;
+  } catch (error) {
+    if (!checked) return { commits: [], graph: [], truncated: false };
+    const detail = scrub(error.message);
+    if (/unknown revision|ambiguous argument|bad revision/i.test(detail)) throw new Error("没有这条分支");
+    throw new Error(detail || "git 失败");
   }
   const records = [];
   for (const raw of text.split("\x1e")) {
@@ -417,32 +429,158 @@ async function contains(repo, rev, target) {
   }
 }
 
+function unquoteGit(raw) {
+  let text = String(raw || "").trim();
+  if (text.length >= 2 && text.startsWith('"') && text.endsWith('"')) {
+    try {
+      text = JSON.parse(text);
+    } catch {
+      text = text.slice(1, -1);
+    }
+  }
+  return text.replace(/\\/g, "/");
+}
+
+function numstatPath(raw) {
+  const text = unquoteGit(raw);
+  const brace = /^(.*)\{(.*?) => (.*?)\}(.*)$/.exec(text);
+  if (brace) return `${brace[1]}${brace[3]}${brace[4]}`.replace(/\/{2,}/g, "/");
+  const arrow = text.lastIndexOf(" => ");
+  if (arrow !== -1) return text.slice(arrow + 4);
+  return text;
+}
+
+function statusHints(status, binary) {
+  if (binary) return ["二进制文件，只能整文件拣选"];
+  if (status === "A") return ["新文件"];
+  if (status === "D") return ["删除文件"];
+  if (status === "R") return ["重命名"];
+  if (status === "C") return ["复制"];
+  return [];
+}
+
+function parseShowList(text) {
+  const files = [];
+  const stats = new Map();
+  for (const line of String(text || "").replace(/\r\n/g, "\n").split("\n")) {
+    if (!line.trim()) continue;
+    const parts = line.split("\t");
+    if (parts.length >= 3 && /^(?:\d+|-)$/.test(parts[0]) && /^(?:\d+|-)$/.test(parts[1])) {
+      const rel = numstatPath(parts.slice(2).join("\t"));
+      if (!rel) continue;
+      stats.set(rel, {
+        additions: parts[0] === "-" ? 0 : Number(parts[0]),
+        deletions: parts[1] === "-" ? 0 : Number(parts[1]),
+        binary: parts[0] === "-" && parts[1] === "-",
+      });
+      continue;
+    }
+    if (parts.length < 2 || !/^[ACDMRTUXB]/.test(parts[0])) continue;
+    const status = parts[0][0];
+    const rel = unquoteGit((status === "R" || status === "C") && parts.length >= 3 ? parts[2] : parts[1]);
+    if (!rel || files.some((file) => file.path === rel)) continue;
+    files.push({
+      path: rel,
+      status,
+      binary: false,
+      additions: 0,
+      deletions: 0,
+      hunks: [],
+      hints: [],
+    });
+  }
+  return { files, stats };
+}
+
+function applyNumstat(files, stats) {
+  for (const file of files) {
+    const stat = stats.get(file.path);
+    if (stat) {
+      file.additions = stat.additions;
+      file.deletions = stat.deletions;
+      file.binary = stat.binary;
+    }
+    file.hints = statusHints(file.status, file.binary);
+  }
+}
+
+async function showFormat(repo, rev, before, after = []) {
+  const id = sha(rev);
+  try {
+    return (await git(repo, ["show", "-m", "--first-parent", ...before, "--format=", "--no-color", id, ...after], { okCodes: [0, 1] })).stdout;
+  } catch {
+    return (await git(repo, ["show", ...before, "--format=", "--no-color", "--root", id, ...after], { okCodes: [0, 1] })).stdout;
+  }
+}
+
 async function diffPage(repo, rev, target, extra) {
   const scope = extra && extra.scope;
   if (scope === "unstaged" || scope === "staged") return scopedDiff(repo, scope, extra.file || "");
-  const dirty = (await git(repo, ["status", "--porcelain"])).stdout.trim().length > 0;
-  let patch = "";
-  let parents = 0;
-  let shown = "";
-  let onTarget = false;
-  if (!rev) patch = await worktreePatch(repo);
-  else {
-    shown = (await git(repo, ["rev-parse", sha(rev)])).stdout.trim();
-    patch = await commitPatch(repo, shown);
-    parents = await parentCount(repo, shown);
-    onTarget = await contains(repo, shown, target);
+  if (!rev) {
+    const dirty = (await git(repo, ["status", "--porcelain"])).stdout.trim().length > 0;
+    let patch = await worktreePatch(repo);
+    let truncated = false;
+    if (patch.length > 500000) {
+      patch = patch.slice(0, 500000);
+      truncated = true;
+    }
+    const capped = diff.capFiles(diff.parse(patch), truncated);
+    for (const file of capped.files) file.side = diff.sideBySide(file);
+    return {
+      rev: "",
+      hints: diff.summarize(capped.files, { dirty, truncated: capped.truncated }),
+      files: capped.files,
+    };
   }
+  const shown = (await git(repo, ["rev-parse", sha(rev)])).stdout.trim();
+  const [listedText, statText, parents, onTarget] = await Promise.all([
+    showFormat(repo, shown, ["--name-status", "--numstat"]),
+    showFormat(repo, shown, ["--numstat"]),
+    parentCount(repo, shown),
+    contains(repo, shown, target),
+  ]);
+  const listed = parseShowList(listedText);
+  const stats = parseShowList(statText).stats;
+  for (const [key, value] of listed.stats) stats.set(key, value);
+  const files = listed.files;
+  applyNumstat(files, stats);
+  let wanted = "";
+  if (extra && extra.file) {
+    try {
+      wanted = filePath(extra.file);
+    } catch {
+      wanted = "";
+    }
+  }
+  if (wanted && !files.some((file) => file.path === wanted)) wanted = "";
+  if (!wanted && files.length) wanted = files[0].path;
   let truncated = false;
-  if (patch.length > 500000) {
-    patch = patch.slice(0, 500000);
-    truncated = true;
+  if (wanted) {
+    let patch = await showFormat(repo, shown, [], ["--", wanted]);
+    if (patch.length > 500000) {
+      patch = patch.slice(0, 500000);
+      truncated = true;
+    }
+    const capped = diff.capFiles(diff.parse(patch), truncated);
+    truncated = capped.truncated;
+    const detail = capped.files.find((file) => file.path === wanted) || capped.files[0];
+    const slot = files.find((file) => file.path === wanted);
+    if (slot && detail) {
+      slot.hunks = detail.hunks;
+      slot.binary = Boolean(detail.binary || slot.binary);
+      if (detail.hints && detail.hints.length) slot.hints = detail.hints;
+      if (detail.status) slot.status = detail.status;
+      if (!truncated) {
+        slot.additions = detail.additions;
+        slot.deletions = detail.deletions;
+      }
+    }
   }
-  const capped = diff.capFiles(diff.parse(patch), truncated);
-  for (const file of capped.files) file.side = diff.sideBySide(file);
   return {
     rev: shown,
-    hints: diff.summarize(capped.files, { parents, dirty, onTarget, truncated: capped.truncated }),
-    files: capped.files,
+    file: wanted,
+    hints: diff.summarize(files, { parents, onTarget, truncated }),
+    files,
   };
 }
 
@@ -526,6 +664,32 @@ async function createBranch(repo, id, name) {
   return done(repo, id, `已创建并检出 ${branch}`);
 }
 
+async function createBranchAt(repo, id, name, rev) {
+  const branch = branchName(name);
+  const commit = sha(rev);
+  const head = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  const current = await currentBranch(repo);
+  try {
+    await git(repo, ["rev-parse", "--verify", `${commit}^{commit}`]);
+  } catch {
+    throw new Error("没有这次提交");
+  }
+  try {
+    await git(repo, ["branch", branch, commit]);
+  } catch (error) {
+    if (/already exists/i.test(error.message)) throw new Error("已经有这个分支");
+    throw error;
+  }
+  const after = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  const afterBranch = await currentBranch(repo);
+  if (after !== head || afterBranch !== current) {
+    await git(repo, ["switch", "--detach", head]).catch(() => {});
+    if (current) await git(repo, ["switch", current]).catch(() => {});
+    throw new Error("新建分支失败，已回到当前分支");
+  }
+  return done(repo, id, `已在这次提交上新建 ${branch}，当前分支没变`);
+}
+
 async function checkout(repo, id, name, options = {}) {
   const dirty = (await git(repo, ["status", "--porcelain"])).stdout.trim().length > 0;
   if (!dirty) {
@@ -553,13 +717,14 @@ async function checkout(repo, id, name, options = {}) {
   return done(repo, id, `已检出 ${landed}`);
 }
 
-async function deleteBranch(repo, id, name) {
+async function deleteBranch(repo, id, name, options = {}) {
   const branch = branchName(name);
   if (await isRemoteBranch(repo, branch)) throw new Error("这里只删除本地分支");
   const current = await currentBranch(repo);
   if (branch === current) throw new Error("不能删除当前分支");
+  const flag = options.force === true ? "-D" : "-d";
   try {
-    await git(repo, ["branch", "-d", branch]);
+    await git(repo, ["branch", flag, branch]);
   } catch (error) {
     if (/not fully merged/i.test(error.message)) throw new Error("分支还没合并，不能删除");
     throw error;
@@ -907,6 +1072,430 @@ function conflictText(action, detail) {
   return detail || `${action}没有完成，已取消`;
 }
 
+const RANGE_FORMAT = "--pretty=format:%H%x1f%h%x1f%an%x1f%aI%x1f%P%x1f%s%x1e";
+const CONTINUOUS = "只能从最新一笔往下连续选，中间不能空";
+const SQUASH_REASON = "当前分支上至少要有两笔自己的提交才能合成";
+const REPLAY_REASON = "没有可以接过去的提交。当前分支的改动目标里都有了。";
+function parseRangeText(text) {
+  const records = [];
+  for (const raw of String(text || "").split("\x1e")) {
+    const record = raw.trim();
+    if (!record) continue;
+    const parts = record.split("\x1f");
+    const full = (parts[0] || "").trim();
+    if (!/^[0-9a-f]{7,40}$/i.test(full)) continue;
+    const parents = String(parts[4] || "")
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean);
+    records.push({
+      sha: full,
+      shortSha: (parts[1] || full).trim().slice(0, 7),
+      author: (parts[2] || "").trim(),
+      date: (parts[3] || "").trim(),
+      parents,
+      parentCount: parents.length,
+      message: parts.slice(5).join("\x1f"),
+    });
+  }
+  return records;
+}
+
+function publicCommit(record) {
+  return {
+    sha: record.sha,
+    shortSha: record.shortSha,
+    message: record.message,
+    author: record.author,
+    date: record.date,
+    parentCount: record.parentCount,
+    onRemote: Boolean(record.onRemote),
+  };
+}
+
+async function upstreamShort(repo) {
+  try {
+    const name = (await git(repo, ["rev-parse", "--abbrev-ref", "@{upstream}"])).stdout.trim();
+    if (!name || name === "@{upstream}") return "";
+    return name;
+  } catch {
+    return "";
+  }
+}
+
+async function localBranchNames(repo) {
+  const text = (await git(repo, ["for-each-ref", "--format=%(refname:short)", "refs/heads"])).stdout;
+  return text
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+async function markOnRemote(repo, commits) {
+  if (!commits.length) return;
+  let upstream = "";
+  try {
+    upstream = (await git(repo, ["rev-parse", "--verify", "@{upstream}"])).stdout.trim();
+  } catch {
+    upstream = "";
+  }
+  if (!upstream) {
+    for (const commit of commits) commit.onRemote = false;
+    return;
+  }
+  for (const commit of commits) commit.onRemote = await contains(repo, commit.sha, "@{upstream}");
+}
+
+async function describeCommits(repo, shas) {
+  if (!shas.length) return [];
+  const text = (await git(repo, ["log", "--no-walk", RANGE_FORMAT, ...shas])).stdout;
+  const bySha = new Map(parseRangeText(text).map((record) => [record.sha, record]));
+  return shas.map((id) => bySha.get(id)).filter(Boolean);
+}
+
+async function squashCandidates(repo) {
+  const branch = await assertBranch(repo);
+  const upstream = await upstreamShort(repo);
+  const excluded = (await localBranchNames(repo)).filter((name) => name !== branch && name !== upstream);
+  const args = ["log", "--first-parent", "-n", "31", RANGE_FORMAT, "HEAD"];
+  if (excluded.length) args.push("--not", ...excluded);
+  let records = [];
+  try {
+    records = parseRangeText((await git(repo, args)).stdout);
+  } catch {
+    records = [];
+  }
+  const kept = [];
+  for (const record of records) {
+    if (record.parentCount < 1) break;
+    if (kept.length >= 30) break;
+    kept.push(record);
+  }
+  const own = records.filter((record) => record.parentCount >= 1);
+  return { commits: kept, truncated: own.length > 30 };
+}
+
+async function historyRange(repo, mode, onto, rev) {
+  const kind = String(mode || "").trim();
+  if (kind === "squash") {
+    const found = await squashCandidates(repo);
+    await markOnRemote(repo, found.commits);
+    if (found.commits.length < 2) {
+      return { mode: "squash", onto: "", commits: [], reason: SQUASH_REASON, truncated: false, hasMerges: false };
+    }
+    return {
+      mode: "squash",
+      onto: "",
+      commits: found.commits.map(publicCommit),
+      reason: "",
+      truncated: found.truncated,
+      hasMerges: false,
+    };
+  }
+  if (kind === "replay") return replayRange(repo, onto);
+  if (kind === "from") return fromRange(repo, rev);
+  throw new Error("范围不对");
+}
+
+async function replayRange(repo, onto) {
+  const name = branchName(onto);
+  const current = await assertBranch(repo);
+  if (name === current) throw new Error("不能变基到当前分支");
+  let oldestFirst = [];
+  let mergeText = "";
+  try {
+    oldestFirst = (await git(repo, ["rev-list", "--reverse", "--no-merges", `${name}..HEAD`])).stdout
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    mergeText = (await git(repo, ["rev-list", "--merges", `${name}..HEAD`])).stdout.trim();
+  } catch {
+    throw new Error("没有这个分支");
+  }
+  const hasMerges = Boolean(mergeText);
+  if (!oldestFirst.length) {
+    return { mode: "replay", onto: name, commits: [], reason: REPLAY_REASON, truncated: false, hasMerges };
+  }
+  const truncated = oldestFirst.length > 30;
+  const newestFirst = oldestFirst.slice().reverse().slice(0, 30);
+  const commits = await describeCommits(repo, newestFirst);
+  await markOnRemote(repo, commits);
+  return { mode: "replay", onto: name, commits: commits.map(publicCommit), reason: "", truncated, hasMerges };
+}
+
+async function fromRange(repo, rev) {
+  await assertBranch(repo);
+  const commit = sha(rev);
+  let full = "";
+  try {
+    full = (await git(repo, ["rev-parse", "--verify", `${commit}^{commit}`])).stdout.trim();
+  } catch {
+    throw new Error("没有这次提交");
+  }
+  const chain = (await git(repo, ["rev-list", "--first-parent", "HEAD"])).stdout
+    .split(/\r?\n/)
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+  if (!chain.includes(full.toLowerCase())) {
+    return { mode: "from", rev: full, commits: [], reason: "这次提交不在当前分支上", truncated: false, hasMerges: false, root: false };
+  }
+  let parent = "";
+  try {
+    parent = (await git(repo, ["rev-parse", "--verify", `${full}^`])).stdout.trim();
+  } catch {
+    parent = "";
+  }
+  const spec = parent ? `${parent}..HEAD` : "HEAD";
+  const oldestFirst = (await git(repo, ["rev-list", "--reverse", spec])).stdout
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+  const mergeText = (await git(repo, ["rev-list", "--merges", spec])).stdout.trim();
+  const truncated = oldestFirst.length > 30;
+  const newestFirst = oldestFirst.slice().reverse().slice(0, 30);
+  const commits = await describeCommits(repo, newestFirst);
+  await markOnRemote(repo, commits);
+  return {
+    mode: "from",
+    rev: full,
+    commits: commits.map(publicCommit),
+    reason: oldestFirst.length ? "" : "没有需要变基的提交",
+    truncated,
+    hasMerges: Boolean(mergeText),
+    root: !parent,
+  };
+}
+
+async function rebaseFrom(repo, id, rev, onto) {
+  const name = branchName(onto);
+  await assertClean(repo);
+  const branch = await assertBranch(repo);
+  if (name === branch) throw new Error("不能变基到当前分支");
+  const preview = await fromRange(repo, rev);
+  if (preview.reason) throw new Error(preview.reason);
+  const oldHead = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  const heads = await localHeadMap(repo);
+  let parent = "";
+  try {
+    parent = (await git(repo, ["rev-parse", "--verify", `${preview.rev}^`])).stdout.trim();
+  } catch {
+    parent = "";
+  }
+  const args = parent ? ["rebase", "--onto", name, parent] : ["rebase", "--onto", name, "--root"];
+  try {
+    await git(repo, args);
+  } catch (error) {
+    const ok = await restoreHard(repo, oldHead, branch, heads);
+    if (!ok) throw new Error("从这里变基没有完成，已回到操作前");
+    if (/up to date/i.test(error.message || "")) throw new Error("这些提交目标里都有了");
+    if (/conflict/i.test(error.message || "")) throw new Error("变基冲突，已取消");
+    throw new Error("从这里变基没有完成，已取消");
+  }
+  const headNow = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  const branchNow = await currentBranch(repo);
+  const headsNow = await localHeadMap(repo);
+  const porcelain = (await git(repo, ["status", "--porcelain"])).stdout.trim();
+  if (branchNow !== branch || porcelain || !otherHeadsSame(heads, headsNow, branch) || headsNow.get(`refs/heads/${branch}`) !== headNow || (await progressLeft(repo))) {
+    await restoreHard(repo, oldHead, branch, heads);
+    throw new Error("从这里变基没有完成，已回到操作前");
+  }
+  if (headNow === oldHead) throw new Error("这些提交目标里都有了");
+  return done(repo, id, `已从 ${preview.rev.slice(0, 7)} 开始变基到 ${name}`);
+}
+
+async function localHeadMap(repo) {
+  const text = (await git(repo, ["for-each-ref", "--format=%(refname)%00%(objectname)", "refs/heads"])).stdout;
+  const map = new Map();
+  for (const line of text.split(/\r?\n/)) {
+    if (!line.trim()) continue;
+    const [ref, id] = line.split("\0");
+    if (ref && id) map.set(ref, id.trim());
+  }
+  return map;
+}
+
+function otherHeadsSame(before, after, branch) {
+  const ref = `refs/heads/${branch}`;
+  if (!after.has(ref)) return false;
+  const keys = new Set([...before.keys(), ...after.keys()]);
+  for (const key of keys) {
+    if (key === ref) continue;
+    if (before.get(key) !== after.get(key)) return false;
+  }
+  return true;
+}
+
+async function findGitDir(repo) {
+  try {
+    const text = (await git(repo, ["rev-parse", "--absolute-git-dir"])).stdout.trim();
+    if (text) return text;
+  } catch {
+    /* 普通仓库用 .git */
+  }
+  return path.join(repo, ".git");
+}
+
+async function progressLeft(repo) {
+  const dir = await findGitDir(repo);
+  return ["CHERRY_PICK_HEAD", "MERGE_HEAD", "REBASE_HEAD", "rebase-merge", "rebase-apply", "sequencer"].some((name) =>
+    fs.existsSync(path.join(dir, name))
+  );
+}
+
+async function clearOps(repo) {
+  await git(repo, ["cherry-pick", "--abort"]).catch(() => {});
+  await git(repo, ["rebase", "--abort"]).catch(() => {});
+  await git(repo, ["merge", "--abort"]).catch(() => {});
+  await git(repo, ["cherry-pick", "--quit"]).catch(() => {});
+  const dir = await findGitDir(repo);
+  for (const name of ["CHERRY_PICK_HEAD", "MERGE_HEAD", "REBASE_HEAD", "rebase-merge", "rebase-apply", "sequencer"]) {
+    fs.rmSync(path.join(dir, name), { recursive: true, force: true });
+  }
+}
+
+async function restoredOk(repo, oldHead, branch, heads) {
+  const headNow = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  const branchNow = await currentBranch(repo);
+  const porcelain = (await git(repo, ["status", "--porcelain"])).stdout.trim();
+  const headsNow = await localHeadMap(repo);
+  return (
+    headNow === oldHead &&
+    branchNow === branch &&
+    !porcelain &&
+    headsNow.get(`refs/heads/${branch}`) === oldHead &&
+    otherHeadsSame(heads, headsNow, branch) &&
+    !(await progressLeft(repo))
+  );
+}
+
+async function restoreHard(repo, oldHead, branch, heads) {
+  await clearOps(repo);
+  const now = await currentBranch(repo);
+  if (now !== branch) await git(repo, ["switch", branch]).catch(() => {});
+  await git(repo, ["reset", "--hard", oldHead]).catch(() => {});
+  await git(repo, ["clean", "-fd"]).catch(() => {});
+  if (await restoredOk(repo, oldHead, branch, heads)) return true;
+  await clearOps(repo);
+  if ((await currentBranch(repo)) !== branch) await git(repo, ["switch", branch]).catch(() => {});
+  await git(repo, ["reset", "--hard", oldHead]).catch(() => {});
+  await git(repo, ["clean", "-fd"]).catch(() => {});
+  return restoredOk(repo, oldHead, branch, heads);
+}
+
+async function resolveWanted(repo, shas) {
+  if (!Array.isArray(shas) || shas.length < 2) throw new Error(CONTINUOUS);
+  const out = [];
+  for (const item of shas) {
+    let text = "";
+    try {
+      text = sha(item);
+      out.push((await git(repo, ["rev-parse", "--verify", `${text}^{commit}`])).stdout.trim());
+    } catch {
+      throw new Error(CONTINUOUS);
+    }
+  }
+  return out;
+}
+
+function matchesPrefix(chain, wanted) {
+  if (wanted.length > chain.length) return false;
+  for (let i = 0; i < wanted.length; i++) {
+    if (chain[i].toLowerCase() !== wanted[i].toLowerCase()) return false;
+  }
+  return true;
+}
+
+async function squashTip(repo, id, shas, text) {
+  await assertClean(repo);
+  const branch = await assertBranch(repo);
+  const msg = message(text);
+  const wanted = await resolveWanted(repo, shas);
+  const found = await squashCandidates(repo);
+  const chain = found.commits.map((commit) => commit.sha);
+  if (!matchesPrefix(chain, wanted)) throw new Error(CONTINUOUS);
+  const selected = found.commits.slice(0, wanted.length);
+  if (selected.some((commit) => commit.parentCount > 1)) throw new Error("这里面有合并提交，不能合成");
+  const oldest = selected[selected.length - 1];
+  if (!oldest || oldest.parentCount < 1 || !oldest.parents[0]) throw new Error(CONTINUOUS);
+  const oldHead = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  const heads = await localHeadMap(repo);
+  const parent = oldest.parents[0];
+  try {
+    await git(repo, ["reset", "--soft", parent]);
+    await git(repo, ["commit", "-m", msg]);
+  } catch (error) {
+    const ok = await restoreHard(repo, oldHead, branch, heads);
+    if (!ok) throw new Error("合成失败，已回到操作前");
+    if (/nothing to commit|无文件要提交|nothing added/.test(error.message || "")) throw new Error("合成失败，已回到操作前");
+    throw new Error("合成失败，已回到操作前");
+  }
+  const headNow = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  const branchNow = await currentBranch(repo);
+  const headsNow = await localHeadMap(repo);
+  const porcelain = (await git(repo, ["status", "--porcelain"])).stdout.trim();
+  if (headNow === oldHead || branchNow !== branch || porcelain || !otherHeadsSame(heads, headsNow, branch) || headsNow.get(`refs/heads/${branch}`) !== headNow) {
+    await restoreHard(repo, oldHead, branch, heads);
+    throw new Error("合成失败，已回到操作前");
+  }
+  return done(repo, id, `已把 ${wanted.length} 笔合成一个`);
+}
+
+async function rebaseSquash(repo, id, onto, shas, text) {
+  const name = branchName(onto);
+  await assertClean(repo);
+  const branch = await assertBranch(repo);
+  if (name === branch) throw new Error("不能变基到当前分支");
+  const msg = message(text);
+  const wanted = await resolveWanted(repo, shas);
+  let oldestFirst = [];
+  try {
+    oldestFirst = (await git(repo, ["rev-list", "--reverse", "--no-merges", `${name}..HEAD`])).stdout
+      .split(/\r?\n/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+  } catch {
+    throw new Error("没有这个分支");
+  }
+  const newestFirst = oldestFirst.slice().reverse();
+  if (!matchesPrefix(newestFirst, wanted)) throw new Error(CONTINUOUS);
+  const prefix = oldestFirst.slice(0, oldestFirst.length - wanted.length);
+  const suffix = oldestFirst.slice(oldestFirst.length - wanted.length);
+  const oldHead = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  const heads = await localHeadMap(repo);
+  const fail = async (error) => {
+    const ok = await restoreHard(repo, oldHead, branch, heads);
+    if (!ok) throw new Error("接到后面没有完成，已取消");
+    throw error;
+  };
+  try {
+    await git(repo, ["reset", "--hard", name]);
+    for (const commit of prefix) await git(repo, ["cherry-pick", commit]);
+    for (const commit of suffix) {
+      await git(repo, ["cherry-pick", "--no-commit", commit]);
+      await git(repo, ["cherry-pick", "--quit"]).catch(() => {});
+    }
+    await git(repo, ["commit", "-m", msg]);
+    await git(repo, ["cherry-pick", "--quit"]).catch(() => {});
+  } catch (error) {
+    const empty = /nothing to commit|无文件要提交|nothing added/.test(error.message || "");
+    await fail(new Error(empty ? "接到目标上没有新的改动" : "接到后面没有完成，已取消"));
+  }
+  const headNow = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  const branchNow = await currentBranch(repo);
+  const headsNow = await localHeadMap(repo);
+  const porcelain = (await git(repo, ["status", "--porcelain"])).stdout.trim();
+  if (
+    branchNow !== branch ||
+    porcelain ||
+    (await progressLeft(repo)) ||
+    !otherHeadsSame(heads, headsNow, branch) ||
+    headsNow.get(`refs/heads/${branch}`) !== headNow
+  ) {
+    await fail(new Error("接到后面没有完成，已取消"));
+  }
+  return done(repo, id, `已接到 ${name} 后面，并把 ${wanted.length} 笔合成一个`);
+}
+
 async function cloneRepo(parent, remote, tokens) {
   let folder = remote.name;
   let dest = path.join(parent, folder);
@@ -945,6 +1534,7 @@ module.exports = {
   isUnstaged,
   workspace,
   log,
+  logArgs,
   diffPage,
   commitFiles,
   stageFiles,
@@ -953,10 +1543,15 @@ module.exports = {
   pull,
   push,
   createBranch,
+  createBranchAt,
   checkout,
   deleteBranch,
   merge,
   rebase,
+  rebaseFrom,
+  historyRange,
+  squashTip,
+  rebaseSquash,
   cherryPick,
   cherryPickPartial,
   restoreFiles,
