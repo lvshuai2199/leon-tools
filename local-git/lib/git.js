@@ -255,6 +255,7 @@ async function workspace(repo, id) {
     changes,
     branches: branchList,
     branchTree: branchTree(branchList, { detached, current: branch }),
+    remotes: await listRemotes(repo),
     stashes: await listStashes(repo),
   };
 }
@@ -647,15 +648,22 @@ async function pull(repo, id, tokens) {
   return done(repo, id, "已拉取");
 }
 
-async function push(repo, id, tokens) {
+async function push(repo, id, tokens, target = {}) {
   const branch = await assertBranch(repo);
-  await requireOrigin(repo);
+  const remotes = await listRemotes(repo);
+  const remoteName = String(target.remote || "origin").trim();
+  if (!remoteName || remoteName.startsWith("-") || !remotes.includes(remoteName)) {
+    throw new Error(remoteName === "origin" ? "还没有 origin 远程" : "没有这个远程");
+  }
+  const dest = branchName(target.branch || branch);
   try {
-    await withAuth(repo, tokens, (auth) => git(repo, ["push", "-u", "origin", "HEAD"], { ...auth, timeout: 120000 }));
+    await withAuth(repo, tokens, (auth) =>
+      git(repo, ["push", "-u", remoteName, `HEAD:refs/heads/${dest}`], { ...auth, timeout: 120000 })
+    );
   } catch (error) {
     throw new Error(scrub(error.message, tokens.githubToken || tokens.giteeToken) || "推送被拒绝");
   }
-  return done(repo, id, `已推送 ${branch}`);
+  return done(repo, id, `已推送到 ${remoteName}/${dest}`);
 }
 
 async function createBranch(repo, id, name) {

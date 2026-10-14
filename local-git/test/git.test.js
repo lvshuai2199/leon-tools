@@ -606,17 +606,38 @@ test("空 shas 不能合成也不能接到后面", async () => {
   assert.equal(subjectOf(dir), "third");
 });
 
-test("push 的参数仍是 push -u origin HEAD", async () => {
+test("推送可以改远程分支名，不能强制覆盖", async () => {
   const source = fs.readFileSync(path.join(__dirname, "../lib/git.js"), "utf8");
-  assert.match(source, /\["push", "-u", "origin", "HEAD"\]/);
   assert.doesNotMatch(source, /push",\s*"--force/);
+  assert.doesNotMatch(source, /--force-with-lease/);
   const dir = initRepo(path.join(os.tmpdir(), `local-git-push-${Date.now()}`));
   const bare = path.join(os.tmpdir(), `local-git-bare-${Date.now()}`);
   execFileSync("git", ["init", "--bare", "-b", "main", bare], { windowsHide: true, stdio: "pipe" });
   gitCmd(dir, ["remote", "add", "origin", bare]);
   const op = await git.push(dir, "repo", {});
-  assert.match(op.notice, /已推送/);
+  assert.match(op.notice, /origin\/main/);
   assert.equal(execFileSync("git", ["rev-parse", "--abbrev-ref", "@{upstream}"], { cwd: dir, encoding: "utf8" }).trim(), "origin/main");
+  gitCmd(dir, ["switch", "-c", "topic"]);
+  commitFile(dir, "c.txt", "topic\n", "topic");
+  const head = rev(dir);
+  const renamed = await git.push(dir, "repo", {}, { remote: "origin", branch: "published" });
+  assert.match(renamed.notice, /origin\/published/);
+  assert.equal(branchOf(dir), "topic");
+  assert.equal(rev(dir), head);
+  assert.equal(execFileSync("git", ["rev-parse", "--abbrev-ref", "@{upstream}"], { cwd: dir, encoding: "utf8" }).trim(), "origin/published");
+  assert.equal(rev(bare, "published"), head);
+  await assert.rejects(git.push(dir, "repo", {}, { remote: "nope", branch: "published" }), /没有这个远程/);
+  assert.equal(branchOf(dir), "topic");
+  assert.equal(rev(dir), head);
+  const other = initRepo(path.join(os.tmpdir(), `local-git-push-other-${Date.now()}`));
+  gitCmd(other, ["remote", "add", "origin", bare]);
+  gitCmd(other, ["fetch", "origin"]);
+  gitCmd(other, ["switch", "-c", "published", "--track", "origin/published"]);
+  commitFile(other, "z.txt", "z\n", "diverge");
+  gitCmd(other, ["push", "origin", "HEAD:refs/heads/published"]);
+  await assert.rejects(git.push(dir, "repo", {}, { remote: "origin", branch: "published" }), /non-fast-forward|rejected|拒绝/);
+  assert.equal(rev(dir), head);
+  assert.equal(branchOf(dir), "topic");
 });
 
 test("新建分支可以带着未提交改动", async () => {

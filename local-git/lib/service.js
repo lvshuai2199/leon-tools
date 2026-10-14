@@ -137,7 +137,7 @@ function createService(rootDir, store) {
     unstage: (id, files) => act(id, (dir, repoId) => git.unstageFiles(dir, repoId, files)),
     fetch: (id) => act(id, (dir, repoId, cfg) => git.fetch(dir, repoId, cfg)),
     pull: (id) => act(id, (dir, repoId, cfg) => git.pull(dir, repoId, cfg)),
-    push: (id) => act(id, (dir, repoId, cfg) => git.push(dir, repoId, cfg)),
+    push: (id, remote, branch) => act(id, (dir, repoId, cfg) => git.push(dir, repoId, cfg, { remote, branch })),
     branch: (id, name) => act(id, (dir, repoId) => git.createBranch(dir, repoId, name)),
     branchAt: (id, name, rev) => act(id, (dir, repoId) => git.createBranchAt(dir, repoId, name, rev)),
     checkout: (id, name, stash) => act(id, (dir, repoId) => git.checkout(dir, repoId, name, { stash: stash === true })),

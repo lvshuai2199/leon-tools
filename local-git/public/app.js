@@ -102,10 +102,10 @@ function confirmBox(title, content, okText) {
   });
 }
 
-function formBox(title, html) {
+function formBox(title, html, okText) {
   return new Promise((resolve) => {
     modal.hidden = false;
-    modal.innerHTML = `<form class="modal__card"><h2>${esc(title)}</h2>${html}<div class="modal__actions"><button type="button" data-no>取消</button><button class="primary" type="submit">保存</button></div></form>`;
+    modal.innerHTML = `<form class="modal__card"><h2>${esc(title)}</h2>${html}<div class="modal__actions"><button type="button" data-no>取消</button><button class="primary" type="submit">${esc(okText || "保存")}</button></div></form>`;
     modal.querySelector("[data-no]").onclick = () => {
       modal.hidden = true;
       resolve(null);
@@ -1143,6 +1143,14 @@ async function openReplay(onto) {
   return run("rebase-squash", () => api("/api/rebase-squash", { body: { repo: state.repo, onto, shas: picked.shas, message: picked.message } }));
 }
 
+function pushDefaults(ws) {
+  const remotes = [...(ws?.remotes || [])].sort((a, b) => b.length - a.length);
+  const upstream = ws?.upstream || "";
+  const remote = remotes.find((name) => upstream === name || upstream.startsWith(`${name}/`)) || remotes.find((name) => name === "origin") || remotes[0] || "";
+  const branch = remote && upstream.startsWith(`${remote}/`) ? upstream.slice(remote.length + 1) : ws?.branch || "";
+  return { remote, branch };
+}
+
 async function action(name, arg, extra = {}) {
   if (!state.repo) return showToast("先选择仓库");
   if (name === "fetch") return run("fetch", () => api("/api/fetch", { body: { repo: state.repo } }));
@@ -1153,10 +1161,23 @@ async function action(name, arg, extra = {}) {
     return run("pull", () => api("/api/pull", { body: { repo: state.repo } }));
   }
   if (name === "push") {
-    const text = state.ws?.upstream ? `将推送当前分支，超前 ${state.ws.ahead} 个提交` : "当前分支还没有上游，推送后会设置上游";
-    if (state.ws?.upstream && state.ws.ahead === 0) return showToast("没有需要推送的提交");
-    if (!(await confirmBox("推送", text))) return;
-    return run("push", () => api("/api/push", { body: { repo: state.repo } }));
+    if (!state.ws) return showToast("正在读取仓库");
+    if (state.ws.detached) return showToast("先检出一个分支");
+    const names = state.ws.remotes || [];
+    if (!names.length) return showToast("还没有远程");
+    const picked = pushDefaults(state.ws);
+    const options = [...names]
+      .sort((a, b) => (a === "origin" ? -1 : b === "origin" ? 1 : a.localeCompare(b)))
+      .map((remote) => `<option value="${esc(remote)}" ${remote === picked.remote ? "selected" : ""}>${esc(remote)}</option>`)
+      .join("");
+    const ahead = state.ws.upstream ? `当前上游 ${state.ws.upstream}，超前 ${state.ws.ahead}。` : "当前分支还没有上游。";
+    const data = await formBox(
+      "推送",
+      `<p class="meta">当前分支「${esc(state.ws.branch || "")}」。${esc(ahead)}确认远程分支，可以改。推送后上游会改成它。不会强制覆盖远程。</p><label class="field">远程<select name="remote">${options}</select></label><label class="field">远程分支<input name="branch" value="${esc(picked.branch)}" required /></label>`,
+      "推送"
+    );
+    if (!data?.remote || !String(data.branch || "").trim()) return;
+    return run("push", () => api("/api/push", { body: { repo: state.repo, remote: data.remote, branch: data.branch } }));
   }
   if (name === "commit") {
     if (!stagedCount()) return showToast("没有已暂存的文件");
