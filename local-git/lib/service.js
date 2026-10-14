@@ -142,6 +142,7 @@ function createService(rootDir, store) {
     branchAt: (id, name, rev) => act(id, (dir, repoId) => git.createBranchAt(dir, repoId, name, rev)),
     checkout: (id, name, stash) => act(id, (dir, repoId) => git.checkout(dir, repoId, name, { stash: stash === true })),
     deleteBranch: (id, name, force) => act(id, (dir, repoId) => git.deleteBranch(dir, repoId, name, { force: force === true })),
+    renameBranch: (id, from, to) => act(id, (dir, repoId) => git.renameBranch(dir, repoId, from, to)),
     merge: (id, branch) => act(id, (dir, repoId) => git.merge(dir, repoId, branch)),
     rebase: (id, onto) => act(id, (dir, repoId) => git.rebase(dir, repoId, onto)),
     rebaseFrom: (id, rev, onto) => act(id, (dir, repoId) => git.rebaseFrom(dir, repoId, rev, onto)),

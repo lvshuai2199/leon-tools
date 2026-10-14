@@ -803,3 +803,30 @@ test("从某次提交新建分支，当前分支和 HEAD 不动", async () => {
   await assert.rejects(git.createBranchAt(dir, "repo", "from-old", first), /已经有这个分支/);
   assert.equal(rev(dir), head);
 });
+
+test("可以改本地分支的名字，当前分支和提交不动", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-rename-${Date.now()}`));
+  gitCmd(dir, ["branch", "topic"]);
+  const head = rev(dir);
+  const op = await git.renameBranch(dir, "repo", "topic", "topic-2");
+  assert.match(op.notice, /topic-2/);
+  assert.equal(branchOf(dir), "main");
+  assert.equal(rev(dir), head);
+  assert.equal(rev(dir, "topic-2"), head);
+  await assert.rejects(git.renameBranch(dir, "repo", "topic-2", "main"), /已经有这个分支/);
+  assert.equal(branchOf(dir), "main");
+  const renamed = await git.renameBranch(dir, "repo", "main", "trunk");
+  assert.match(renamed.notice, /trunk/);
+  assert.equal(branchOf(dir), "trunk");
+  assert.equal(rev(dir), head);
+});
+
+test("远程分支不能改名", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-rename-remote-${Date.now()}`));
+  const head = rev(dir);
+  gitCmd(dir, ["remote", "add", "origin", "https://example.com/example.git"]);
+  gitCmd(dir, ["update-ref", "refs/remotes/origin/topic", head]);
+  await assert.rejects(git.renameBranch(dir, "repo", "origin/topic", "topic-2"), /只改本地分支/);
+  assert.equal(rev(dir), head);
+  assert.equal(branchOf(dir), "main");
+});

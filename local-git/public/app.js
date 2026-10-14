@@ -648,14 +648,20 @@ function branchMenu(leaf) {
   if (!leaf || leaf.detached || !leaf.checkout) return [];
   if (leaf.current && !leaf.remote) {
     if (state.ws?.detached) return [];
-    return [{ label: "合成最近几次", act: "squash" }];
+    return [
+      { label: "改名", act: "rename", name: leaf.checkout },
+      { label: "合成最近几次", act: "squash" },
+    ];
   }
   const items = [
     { label: "切过去", act: "checkout", name: leaf.checkout },
     { label: "合进来", act: "merge", name: leaf.checkout },
     { label: "接到后面", act: "replay", name: leaf.checkout },
   ];
-  if (!leaf.remote) items.push({ label: "删除", act: "delete", name: leaf.checkout, danger: true });
+  if (!leaf.remote) {
+    items.push({ label: "改名", act: "rename", name: leaf.checkout });
+    items.push({ label: "删除", act: "delete", name: leaf.checkout, danger: true });
+  }
   return items;
 }
 
@@ -1197,6 +1203,19 @@ async function action(name, arg, extra = {}) {
   }
   if (name === "squash") return openSquash();
   if (name === "replay") return openReplay(arg);
+  if (name === "rename") {
+    if (!arg) return showToast("先选择分支");
+    const data = await formBox("修改分支名", `<p class="meta">现在叫「${esc(arg)}」。只改这台电脑上的名字，远程不会跟着改。</p><label class="field">新名字<input name="name" value="${esc(arg)}" required /></label>`);
+    if (!data?.name) return;
+    const next = String(data.name).trim();
+    if (!next || next === arg) return showToast("名字没有变");
+    return run("rename", async () => {
+      const result = await api("/api/rename-branch", { body: { repo: state.repo, from: arg, to: next } });
+      if (state.selectedBranch === arg) state.selectedBranch = next;
+      if (state.graphRef === arg) state.graphRef = next;
+      return result;
+    });
+  }
   if (name === "delete") {
     if (!arg) return showToast("先选择分支");
     if (!(await confirmBox("删除", `删除本地分支「${arg}」。当前分支不会动。远程不会删。`, "删除"))) return;

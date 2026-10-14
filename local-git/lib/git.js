@@ -732,6 +732,25 @@ async function deleteBranch(repo, id, name, options = {}) {
   return done(repo, id, `已删除 ${branch}`);
 }
 
+async function renameBranch(repo, id, from, to) {
+  const oldName = branchName(from);
+  const newName = branchName(to);
+  if (oldName === newName) throw new Error("名字没有变");
+  if (await isRemoteBranch(repo, oldName)) throw new Error("这里只改本地分支的名字");
+  const current = await currentBranch(repo);
+  const head = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  try {
+    if (oldName === current) await git(repo, ["branch", "-m", newName]);
+    else await git(repo, ["branch", "-m", oldName, newName]);
+  } catch (error) {
+    if (/already exists/i.test(error.message)) throw new Error("已经有这个分支");
+    throw error;
+  }
+  const headNow = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  if (headNow !== head) throw new Error("改名失败，提交没有动");
+  return done(repo, id, `已把 ${oldName} 改成 ${newName}`);
+}
+
 async function merge(repo, id, branch) {
   const name = branchName(branch);
   await assertClean(repo);
@@ -1546,6 +1565,7 @@ module.exports = {
   createBranchAt,
   checkout,
   deleteBranch,
+  renameBranch,
   merge,
   rebase,
   rebaseFrom,
