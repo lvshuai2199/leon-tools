@@ -143,7 +143,7 @@ function absolute(t, now) {
   return d.getFullYear() === new Date(now).getFullYear() ? md : `${d.getFullYear()}-${md}`
 }
 
-const LANE_COLORS = ["#1f6feb", "#cf222e", "#8250df", "#1a7f37", "#9a6700", "#0550ae"]
+const LANE_COLORS = ["#0969da", "#1a7f37", "#9a6700", "#8250df", "#cf222e", "#0e7490", "#bf3989", "#6e7781"]
 
 /** 还能合并进默认分支：超前、分叉，或只知道还有提交没进去。 */
 export function canMerge(branch, defaultBranch) {
@@ -205,9 +205,9 @@ export function layoutGraph(commits) {
   }
 
   const index = new Map(placed.map((row, i) => [String(row.commit.sha), i]))
-  const rowHeight = 52
-  const colWidth = 16
-  const pad = 10
+  const rowHeight = 32
+  const colWidth = 22
+  const pad = 12
   const xOf = (col) => pad + col * colWidth
   const yOf = (i) => i * rowHeight + rowHeight / 2
   let maxCol = 0

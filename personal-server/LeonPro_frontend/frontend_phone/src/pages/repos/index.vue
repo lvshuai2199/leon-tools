@@ -319,6 +319,12 @@ function onBranch(name: string) {
   loadCommits(true)
 }
 
+function onGraphPick(event: Event) {
+  const name = (event.target as HTMLSelectElement).value
+  if (name) onBranch(name)
+  else showAll()
+}
+
 function openMerge() {
   const page = graph.value
   if (!page) return
@@ -487,35 +493,35 @@ loadBoard()
         <p class="sub">
           {{ branches.defaultBranch ? `默认 ${branches.defaultBranch}` : '没有默认分支' }}
           · {{ branches.branches.length }} 个分支
-          · 全部看各分支的图，点一个分支看它自己的提交。合并要在窗口里点确定
         </p>
-        <div v-if="branches.branches.length" class="filters">
-          <button type="button" :class="{ 'is-on': !selectedRef }" @click="showAll">全部</button>
-          <button
-            v-for="b in branches.branches"
-            :key="b.name"
-            type="button"
-            :class="{ 'is-on': b.name === selectedRef }"
-            @click="onBranch(b.name)"
-          >{{ b.name }}</button>
+        <div v-if="branches.branches.length" class="graph-head">
+          <b class="graph-head__title">分支图</b>
+          <span class="graph-head__watch" :title="`正在看：${selectedRef || '全部'}`">正在看：{{ selectedRef || '全部' }}</span>
+          <button type="button" class="graph-head__all" :class="{ 'is-on': !selectedRef }" @click="showAll">全部</button>
+          <select class="graph-head__select" :value="selectedRef" @change="onGraphPick">
+            <option value="">全部</option>
+            <option v-for="b in branches.branches" :key="b.name" :value="b.name">{{ b.name }}</option>
+          </select>
         </div>
         <template v-if="!selectedRef">
-          <p class="sub">全部分支</p>
           <p v-if="branches.truncated" class="warn">分支或提交较多，图上只画出最近一段</p>
           <p v-if="mergeIncomplete" class="warn">有的分支暂时没有和默认分支比较的结果</p>
           <StateBlock v-if="!graph || !graph.commits.length" type="empty" icon="list" compact title="这个仓库还没有提交" />
-          <CommitGraph v-else :commits="graph.commits" @open="openCommit" @branch="onBranch" />
+          <CommitGraph v-else :commits="graph.commits" :selected="selectedRef" @open="openCommit" @branch="onBranch" />
         </template>
         <template v-else>
-          <p class="sub">{{ selectedRef }} 的提交</p>
           <StateBlock v-if="commitError" type="error" :title="commitError" @retry="loadCommits(true)" />
           <StateBlock v-else-if="commitLoading && !commits.length" type="loading" title="正在读取提交" />
           <StateBlock v-else-if="!commits.length" type="empty" icon="list" compact title="这个分支还没有提交" />
           <ul v-else class="commits">
             <li v-for="c in commits" :key="c.sha">
-              <button type="button" class="commit" @click="openCommit(c.sha)">
+              <button type="button" class="commit" :title="headline(c.message)" @click="openCommit(c.sha)">
                 <span class="commit__msg">{{ headline(c.message) }}</span>
-                <span class="commit__meta">{{ c.shortSha }} · {{ c.author || '未知作者' }} · {{ formatWhen(c.date) }}</span>
+                <span class="commit__meta">
+                  <span>{{ c.shortSha }}</span>
+                  <span class="commit__author">{{ c.author || '未知作者' }}</span>
+                  <span v-if="formatWhen(c.date)">{{ formatWhen(c.date) }}</span>
+                </span>
               </button>
             </li>
           </ul>
@@ -641,6 +647,63 @@ loadBoard()
     background: var(--el-color-primary-light-9);
   }
 }
+.graph-head {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 960px;
+  height: 30px;
+  margin-bottom: lp.$space-3;
+  overflow: hidden;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+}
+.graph-head__title {
+  flex: none;
+  font-size: lp.$font-size-base;
+  font-weight: lp.$font-weight-semibold;
+  white-space: nowrap;
+}
+.graph-head__watch {
+  flex: 1 1 auto;
+  min-width: 0;
+  max-width: 180px;
+  overflow: hidden;
+  color: var(--el-text-color-secondary);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.graph-head__all {
+  flex: none;
+  height: 24px;
+  padding: 0 lp.$space-2;
+  border: 1px solid var(--el-border-color);
+  border-radius: lp.$radius-base;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-regular);
+  font-size: lp.$font-size-base;
+  white-space: nowrap;
+  cursor: pointer;
+  &.is-on {
+    border-color: #0969da;
+    background: #ddf4ff;
+    color: #0969da;
+  }
+}
+.graph-head__select {
+  flex: none;
+  width: 160px;
+  max-width: 42%;
+  height: 24px;
+  padding: 0 6px;
+  border: 1px solid var(--el-border-color);
+  border-radius: lp.$radius-base;
+  background: var(--el-bg-color);
+  color: var(--el-text-color-primary);
+  font-size: lp.$font-size-base;
+}
 .cards {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -687,11 +750,19 @@ loadBoard()
   color: var(--el-text-color-secondary);
   font-size: lp.$font-size-base;
 }
+.card__meta {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  white-space: nowrap;
+}
 .card__desc,
 .card__commit {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.card__commit {
+  color: var(--el-text-color-placeholder);
 }
 .badge,
 .tag,
@@ -719,13 +790,23 @@ loadBoard()
 }
 .merge-bar {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-flow: row wrap;
+  align-items: center;
+  justify-content: flex-end;
   gap: lp.$space-2;
+  width: 100%;
+  max-width: 960px;
   margin-bottom: lp.$space-4;
 }
 .merge-bar .sub {
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .merge-field {
   margin-bottom: lp.$space-3;
@@ -754,41 +835,82 @@ loadBoard()
   padding: 0;
   list-style: none;
 }
-.commit,
+.commits {
+  width: 100%;
+  max-width: 960px;
+}
+.commit {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: lp.$space-2;
+  box-sizing: border-box;
+  width: 100%;
+  height: 32px;
+  min-height: 32px;
+  max-height: 32px;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  border-bottom: 1px solid var(--el-border-color-lighter);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
 .file {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
+  box-sizing: border-box;
   width: 100%;
-  min-height: 64px;
-  padding: lp.$space-3 0;
+  min-height: 36px;
+  padding: lp.$space-1 0;
   border: none;
   border-bottom: 1px solid var(--el-border-color-lighter);
   background: transparent;
   text-align: left;
   cursor: pointer;
 }
-.file {
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  min-height: 44px;
-}
-.commit__msg,
-.file__name {
+.commit__msg {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--el-text-color-primary);
-  font-size: lp.$font-size-medium;
-  line-height: 1.35;
-  word-break: break-word;
+  font-size: lp.$font-size-base;
+  font-weight: lp.$font-weight-semibold;
+  line-height: 1.2;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .commit__meta {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: lp.$space-2;
   color: var(--el-text-color-secondary);
-  font-size: lp.$font-size-base;
+  font-size: 12px;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+.commit__author {
+  max-width: 8em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  @include lp.mobile {
+    display: none;
+  }
 }
 .file__name {
   flex: 1;
   min-width: 0;
+  color: var(--el-text-color-primary);
+  font-size: lp.$font-size-medium;
+  line-height: 1.35;
+  word-break: break-word;
 }
 .more {
   margin-top: lp.$space-3;
@@ -803,10 +925,10 @@ loadBoard()
   color: var(--el-color-primary);
 }
 .patch {
-  margin: 0 0 lp.$space-3;
+  margin: 0 0 lp.$space-2;
   max-height: 280px;
   overflow: auto;
-  padding: lp.$space-3;
+  padding: lp.$space-2;
   border-radius: lp.$radius-base;
   background: var(--el-fill-color-light);
   color: var(--el-text-color-primary);
