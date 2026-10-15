@@ -1,46 +1,13 @@
-# LeonTools
+﻿# LeonTools
 
-#### 介绍
-{**以下是 Gitee 平台说明，您可以替换此简介**
-Gitee 是 OSCHINA 推出的基于 Git 的代码托管平台（同时支持 SVN）。专为开发者提供稳定、高效、安全的云端软件开发协作平台
-无论是个人、团队、或是企业，都能够用 Gitee 实现代码托管、项目管理、协作开发。企业项目请看 [https://gitee.com/enterprises](https://gitee.com/enterprises)}
+个人工具 monorepo。
 
-#### 软件架构
-软件架构说明
+## 相关仓库
 
+- **personal-server**（已拆出）: https://github.com/lvshuai2199/personal-server
+- **leon-notes**（笔记）: https://github.com/lvshuai2199/leon-notes
 
-#### 安装教程
+## 本仓库内容
 
-1.  xxxx
-2.  xxxx
-3.  xxxx
+工具与脚本集合（can_tester_linux、cursor-usage-widget、edge-start-hub、git-picbed、leonpro-dev-hub、local-git、stm32-servo 等）。
 
-#### 使用说明
-
-1.  xxxx
-2.  xxxx
-3.  xxxx
-
-#### 参与贡献
-
-1.  Fork 本仓库
-2.  新建 Feat_xxx 分支
-3.  提交代码
-4.  新建 Pull Request
-
-
-#### 特技
-
-1.  使用 Readme\_XXX.md 来支持不同的语言，例如 Readme\_en.md, Readme\_zh.md
-2.  Gitee 官方博客 [blog.gitee.com](https://blog.gitee.com)
-3.  你可以 [https://gitee.com/explore](https://gitee.com/explore) 这个地址来了解 Gitee 上的优秀开源项目
-4.  [GVP](https://gitee.com/gvp) 全称是 Gitee 最有价值开源项目，是综合评定出的优秀开源项目
-5.  Gitee 官方提供的使用手册 [https://gitee.com/help](https://gitee.com/help)
-6.  Gitee 封面人物是一档用来展示 Gitee 会员风采的栏目 [https://gitee.com/gitee-stars/](https://gitee.com/gitee-stars/)
-
-
-## WEB
-### Linux配置
-1. 安装使用nginx进行对应端的设置
-2. 将对应的文件夹放置到系统目录中，常规的文件放置目录为：'/var/www' 文件夹中
-3. nginx配置一般存储在 '/etc/nginx/sites-available/default' 中
