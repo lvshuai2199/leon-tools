@@ -13,7 +13,6 @@
 #include <QFileInfo>
 #include <QDesktopServices>
 #include <QUrl>
-#include <QTimer>
 
 namespace {
 constexpr int kNavW = 120;
@@ -68,7 +67,7 @@ void SettingsWindow::keyPressEvent(QKeyEvent* e) {
 void SettingsWindow::changeEvent(QEvent* e) {
     QMainWindow::changeEvent(e);
     if (e->type() == QEvent::ActivationChange && isActiveWindow()) {
-        // Tray manage dialog may have rewritten shortcuts.txt
+        // Reload if shortcuts.txt changed while we were inactive (e.g. tray menu).
         if (stack_ && stack_->currentIndex() == 1)
             reloadShortcutsList();
     }
@@ -560,14 +559,7 @@ void SettingsWindow::onWallpaperNow() {
 }
 
 void SettingsWindow::onShortcutAdd() {
-    // Prefer tray's installed-apps manage dialog (same as GDI settings).
-    if (HostBridge::requestOpenManageShortcuts()) {
-        // Reload after manage dialog likely closes; poll briefly.
-        QTimer::singleShot(800, this, [this]() { reloadShortcutsList(); });
-        QTimer::singleShot(2500, this, [this]() { reloadShortcutsList(); });
-        return;
-    }
-    // Fallback: local file picker when tray is not running.
+    // Always pick in-settings via QFileDialog; do not open tray manage dialog.
     if (scList_->count() >= ConfigStore::kMaxShortcuts) {
         QMessageBox::information(this, QStringLiteral("快捷方式"),
                                  QStringLiteral("最多 %1 个快捷方式。").arg(ConfigStore::kMaxShortcuts));
