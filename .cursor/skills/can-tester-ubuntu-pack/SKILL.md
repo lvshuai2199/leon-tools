@@ -32,7 +32,7 @@ python scripts/pack_ubuntu.py
 普通源码 zip（给已有 Python 的机器、用 `./run.sh`）仍用：
 
 ```powershell
-tar -a -c -f "$env:TEMP\can_tester_linux-<version>.zip" --exclude=__pycache__ --exclude=*.pyc -C D:\GitFiles\leon-tools can_tester_linux
+tar -a -c -f "$env:TEMP\can_tester_linux-<version>.zip" --exclude=__pycache__ --exclude=*.pyc -C D:\GitFiles\personal\leon-tools can_tester_linux
 Copy-Item -Force "$env:TEMP\can_tester_linux-<version>.zip" "\\192.168.249.134\pc-dir\"
 ```
 

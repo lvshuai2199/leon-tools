@@ -11,10 +11,12 @@ alwaysApply: false
 
 1. **先整理提交**：看 `git status` / `git diff` / `git log`，把本次业务改动提交。不要提交 `deploy.env`、`bootstrap.env`、`migrate.env`、密码、以及 `node_modules`。
 2. **有数据库脚本变更时先执行 SQL**：例如 `sql/wallpaper_module.sql`（壁纸表和菜单）。后端 `docker-compose.yml` 需带 `./uploads:/app/uploads` 卷再重建，否则上传的文件会在重建时丢失。
-3. **后端**：`personal-server/LeonPro_backend/SpringBoot/deploy/deploy.ps1`。必须在完整仓库里打包（jar 要带上两个前端的 `menus.json`，缺了会构建或启动失败）。菜单同步开关写在服务器 `/opt/leonpro/backend/.env`：第一次上新结构先 `MENU_SYNC_MODE=dry-run`，看日志里的计划没问题再改回 `apply` 重启。细节见 `LeonPro_backend/SpringBoot/deploy/README.md`。
-4. **用户端**：`personal-server/LeonPro_frontend/frontend_phone/deploy/deploy.ps1`，固定部署到 `/var/www/leonpro-web`，访问 `/`。
-5. **管理端**：`personal-server/LeonPro_frontend/vue3_frontend/deploy/deploy.ps1`，部署到 `/var/www/leonpro-admin`，访问 `/admin/`。
-6. **nginx**（两个前端都有 `index.html` 之后再做）：站点配置只有一份 `personal-server/bootstrap/nginx-leonpro.conf`，前端部署脚本不再碰 nginx。在 `personal-server/bootstrap` 下先跑 `.\deploy-nginx.ps1 -Check`（上传并 `nginx -t`，不生效），通过后再跑 `.\deploy-nginx.ps1` 正式安装（自动备份，失败回滚；回退用 `-Rollback`）。新增子路径只改这一个文件。
+仓库在 `D:\GitFiles\personal\personal-server`，不再位于 leon-tools 下面。
+
+3. **后端**：`D:\GitFiles\personal\personal-server\LeonPro_backend\SpringBoot\deploy\deploy.ps1`。必须在完整仓库里打包（jar 要带上两个前端的 `menus.json`，缺了会构建或启动失败）。菜单同步开关写在服务器 `/opt/leonpro/backend/.env`：第一次上新结构先 `MENU_SYNC_MODE=dry-run`，看日志里的计划没问题再改回 `apply` 重启。细节见 `LeonPro_backend\SpringBoot\deploy\README.md`。
+4. **用户端**：`D:\GitFiles\personal\personal-server\LeonPro_frontend\frontend_phone\deploy\deploy.ps1`，固定部署到 `/var/www/leonpro-web`，访问 `/`。
+5. **管理端**：`D:\GitFiles\personal\personal-server\LeonPro_frontend\vue3_frontend\deploy\deploy.ps1`，部署到 `/var/www/leonpro-admin`，访问 `/admin/`。
+6. **nginx**（两个前端都有 `index.html` 之后再做）：站点配置只有一份 `D:\GitFiles\personal\personal-server\bootstrap\nginx-leonpro.conf`，前端部署脚本不再碰 nginx。在 `D:\GitFiles\personal\personal-server\bootstrap` 下先跑 `.\deploy-nginx.ps1 -Check`（上传并 `nginx -t`，不生效），通过后再跑 `.\deploy-nginx.ps1` 正式安装（自动备份，失败回滚；回退用 `-Rollback`）。新增子路径只改这一个文件。
 7. 对 `http://<主机>/`、`/admin/`、`/prod-api/` 做一次可达性检查。
 
 ## 上线后要手动改的三件事
