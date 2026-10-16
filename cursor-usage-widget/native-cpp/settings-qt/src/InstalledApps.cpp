@@ -9,6 +9,7 @@
 #include <QPixmap>
 #include <QSet>
 #include <QHash>
+#include <QGuiApplication>
 #include <algorithm>
 #include <string>
 #include <cstring>
@@ -374,13 +375,29 @@ static QPixmap pixmapFromHICON(HICON ico) {
 static QIcon iconFromLargePixmap(const QPixmap& large) {
     if (large.isNull()) return {};
     QIcon ic;
-    // Build pyramid from HQ source — never upscale a 16px glyph.
     const int src = qMax(large.width(), large.height());
-    const int sizes[] = {16, 24, 32, 40, 48, 64, 128, 256};
-    for (int s : sizes) {
-        if (s > src * 2 && src < 48) continue; // don't invent detail from tiny source
-        QPixmap p = large.scaled(s, s, Qt::KeepAspectRatio, Qt::SmoothTransformation);
-        if (!p.isNull()) ic.addPixmap(p);
+    // Logical UI sizes used by left list (32) and right grid (48), plus DPR variants.
+    const int logicalSizes[] = {16, 20, 24, 28, 32, 40, 48, 64};
+    const qreal dprs[] = {1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0};
+    for (int s : logicalSizes) {
+        for (qreal dpr : dprs) {
+            const int px = qMax(1, int(qRound(s * dpr)));
+            // Never upscale a tiny source into a huge glyph (keeps muddy 16px from looking "HQ").
+            if (src > 0 && src < 48 && px > src * 2) continue;
+            QPixmap p = large.scaled(px, px, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+            if (p.isNull()) continue;
+            p.setDevicePixelRatio(dpr);
+            ic.addPixmap(p);
+        }
+    }
+    // Also keep a native-resolution entry for IconMode / style pickers.
+    if (src >= 32) {
+        QPixmap native = large;
+        if (native.width() != native.height()) {
+            const int side = qMin(native.width(), native.height());
+            native = native.copy((native.width() - side) / 2, (native.height() - side) / 2, side, side);
+        }
+        ic.addPixmap(native);
     }
     return ic;
 }

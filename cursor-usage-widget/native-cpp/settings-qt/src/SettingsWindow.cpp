@@ -285,9 +285,9 @@ QWidget* SettingsWindow::buildShortcutsPage() {
 
     scLeftList_ = new QListWidget;
     scLeftList_->setObjectName("scList");
-    scLeftList_->setIconSize(QSize(28, 28));
+    scLeftList_->setIconSize(QSize(32, 32));
     scLeftList_->setSpacing(1);
-    scLeftList_->setUniformItemSizes(true);
+    scLeftList_->setUniformItemSizes(true); // row height from stylesheet
     scLeftList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scLeftList_->setSelectionMode(QAbstractItemView::NoSelection);
     connect(scLeftList_, &QListWidget::itemChanged, this, &SettingsWindow::onShortcutItemChanged);
@@ -481,7 +481,7 @@ void SettingsWindow::applyStyle() {
         #risk { color: #D97706; font-size: 12px; }
         #scEmpty { color: #6B7280; }
         #scList { background: #FAFBFC; border: 1px solid #E6E8EF; border-radius: 8px; outline: none; padding: 4px; }
-        #scList::item { height: 34px; padding: 2px 6px; border-radius: 6px; color: #111827; }
+        #scList::item { height: 40px; padding: 4px 8px; border-radius: 6px; color: #111827; }
         #scList::item:hover { background: #F3F4F6; }
         #scPreview {
             background: transparent; border: none; outline: none; padding: 4px 2px;
