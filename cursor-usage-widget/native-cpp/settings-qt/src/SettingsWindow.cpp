@@ -285,7 +285,7 @@ QWidget* SettingsWindow::buildShortcutsPage() {
 
     scLeftList_ = new QListWidget;
     scLeftList_->setObjectName("scList");
-    scLeftList_->setIconSize(QSize(24, 24));
+    scLeftList_->setIconSize(QSize(28, 28));
     scLeftList_->setSpacing(1);
     scLeftList_->setUniformItemSizes(true);
     scLeftList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
@@ -313,17 +313,22 @@ QWidget* SettingsWindow::buildShortcutsPage() {
     scRightList_ = new QListWidget;
     scRightList_->setObjectName("scPreview");
     scRightList_->setViewMode(QListView::IconMode);
-    scRightList_->setIconSize(QSize(40, 40));
+    scRightList_->setFlow(QListView::LeftToRight);
+    scRightList_->setWrapping(true);
+    scRightList_->setIconSize(QSize(48, 48));
+    scRightList_->setGridSize(QSize(84, 86));
     scRightList_->setResizeMode(QListView::Adjust);
     scRightList_->setMovement(QListView::Snap);
+    scRightList_->setUniformItemSizes(true);
     scRightList_->setDragEnabled(true);
     scRightList_->setAcceptDrops(true);
-    scRightList_->setDropIndicatorShown(true);
+    scRightList_->setDropIndicatorShown(false);
     scRightList_->setDefaultDropAction(Qt::MoveAction);
     scRightList_->setDragDropMode(QAbstractItemView::InternalMove);
-    scRightList_->setSpacing(10);
+    scRightList_->setSpacing(6);
     scRightList_->setWordWrap(true);
     scRightList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scRightList_->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
     scRightList_->setSelectionMode(QAbstractItemView::SingleSelection);
     scRightList_->setVisible(false);
     scRightList_->viewport()->installEventFilter(this);
@@ -475,11 +480,20 @@ void SettingsWindow::applyStyle() {
         #card #notice, #notice { color: #6B7280; background: #F0F4FF; border-radius: 8px; padding: 10px; }
         #risk { color: #D97706; font-size: 12px; }
         #scEmpty { color: #6B7280; }
-        #scList, #scPreview { background: #FAFBFC; border: 1px solid #E6E8EF; border-radius: 8px; outline: none; padding: 4px; }
+        #scList { background: #FAFBFC; border: 1px solid #E6E8EF; border-radius: 8px; outline: none; padding: 4px; }
         #scList::item { height: 34px; padding: 2px 6px; border-radius: 6px; color: #111827; }
         #scList::item:hover { background: #F3F4F6; }
-        #scPreview::item { color: #111827; padding: 6px; border-radius: 8px; }
-        #scPreview::item:selected { background: #EFF6FF; }
+        #scPreview {
+            background: transparent; border: none; outline: none; padding: 4px 2px;
+        }
+        #scPreview::item {
+            color: #374151; font-size: 11px;
+            background: transparent; border: 1px solid transparent;
+            border-radius: 10px; padding: 6px 4px 4px 4px;
+            margin: 2px;
+        }
+        #scPreview::item:hover { background: #F3F4F6; border-color: #E6E8EF; }
+        #scPreview::item:selected { background: #EFF6FF; border-color: #BFDBFE; color: #1D4ED8; }
         #scPane { background: transparent; }
         QPushButton#chip { background: #FFFFFF; border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 12px; text-align: left; color: #111827; }
         QPushButton#chip:checked { background: #EFF6FF; border-color: #3B82F6; color: #1D4ED8; }
@@ -605,11 +619,15 @@ void SettingsWindow::rebuildRightPreview() {
                                ? InstalledApps::resolveLnk(p) : p;
             }
         }
-        auto* item = new QListWidgetItem(InstalledApps::iconFor(a.launchPath, a.target), a.name);
+        QString shortName = a.name;
+        if (shortName.size() > 10)
+            shortName = shortName.left(9) + QStringLiteral("…");
+        auto* item = new QListWidgetItem(InstalledApps::iconFor(a.launchPath, a.target), shortName);
         item->setData(kRoleLaunch, a.launchPath);
-        item->setToolTip(a.launchPath);
+        item->setToolTip(a.name + QChar(QChar::LineFeed) + a.launchPath);
         item->setTextAlignment(Qt::AlignHCenter | Qt::AlignTop);
-        item->setSizeHint(QSize(88, 78));
+        item->setFlags((item->flags() | Qt::ItemIsDragEnabled | Qt::ItemIsDropEnabled | Qt::ItemIsEnabled | Qt::ItemIsSelectable)
+                       & ~Qt::ItemIsEditable);
         scRightList_->addItem(item);
     }
     const bool empty = scSelectedPaths_.isEmpty();

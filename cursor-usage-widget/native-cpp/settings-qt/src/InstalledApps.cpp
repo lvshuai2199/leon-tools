@@ -8,8 +8,10 @@
 #include <QPainter>
 #include <QPixmap>
 #include <QSet>
+#include <QHash>
 #include <algorithm>
 #include <string>
+#include <cstring>
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -24,12 +26,7 @@
 #include <objbase.h>
 #include <shlguid.h>
 #include <propvarutil.h>
-#endif
-
-#ifdef _WIN32
-// kFolderIdAppsFolder without INITGUID
-static const GUID kFolderIdAppsFolder =
-    {0x1e87508d, 0x89c2, 0x42f0, {0x8a, 0x7e, 0x64, 0x5a, 0x0f, 0x50, 0xca, 0x58}};
+#include <shellapi.h>
 #endif
 
 namespace {
@@ -44,6 +41,30 @@ QString fileTitle(const QString& path) {
 
 bool endsWithI(const QString& s, const QString& ext) {
     return s.endsWith(ext, Qt::CaseInsensitive);
+}
+
+QString normName(QString n) {
+    n = n.trimmed().toLower();
+    // strip common noise
+    static const char* junk[] = {
+        " (x64)", " (x86)", " x64", " x86", ".exe"
+    };
+    for (const char* j : junk) {
+        if (n.endsWith(QString::fromLatin1(j)))
+            n.chop(int(strlen(j)));
+    }
+    // collapse spaces
+    n.replace(QStringLiteral("  "), QStringLiteral(" "));
+    return n.trimmed();
+}
+
+QString aumidFromLaunch(const QString& launch) {
+    if (!InstalledApps::isShellAppsPath(launch)) return {};
+    const QString prefix = QStringLiteral("shell:appsfolder\\");
+    QString rest = launch;
+    if (rest.startsWith(prefix, Qt::CaseInsensitive))
+        rest = rest.mid(prefix.size());
+    return rest;
 }
 
 bool skipInstalled(const QString& name, const QString& target) {
@@ -80,33 +101,108 @@ QString stripIconPath(QString s) {
     return s.trimmed();
 }
 
-void addInstalled(QVector<InstalledApp>& out, QSet<QString>& seen,
-                  const QString& name, const QString& launch, const QString& target) {
-    if (name.isEmpty() || launch.isEmpty()) return;
-    if (skipInstalled(name, target.isEmpty() ? launch : target)) return;
-    // Dedup: prefer real path key; for shell: use full launch
-    QString key = lower(target);
-    if (key.isEmpty()) key = lower(launch);
-    if (key.isEmpty() || seen.contains(key)) return;
-    // Also block duplicate shell/exe for same aumid vs path already seen via launch
-    if (seen.contains(lower(launch))) return;
-    seen.insert(key);
-    seen.insert(lower(launch));
+// Prefer Start Menu .lnk > real .exe > shell:AUMID; bonus if target exe exists.
+int preferScore(const InstalledApp& a) {
+    int s = 0;
+    if (endsWithI(a.launchPath, QStringLiteral(".lnk"))) s += 40;
+    else if (endsWithI(a.launchPath, QStringLiteral(".exe"))) s += 25;
+    else if (InstalledApps::isShellAppsPath(a.launchPath)) s += 8;
+    if (!a.target.isEmpty() && endsWithI(a.target, QStringLiteral(".exe")) && QFileInfo::exists(a.target))
+        s += 15;
+    else if (endsWithI(a.launchPath, QStringLiteral(".exe")) && QFileInfo::exists(a.launchPath))
+        s += 10;
+    // Prefer Program Files / Start Menu style paths over Softs duplicates of same name
+    const QString p = lower(!a.target.isEmpty() ? a.target : a.launchPath);
+    if (p.contains(QStringLiteral("\\program files"))) s += 5;
+    if (p.contains(QStringLiteral("\\start menu\\"))) s += 5;
+    return s;
+}
+
+void upsertApp(QVector<InstalledApp>& out, QHash<QString, int>& byName,
+               QSet<QString>& pathKeys, const InstalledApp& cand) {
+    if (cand.name.isEmpty() || cand.launchPath.isEmpty()) return;
+    if (skipInstalled(cand.name, cand.target.isEmpty() ? cand.launchPath : cand.target)) return;
+
+    // Path / AUMID hard keys
+    QStringList hard;
+    hard << lower(cand.launchPath);
+    if (!cand.target.isEmpty()) hard << lower(cand.target);
+    if (!cand.aumid.isEmpty()) hard << QStringLiteral("aumid:") + lower(cand.aumid);
+    else {
+        const QString aid = aumidFromLaunch(cand.launchPath);
+        if (!aid.isEmpty()) hard << QStringLiteral("aumid:") + lower(aid);
+    }
+    for (const QString& k : hard) {
+        if (pathKeys.contains(k)) {
+            // Same path/AUMID already present — maybe upgrade if better score
+            for (int i = 0; i < out.size(); ++i) {
+                const InstalledApp& cur = out[i];
+                QStringList curKeys;
+                curKeys << lower(cur.launchPath);
+                if (!cur.target.isEmpty()) curKeys << lower(cur.target);
+                QString ca = cur.aumid.isEmpty() ? aumidFromLaunch(cur.launchPath) : cur.aumid;
+                if (!ca.isEmpty()) curKeys << QStringLiteral("aumid:") + lower(ca);
+                bool hit = false;
+                for (const QString& ck : curKeys) if (hard.contains(ck)) { hit = true; break; }
+                if (!hit) continue;
+                if (preferScore(cand) > preferScore(cur)) {
+                    // replace path keys
+                    for (const QString& ck : curKeys) pathKeys.remove(ck);
+                    out[i] = cand;
+                    for (const QString& hk : hard) pathKeys.insert(hk);
+                    byName.insert(normName(cand.name), i);
+                }
+                return;
+            }
+            return;
+        }
+    }
+
+    const QString nk = normName(cand.name);
+    if (byName.contains(nk)) {
+        const int idx = byName.value(nk);
+        if (idx >= 0 && idx < out.size()) {
+            if (preferScore(cand) > preferScore(out[idx])) {
+                // drop old hard keys
+                InstalledApp old = out[idx];
+                pathKeys.remove(lower(old.launchPath));
+                if (!old.target.isEmpty()) pathKeys.remove(lower(old.target));
+                QString oa = old.aumid.isEmpty() ? aumidFromLaunch(old.launchPath) : old.aumid;
+                if (!oa.isEmpty()) pathKeys.remove(QStringLiteral("aumid:") + lower(oa));
+                out[idx] = cand;
+                for (const QString& hk : hard) pathKeys.insert(hk);
+            }
+            return;
+        }
+    }
+
+    const int idx = out.size();
+    out.push_back(cand);
+    byName.insert(nk, idx);
+    for (const QString& hk : hard) pathKeys.insert(hk);
+}
+
+void addInstalled(QVector<InstalledApp>& out, QHash<QString, int>& byName, QSet<QString>& pathKeys,
+                  const QString& name, const QString& launch, const QString& target,
+                  const QString& aumid = {}) {
     InstalledApp a;
-    a.name = name;
+    a.name = name.trimmed();
     a.launchPath = InstalledApps::isShellAppsPath(launch) ? launch : QDir::toNativeSeparators(launch);
     a.target = target.isEmpty() ? QString()
         : (InstalledApps::isShellAppsPath(target) ? target : QDir::toNativeSeparators(target));
+    a.aumid = aumid;
+    if (a.aumid.isEmpty()) a.aumid = aumidFromLaunch(a.launchPath);
     a.isSystem = InstalledApps::isSystemApp(a.name, a.launchPath, a.target);
-    out.push_back(a);
+    upsertApp(out, byName, pathKeys, a);
 }
 
 #ifdef _WIN32
-// Manual PROPERTYKEYs (avoid INITGUID pulling entire propkey.h)
 static const PROPERTYKEY kPKeyAumid = {
     {0x9f4c2855, 0x9f79, 0x4B39, {0xa8, 0xd0, 0xe1, 0xd4, 0x2d, 0xe1, 0xd5, 0xf3}}, 5};
 static const PROPERTYKEY kPKeyLinkTarget = {
     {0xB9B4B3FC, 0x2B51, 0x4A42, {0xBE, 0x5D, 0x46, 0x9B, 0x10, 0x67, 0x59, 0x3A}}, 2};
+static const GUID kFolderIdAppsFolder =
+    {0x1e87508d, 0x89c2, 0x42f0, {0x8a, 0x7e, 0x64, 0x5a, 0x0f, 0x50, 0xca, 0x58}};
 
 static QString propToString(const PROPVARIANT& pv) {
     if (pv.vt == VT_LPWSTR && pv.pwszVal) return QString::fromWCharArray(pv.pwszVal);
@@ -117,17 +213,19 @@ static QString propToString(const PROPVARIANT& pv) {
     return {};
 }
 
-void scanDirLnks(const QString& dir, QVector<InstalledApp>& out, QSet<QString>& seen) {
+void scanDirLnks(const QString& dir, QVector<InstalledApp>& out,
+                 QHash<QString, int>& byName, QSet<QString>& pathKeys) {
     QDirIterator it(dir, QStringList() << QStringLiteral("*.lnk"),
                     QDir::Files, QDirIterator::Subdirectories);
     while (it.hasNext()) {
         const QString full = it.next();
         const QString target = InstalledApps::resolveLnk(full);
-        addInstalled(out, seen, fileTitle(full), full, target);
+        addInstalled(out, byName, pathKeys, fileTitle(full), full, target);
     }
 }
 
-void scanUninstallKey(HKEY root, const wchar_t* sub, QVector<InstalledApp>& out, QSet<QString>& seen) {
+void scanUninstallKey(HKEY root, const wchar_t* sub, QVector<InstalledApp>& out,
+                      QHash<QString, int>& byName, QSet<QString>& pathKeys) {
     HKEY k = nullptr;
     if (RegOpenKeyExW(root, sub, 0, KEY_READ, &k) != ERROR_SUCCESS) return;
     for (DWORD i = 0;; ++i) {
@@ -159,38 +257,34 @@ void scanUninstallKey(HKEY root, const wchar_t* sub, QVector<InstalledApp>& out,
             if (!endsWithI(exe, QStringLiteral(".exe")) || !QFileInfo::exists(exe))
                 exe.clear();
         }
-        // No DisplayIcon / broken icon: try InstallLocation for a reasonable .exe (keep entry if found).
         if (exe.isEmpty()) {
             wchar_t loc[MAX_PATH] = {};
             sz = sizeof(loc);
             if (RegQueryValueExW(a, L"InstallLocation", nullptr, &type, (LPBYTE)loc, &sz) == ERROR_SUCCESS && loc[0]) {
-                const QString dir = QString::fromWCharArray(loc);
+                const QString dir = QString::fromWCharArray(loc).remove(QLatin1Char('"'));
                 QDirIterator it(dir, QStringList() << QStringLiteral("*.exe"), QDir::Files);
-                QString best;
                 while (it.hasNext()) {
                     const QString p = it.next();
                     const QString bn = QFileInfo(p).fileName().toLower();
                     if (bn.contains(QStringLiteral("uninstall")) || bn.contains(QStringLiteral("update"))
                         || bn.contains(QStringLiteral("setup")) || bn.contains(QStringLiteral("helper")))
                         continue;
-                    best = p;
+                    exe = p;
                     break;
                 }
-                exe = best;
             }
         }
-        // Still no launchable exe: keep name with empty target skipped — AppsFolder covers UWP.
         if (exe.isEmpty()) {
             RegCloseKey(a);
             continue;
         }
-        addInstalled(out, seen, QString::fromWCharArray(display), exe, exe);
+        addInstalled(out, byName, pathKeys, QString::fromWCharArray(display), exe, exe);
         RegCloseKey(a);
     }
     RegCloseKey(k);
 }
 
-void scanAppsFolder(QVector<InstalledApp>& out, QSet<QString>& seen) {
+void scanAppsFolder(QVector<InstalledApp>& out, QHash<QString, int>& byName, QSet<QString>& pathKeys) {
     IShellItem* folder = nullptr;
     HRESULT hr = SHGetKnownFolderItem(kFolderIdAppsFolder, KF_FLAG_DEFAULT, nullptr,
                                       IID_IShellItem, (void**)&folder);
@@ -236,20 +330,10 @@ void scanAppsFolder(QVector<InstalledApp>& out, QSet<QString>& seen) {
         }
 
         if (!targetExe.isEmpty() && endsWithI(targetExe, QStringLiteral(".exe")) && QFileInfo::exists(targetExe)) {
-            // Win32 tile in AppsFolder — launch the exe (dedup vs Start Menu by target).
-            addInstalled(out, seen, name, targetExe, targetExe);
+            addInstalled(out, byName, pathKeys, name, targetExe, targetExe, aumid);
         } else if (!aumid.isEmpty()) {
             const QString launch = QStringLiteral("shell:AppsFolder\\") + aumid;
-            addInstalled(out, seen, name, launch, QString());
-        } else {
-            // Nameless protocol / odd tile: still show with parsing name if available.
-            wchar_t* parseW = nullptr;
-            if (SUCCEEDED(item->GetDisplayName(SIGDN_DESKTOPABSOLUTEPARSING, &parseW)) && parseW) {
-                const QString parse = QString::fromWCharArray(parseW);
-                CoTaskMemFree(parseW);
-                if (!parse.isEmpty())
-                    addInstalled(out, seen, name, parse, QString());
-            }
+            addInstalled(out, byName, pathKeys, name, launch, QString(), aumid);
         }
         item->Release();
     }
@@ -277,21 +361,72 @@ static QPixmap pixmapFromHBITMAP(HBITMAP hbm) {
     return QPixmap::fromImage(img);
 }
 
-static QIcon iconFromShellParsingName(const QString& parsing) {
+static QPixmap pixmapFromHICON(HICON ico) {
+    if (!ico) return {};
+    ICONINFO ii{};
+    if (!GetIconInfo(ico, &ii)) return {};
+    QPixmap pm = pixmapFromHBITMAP(ii.hbmColor ? ii.hbmColor : ii.hbmMask);
+    if (ii.hbmColor) DeleteObject(ii.hbmColor);
+    if (ii.hbmMask) DeleteObject(ii.hbmMask);
+    return pm;
+}
+
+static QIcon iconFromLargePixmap(const QPixmap& large) {
+    if (large.isNull()) return {};
+    QIcon ic;
+    // Build pyramid from HQ source — never upscale a 16px glyph.
+    const int src = qMax(large.width(), large.height());
+    const int sizes[] = {16, 24, 32, 40, 48, 64, 128, 256};
+    for (int s : sizes) {
+        if (s > src * 2 && src < 48) continue; // don't invent detail from tiny source
+        QPixmap p = large.scaled(s, s, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        if (!p.isNull()) ic.addPixmap(p);
+    }
+    return ic;
+}
+
+static QPixmap extractExeIconHQ(const QString& exePath) {
+    if (exePath.isEmpty() || !QFileInfo::exists(exePath)) return {};
+    const std::wstring w = QDir::toNativeSeparators(exePath).toStdWString();
+    HICON ico = nullptr;
+    // Prefer jumbo / 256 then 128 then 48
+    UINT n = PrivateExtractIconsW(w.c_str(), 0, 256, 256, &ico, nullptr, 1, LR_DEFAULTCOLOR);
+    if (!(n && ico)) {
+        ico = nullptr;
+        n = PrivateExtractIconsW(w.c_str(), 0, 128, 128, &ico, nullptr, 1, LR_DEFAULTCOLOR);
+    }
+    if (!(n && ico)) {
+        ico = nullptr;
+        n = PrivateExtractIconsW(w.c_str(), 0, 48, 48, &ico, nullptr, 1, LR_DEFAULTCOLOR);
+    }
+    if (n && ico) {
+        QPixmap pm = pixmapFromHICON(ico);
+        DestroyIcon(ico);
+        if (!pm.isNull() && pm.width() >= 32) return pm;
+    }
+    return {};
+}
+
+static QPixmap extractShellIconHQ(const QString& parsing) {
     if (parsing.isEmpty()) return {};
     IShellItem* item = nullptr;
     const std::wstring w = parsing.toStdWString();
     if (FAILED(SHCreateItemFromParsingName(w.c_str(), nullptr, IID_IShellItem, (void**)&item)) || !item)
         return {};
     IShellItemImageFactory* factory = nullptr;
-    QIcon out;
+    QPixmap out;
     if (SUCCEEDED(item->QueryInterface(IID_IShellItemImageFactory, (void**)&factory)) && factory) {
-        SIZE sz{32, 32};
+        // Request large; SIIGBF_BIGGERSIZEOK allows larger than asked when available
+        SIZE sz{256, 256};
         HBITMAP hbm = nullptr;
-        if (SUCCEEDED(factory->GetImage(sz, SIIGBF_RESIZETOFIT | SIIGBF_ICONBACKGROUND, &hbm)) && hbm) {
-            const QPixmap pm = pixmapFromHBITMAP(hbm);
+        HRESULT hr = factory->GetImage(sz, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK, &hbm);
+        if (FAILED(hr) || !hbm) {
+            sz = SIZE{128, 128};
+            hr = factory->GetImage(sz, SIIGBF_RESIZETOFIT | SIIGBF_BIGGERSIZEOK, &hbm);
+        }
+        if (SUCCEEDED(hr) && hbm) {
+            out = pixmapFromHBITMAP(hbm);
             DeleteObject(hbm);
-            if (!pm.isNull()) out = QIcon(pm);
         }
         factory->Release();
     }
@@ -332,7 +467,6 @@ bool InstalledApps::isSystemApp(const QString& name, const QString& launchPath, 
     if (n.contains(QStringLiteral("developer command prompt"))) return true;
     if (n.contains(QStringLiteral("x64 native tools")) || n.contains(QStringLiteral("x86 native tools")))
         return true;
-    // UWP / shell:AppsFolder system-ish AUMIDs
     if (isShellAppsPath(launchPath)) {
         const QString id = lower(launchPath);
         static const char* sysAumid[] = {
@@ -350,40 +484,52 @@ bool InstalledApps::isSystemApp(const QString& name, const QString& launchPath, 
 }
 
 QIcon InstalledApps::placeholderIcon() {
-    QPixmap pm(32, 32);
+    QPixmap pm(64, 64);
     pm.fill(Qt::transparent);
     QPainter p(&pm);
     p.setRenderHint(QPainter::Antialiasing);
     p.setBrush(QColor(0xD1, 0xD5, 0xDB));
     p.setPen(QColor(0x9C, 0xA3, 0xAF));
-    p.drawRoundedRect(QRectF(2, 2, 28, 28), 6, 6);
-    p.setPen(QPen(QColor(0x6B, 0x72, 0x80), 1.5));
-    p.drawLine(11, 16, 21, 16);
-    p.drawLine(16, 11, 16, 21);
+    p.drawRoundedRect(QRectF(4, 4, 56, 56), 10, 10);
+    p.setPen(QPen(QColor(0x6B, 0x72, 0x80), 2.0));
+    p.drawLine(22, 32, 42, 32);
+    p.drawLine(32, 22, 32, 42);
     p.end();
+#ifdef _WIN32
+    return iconFromLargePixmap(pm);
+#else
     return QIcon(pm);
+#endif
 }
 
 QIcon InstalledApps::iconFor(const QString& launchPath, const QString& target) {
 #ifdef _WIN32
     if (isShellAppsPath(launchPath)) {
-        QIcon ic = iconFromShellParsingName(launchPath);
-        if (!ic.isNull()) return ic;
+        QPixmap pm = extractShellIconHQ(launchPath);
+        if (!pm.isNull()) return iconFromLargePixmap(pm);
         return placeholderIcon();
     }
-#endif
-    const QString path = !target.isEmpty() ? target : launchPath;
-    if (!path.isEmpty() && QFileInfo::exists(path)) {
-        QFileIconProvider prov;
-        QIcon ic = prov.icon(QFileInfo(path));
-        if (!ic.isNull()) return ic;
+    // Prefer resolved exe for crisp ICO resources
+    const QString exe = (!target.isEmpty() && endsWithI(target, QStringLiteral(".exe")))
+                           ? target
+                           : (endsWithI(launchPath, QStringLiteral(".exe")) ? launchPath : QString());
+    if (!exe.isEmpty()) {
+        QPixmap pm = extractExeIconHQ(exe);
+        if (!pm.isNull()) return iconFromLargePixmap(pm);
     }
-#ifdef _WIN32
-    // .lnk may still yield a shell icon via parsing name
     if (endsWithI(launchPath, QStringLiteral(".lnk"))) {
-        QIcon ic = iconFromShellParsingName(launchPath);
-        if (!ic.isNull()) return ic;
+        // Try resolved target first (already tried), then shell item for .lnk
+        QPixmap pm = extractShellIconHQ(launchPath);
+        if (!pm.isNull()) return iconFromLargePixmap(pm);
+        const QString resolved = resolveLnk(launchPath);
+        if (!resolved.isEmpty()) {
+            pm = extractExeIconHQ(resolved);
+            if (!pm.isNull()) return iconFromLargePixmap(pm);
+        }
     }
+#else
+    Q_UNUSED(launchPath);
+    Q_UNUSED(target);
 #endif
     return placeholderIcon();
 }
@@ -417,21 +563,22 @@ QString InstalledApps::resolveLnk(const QString& lnkPath) {
 
 QVector<InstalledApp> InstalledApps::enumerate() {
     QVector<InstalledApp> out;
-    QSet<QString> seen;
+    QHash<QString, int> byName;
+    QSet<QString> pathKeys;
 #ifdef _WIN32
+    // Order: Start Menu first (preferred .lnk), then uninstall, then AppsFolder fill gaps.
     wchar_t folder[MAX_PATH];
     if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_PROGRAMS, nullptr, SHGFP_TYPE_CURRENT, folder)))
-        scanDirLnks(QString::fromWCharArray(folder), out, seen);
+        scanDirLnks(QString::fromWCharArray(folder), out, byName, pathKeys);
     if (SUCCEEDED(SHGetFolderPathW(nullptr, CSIDL_COMMON_PROGRAMS, nullptr, SHGFP_TYPE_CURRENT, folder)))
-        scanDirLnks(QString::fromWCharArray(folder), out, seen);
+        scanDirLnks(QString::fromWCharArray(folder), out, byName, pathKeys);
     scanUninstallKey(HKEY_CURRENT_USER,
-                     L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", out, seen);
+                     L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", out, byName, pathKeys);
     scanUninstallKey(HKEY_LOCAL_MACHINE,
-                     L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", out, seen);
+                     L"Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall", out, byName, pathKeys);
     scanUninstallKey(HKEY_LOCAL_MACHINE,
-                     L"Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall", out, seen);
-    // AppsFolder last so Win32 tiles dedupe against Start Menu; UWP/AUMID fill gaps.
-    scanAppsFolder(out, seen);
+                     L"Software\\WOW6432Node\\Microsoft\\Windows\\CurrentVersion\\Uninstall", out, byName, pathKeys);
+    scanAppsFolder(out, byName, pathKeys);
 #endif
     std::sort(out.begin(), out.end(), [](const InstalledApp& a, const InstalledApp& b) {
         return QString::localeAwareCompare(a.name, b.name) < 0;
