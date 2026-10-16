@@ -43,15 +43,51 @@ static bool WriteAll(const std::wstring& path, const void* data, DWORD size) {
     return ok && w == size;
 }
 
-static bool ExtractPayload(const std::wstring& destExe) {
-    HRSRC rs = FindResourceW(nullptr, MAKEINTRESOURCEW(100), RT_RCDATA);
+static bool ExtractResourceToFile(int id, const std::wstring& path) {
+    HRSRC rs = FindResourceW(nullptr, MAKEINTRESOURCEW(id), RT_RCDATA);
     if (!rs) return false;
     HGLOBAL g = LoadResource(nullptr, rs);
     if (!g) return false;
     DWORD n = SizeofResource(nullptr, rs);
     void* p = LockResource(g);
     if (!p || !n) return false;
-    return WriteAll(destExe, p, n);
+    return WriteAll(path, p, n);
+}
+
+static bool RunHidden(const std::wstring& cmd) {
+    STARTUPINFOW si{ sizeof(si) };
+    si.dwFlags = STARTF_USESHOWWINDOW;
+    si.wShowWindow = SW_HIDE;
+    PROCESS_INFORMATION pi{};
+    std::wstring mutableCmd = cmd;
+    if (!CreateProcessW(nullptr, &mutableCmd[0], nullptr, nullptr, FALSE,
+                        CREATE_NO_WINDOW, nullptr, nullptr, &si, &pi))
+        return false;
+    WaitForSingleObject(pi.hProcess, INFINITE);
+    DWORD code = 1;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    return code == 0;
+}
+
+static bool ExtractPayload(const std::wstring& destDir) {
+    wchar_t tmpDir[MAX_PATH] = {};
+    GetTempPathW(MAX_PATH, tmpDir);
+    std::wstring zip = Join(tmpDir, L"cuw-setup-payload.zip");
+    DeleteFileW(zip.c_str());
+    if (!ExtractResourceToFile(100, zip)) return false;
+    CreateDirectoryW(destDir.c_str(), nullptr);
+    std::wstring cmd = L"tar.exe -xf \"" + zip + L"\" -C \"" + destDir + L"\"";
+    bool ok = RunHidden(cmd);
+    if (!ok) {
+        cmd = L"powershell.exe -NoProfile -ExecutionPolicy Bypass -Command \"Expand-Archive -LiteralPath '"
+            + zip + L"' -DestinationPath '" + destDir + L"' -Force\"";
+        ok = RunHidden(cmd);
+    }
+    DeleteFileW(zip.c_str());
+    if (!ok) return false;
+    return GetFileAttributesW(Join(destDir, L"CursorUsage.exe").c_str()) != INVALID_FILE_ATTRIBUTES;
 }
 
 static bool PickFolder(HWND owner, const std::wstring& initial, std::wstring& out) {
@@ -117,39 +153,52 @@ static void DisableAutoStart() {
         L"Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\StartupApproved\\Run", L"CursorUsageWidget");
 }
 
+static void KillByName(const wchar_t* exeName) {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return;
+    PROCESSENTRY32W pe{ sizeof(pe) };
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (_wcsicmp(pe.szExeFile, exeName) == 0) {
+                HANDLE h = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
+                if (h) { TerminateProcess(h, 0); CloseHandle(h); }
+            }
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+}
+
 static void StopApp() {
     HWND w = FindWindowW(L"CursorUsageWidget", nullptr);
     if (w) PostMessageW(w, WM_CLOSE, 0, 0);
-    for (int i = 0; i < 20; ++i) {
-        HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
-        if (snap == INVALID_HANDLE_VALUE) break;
-        PROCESSENTRY32W pe{ sizeof(pe) };
-        bool found = false;
-        if (Process32FirstW(snap, &pe)) {
-            do {
-                if (_wcsicmp(pe.szExeFile, L"CursorUsage.exe") == 0) {
-                    found = true;
-                    HANDLE p = OpenProcess(PROCESS_TERMINATE, FALSE, pe.th32ProcessID);
-                    if (p) { TerminateProcess(p, 0); CloseHandle(p); }
-                }
-            } while (Process32NextW(snap, &pe));
-        }
-        CloseHandle(snap);
-        if (!found) break;
-        Sleep(100);
-    }
+    KillByName(L"CursorUsage.exe");
+    KillByName(L"CursorUsageSettings.exe");
+}
+
+static void RemoveTree(const std::wstring& path) {
+    std::wstring from = path;
+    if (!from.empty() && from.back() != L'\\') from.push_back(L'\\');
+    from.push_back(L'\0');
+    SHFILEOPSTRUCTW op{};
+    op.wFunc = FO_DELETE;
+    op.pFrom = from.c_str();
+    op.fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+    SHFileOperationW(&op);
 }
 
 static void WriteUninstallBat(const std::wstring& dest, const std::wstring& setupPath) {
     std::wstring bat = dest + L"\\卸载.bat";
     std::string body =
         "@echo off\r\n"
+        "chcp 65001 >nul\r\n"
         "if exist \"%~dp0CursorUsage-Setup.exe\" (\r\n"
         "  start \"\" \"%~dp0CursorUsage-Setup.exe\" /uninstall\r\n"
         "  exit /b 0\r\n"
         ")\r\n"
+        "taskkill /IM CursorUsageSettings.exe /F >nul 2>&1\r\n"
         "taskkill /IM CursorUsage.exe /F >nul 2>&1\r\n"
         "reg delete \"HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\" /v CursorUsageWidget /f >nul 2>&1\r\n"
+        "rd /s /q \"%~dp0qt-runtime\" >nul 2>&1\r\n"
         "del /f /q \"%~dp0CursorUsage.exe\" >nul 2>&1\r\n"
         "del /f /q \"%~dp0卸载.bat\" >nul 2>&1\r\n";
     WriteAll(bat, body.data(), (DWORD)body.size());
@@ -159,18 +208,18 @@ static void WriteUninstallBat(const std::wstring& dest, const std::wstring& setu
 static std::wstring ReadInstallPath() {
     std::wstring p = Join(RoamingAppData(), L"cursor-usage-widget\\install.path");
     HANDLE f = CreateFileW(p.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
-    if (f == INVALID_HANDLE_VALUE) return L"";
+    if (f == INVALID_HANDLE_VALUE) return {};
     char buf[1024] = {};
     DWORD n = 0;
-    ReadFile(f, buf, 1000, &n, nullptr);
+    ReadFile(f, buf, sizeof(buf) - 1, &n, nullptr);
     CloseHandle(f);
-    if (!n) return L"";
+    if (!n) return {};
     int wlen = MultiByteToWideChar(CP_UTF8, 0, buf, (int)n, nullptr, 0);
-    std::wstring w(wlen, 0);
-    MultiByteToWideChar(CP_UTF8, 0, buf, (int)n, &w[0], wlen);
-    while (!w.empty() && (w.back() == L'\n' || w.back() == L'\r' || w.back() == L' '))
-        w.pop_back();
-    return w;
+    std::wstring out(wlen, 0);
+    MultiByteToWideChar(CP_UTF8, 0, buf, (int)n, &out[0], wlen);
+    while (!out.empty() && (out.back() == L'\r' || out.back() == L'\n' || out.back() == L' '))
+        out.pop_back();
+    return out;
 }
 
 static void SaveInstallPath(const std::wstring& dest) {
@@ -178,37 +227,27 @@ static void SaveInstallPath(const std::wstring& dest) {
     CreateDirectoryW(dir.c_str(), nullptr);
     std::wstring path = Join(dir, L"install.path");
     int n = WideCharToMultiByte(CP_UTF8, 0, dest.c_str(), -1, nullptr, 0, nullptr, nullptr);
-    std::string u(n > 0 ? n - 1 : 0, 0);
-    if (n > 1) WideCharToMultiByte(CP_UTF8, 0, dest.c_str(), -1, &u[0], n, nullptr, nullptr);
-    u += "\n";
-    WriteAll(path, u.data(), (DWORD)u.size());
+    std::string u8(n > 0 ? n - 1 : 0, 0);
+    if (n > 1) WideCharToMultiByte(CP_UTF8, 0, dest.c_str(), -1, &u8[0], n, nullptr, nullptr);
+    WriteAll(path, u8.data(), (DWORD)u8.size());
 }
 
 static int DoUninstall() {
     StopApp();
-    DisableAutoStart();
+    Sleep(400);
     std::wstring dest = ReadInstallPath();
     if (dest.empty()) dest = Join(LocalAppData(), L"CursorUsage");
-    std::wstring exe = Join(dest, L"CursorUsage.exe");
-    DeleteFileW(exe.c_str());
+    DisableAutoStart();
+    RemoveTree(Join(dest, L"qt-runtime"));
+    DeleteFileW(Join(dest, L"CursorUsage.exe").c_str());
     DeleteFileW(Join(dest, L"卸载.bat").c_str());
     std::wstring self = Join(dest, L"CursorUsage-Setup.exe");
-    wchar_t me[MAX_PATH] = {};
-    GetModuleFileNameW(nullptr, me, MAX_PATH);
-    if (_wcsicmp(me, self.c_str()) != 0)
-        DeleteFileW(self.c_str());
-    RemoveDirectoryW(dest.c_str());
+    MoveFileExW(self.c_str(), nullptr, MOVEFILE_DELAY_UNTIL_REBOOT);
+    DeleteFileW(self.c_str());
     DeleteFileW(Join(RoamingAppData(), L"cursor-usage-widget\\install.path").c_str());
-    MessageBoxW(nullptr, L"已卸载用量条，并取消开机启动。", L"Cursor 用量条", MB_OK | MB_ICONINFORMATION);
-    if (_wcsicmp(me, self.c_str()) == 0) {
-        wchar_t cmd[MAX_PATH + 32];
-        swprintf(cmd, MAX_PATH + 32, L"cmd.exe /c ping 127.0.0.1 -n 2 >nul & del /f /q \"%s\"", me);
-        STARTUPINFOW si{ sizeof(si) };
-        PROCESS_INFORMATION pi{};
-        CreateProcessW(nullptr, cmd, nullptr, nullptr, FALSE, CREATE_NO_WINDOW, nullptr, dest.c_str(), &si, &pi);
-        if (pi.hThread) CloseHandle(pi.hThread);
-        if (pi.hProcess) CloseHandle(pi.hProcess);
-    }
+    MessageBoxW(nullptr,
+                L"已卸载程序文件。\n配置仍保留在 %APPDATA%\\cursor-usage-widget\\（ui.ini / shortcuts.txt）。",
+                L"卸载完成", MB_OK | MB_ICONINFORMATION);
     return 0;
 }
 
@@ -231,19 +270,23 @@ static int DoInstall() {
     CreateDirectoryW(dest.c_str(), nullptr);
     StopApp();
     Sleep(300);
-    std::wstring exe = Join(dest, L"CursorUsage.exe");
-    if (!ExtractPayload(exe)) {
-        MessageBoxW(nullptr, L"写出程序失败。请换一个可写的目录再试。", L"安装失败", MB_OK | MB_ICONERROR);
+    if (!ExtractPayload(dest)) {
+        MessageBoxW(nullptr,
+                    L"解压安装包失败。请换一个可写目录，或确认系统自带 tar/PowerShell 可用。",
+                    L"安装失败", MB_OK | MB_ICONERROR);
         return 1;
     }
     wchar_t me[MAX_PATH] = {};
     GetModuleFileNameW(nullptr, me, MAX_PATH);
     WriteUninstallBat(dest, me);
     SaveInstallPath(dest);
+    std::wstring exe = Join(dest, L"CursorUsage.exe");
     EnableAutoStart(exe);
     ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
-    std::wstring done = L"已安装到：\n" + exe +
-        L"\n\n开机后会自动启动。请先打开并登录 Cursor。\n卸载请运行安装目录里的「卸载.bat」。";
+    std::wstring done = L"已安装到：\n" + dest +
+        L"\n\n已写入开机启动。请先打开并登录 Cursor。\n"
+        L"设置窗口：托盘菜单打开，或运行 qt-runtime\\CursorUsageSettings.exe\n"
+        L"卸载：安装目录里的「卸载.bat」。";
     MessageBoxW(nullptr, done.c_str(), L"安装完成", MB_OK | MB_ICONINFORMATION);
     return 0;
 }
