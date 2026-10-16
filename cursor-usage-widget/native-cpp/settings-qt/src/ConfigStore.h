@@ -1,5 +1,6 @@
 #pragma once
 #include <QString>
+#include <QStringList>
 
 struct AppConfig {
     int dockEdge = 1;      // 0 left, 1 right, 2 top
@@ -23,6 +24,11 @@ struct ClearOptions {
 class ConfigStore {
 public:
     static QString configPath();
+    static QString shortcutsPath();
     static AppConfig load();
     static bool save(const AppConfig& c);
+    // One UTF-8 path per line; max 9 (matches tray kMaxShortcuts).
+    static QStringList loadShortcuts();
+    static bool saveShortcuts(const QStringList& paths);
+    static constexpr int kMaxShortcuts = 9;
 };

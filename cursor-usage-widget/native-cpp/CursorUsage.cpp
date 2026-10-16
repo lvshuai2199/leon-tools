@@ -1832,6 +1832,7 @@ static void OpenManageShortcuts();
 static constexpr UINT WM_CUW_RELOAD_CONFIG = WM_APP + 0x41;
 static constexpr UINT WM_CUW_CLEAR_HISTORY = WM_APP + 0x42;
 static constexpr UINT WM_CUW_WALLPAPER_NOW = WM_APP + 0x43;
+static constexpr UINT WM_CUW_OPEN_MANAGE_SHORTCUTS = WM_APP + 0x44;
 
 static void OpenSettings();
 static void RefreshSettingsShortcuts();
@@ -5168,7 +5169,12 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     case WM_CUW_RELOAD_CONFIG: {
         LoadConfig();
+        LoadShortcuts();
         SettingsApplyMain(true);
+        return 0;
+    }
+    case WM_CUW_OPEN_MANAGE_SHORTCUTS: {
+        OpenManageShortcuts();
         return 0;
     }
     case WM_CUW_CLEAR_HISTORY: {

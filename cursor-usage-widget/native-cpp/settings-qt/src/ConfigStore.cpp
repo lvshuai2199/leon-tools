@@ -4,19 +4,25 @@
 #include <QStringConverter>
 #include <QDir>
 #include <QFile>
+#include <QFileInfo>
 #include <QStandardPaths>
 #include <QTextStream>
 
-QString ConfigStore::configPath() {
-    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    // Match Win32: %APPDATA%\cursor-usage-widget\ui.ini
-    // Qt AppDataLocation on Windows is already %APPDATA%/<org>/<app>; override manually.
+static QString appDataBase() {
     const QString appdata = qEnvironmentVariable("APPDATA");
     QString base = appdata.isEmpty()
         ? QStandardPaths::writableLocation(QStandardPaths::GenericConfigLocation)
         : appdata;
     QDir().mkpath(base + "/cursor-usage-widget");
-    return base + "/cursor-usage-widget/ui.ini";
+    return base + "/cursor-usage-widget";
+}
+
+QString ConfigStore::configPath() {
+    return appDataBase() + "/ui.ini";
+}
+
+QString ConfigStore::shortcutsPath() {
+    return appDataBase() + "/shortcuts.txt";
 }
 
 static QString readVal(const QMap<QString, QString>& m, const QString& k, const QString& def = {}) {
@@ -99,6 +105,46 @@ bool ConfigStore::save(const AppConfig& c) {
     for (auto it = m.begin(); it != m.end(); ++it) {
         if (written.contains(it.key())) continue;
         out << it.key() << '=' << it.value() << '\n';
+    }
+    return true;
+}
+
+QStringList ConfigStore::loadShortcuts() {
+    QStringList out;
+    QFile f(shortcutsPath());
+    if (!f.open(QIODevice::ReadOnly | QIODevice::Text))
+        return out;
+    QTextStream in(&f);
+    in.setEncoding(QStringConverter::Utf8);
+    while (!in.atEnd()) {
+        QString line = in.readLine().trimmed();
+        if (line.isEmpty()) continue;
+        if (!QFileInfo::exists(line)) continue;
+        // Dedup case-insensitive (Windows)
+        bool dup = false;
+        for (const QString& e : out) {
+            if (e.compare(line, Qt::CaseInsensitive) == 0) { dup = true; break; }
+        }
+        if (dup) continue;
+        out.append(line);
+        if (out.size() >= kMaxShortcuts) break;
+    }
+    return out;
+}
+
+bool ConfigStore::saveShortcuts(const QStringList& paths) {
+    QFile fout(shortcutsPath());
+    if (!fout.open(QIODevice::WriteOnly | QIODevice::Text | QIODevice::Truncate))
+        return false;
+    QTextStream out(&fout);
+    out.setEncoding(QStringConverter::Utf8);
+    int n = 0;
+    for (QString p : paths) {
+        p.replace('\r', "").replace('\n', "");
+        p = p.trimmed();
+        if (p.isEmpty()) continue;
+        out << p << '\n';
+        if (++n >= kMaxShortcuts) break;
     }
     return true;
 }

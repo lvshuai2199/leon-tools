@@ -16,6 +16,9 @@
 #ifndef WM_CUW_WALLPAPER_NOW
 #define WM_CUW_WALLPAPER_NOW (WM_APP + 0x43)
 #endif
+#ifndef WM_CUW_OPEN_MANAGE_SHORTCUTS
+#define WM_CUW_OPEN_MANAGE_SHORTCUTS (WM_APP + 0x44)
+#endif
 
 bool HostBridge::notifyConfigChanged() {
 #ifdef _WIN32
@@ -48,6 +51,16 @@ bool HostBridge::requestWallpaperNow() {
     HWND h = FindWindowW(L"CursorUsageWidget", nullptr);
     if (!h) return false;
     return PostMessageW(h, WM_CUW_WALLPAPER_NOW, 0, 0) != 0;
+#else
+    return false;
+#endif
+}
+
+bool HostBridge::requestOpenManageShortcuts() {
+#ifdef _WIN32
+    HWND h = FindWindowW(L"CursorUsageWidget", nullptr);
+    if (!h) return false;
+    return PostMessageW(h, WM_CUW_OPEN_MANAGE_SHORTCUTS, 0, 0) != 0;
 #else
     return false;
 #endif

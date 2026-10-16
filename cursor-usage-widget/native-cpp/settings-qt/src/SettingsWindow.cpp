@@ -7,19 +7,28 @@
 #include <QScrollArea>
 #include <QApplication>
 #include <QShortcut>
+#include <QFileDialog>
+#include <QDir>
+#include <QFileIconProvider>
+#include <QFileInfo>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QTimer>
 
 namespace {
 constexpr int kNavW = 120;
 constexpr int kWinW = 700;
 constexpr int kWinH = 520;
-constexpr int kRightPad = 16;
-constexpr int kCardGap = 12;
-constexpr int kCardPad = 12;
-constexpr int kRowH = 28;
-constexpr int kRowGap = 8;
-constexpr int kChipGap = 8;
-constexpr int kBtnW = 96;
-constexpr int kBtnH = 28;
+constexpr int kContentPadH = 24;  // left/right content margin
+constexpr int kContentPadV = 20;  // top/bottom content margin
+constexpr int kCardGap = 16;
+constexpr int kCardPad = 16;
+constexpr int kRowH = 30;
+constexpr int kRowGap = 10;
+constexpr int kChipGap = 10;
+constexpr int kBtnW = 104;
+constexpr int kBtnH = 32;
+constexpr int kNavItemH = 40;
 }
 
 SettingsWindow::SettingsWindow(QWidget* parent) : QMainWindow(parent) {
@@ -33,6 +42,7 @@ SettingsWindow::SettingsWindow(QWidget* parent) : QMainWindow(parent) {
     buildUi();
     applyStyle();
     loadFromConfig();
+    reloadShortcutsList();
     // Esc closes (Alt+F4 is system default for Qt::Window)
     auto* esc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     connect(esc, &QShortcut::activated, this, &QWidget::close);
@@ -48,7 +58,31 @@ void SettingsWindow::keyPressEvent(QKeyEvent* e) {
         close();
         return;
     }
+    if (e->key() == Qt::Key_Delete && stack_ && stack_->currentIndex() == 1) {
+        onShortcutDelete();
+        return;
+    }
     QMainWindow::keyPressEvent(e);
+}
+
+void SettingsWindow::changeEvent(QEvent* e) {
+    QMainWindow::changeEvent(e);
+    if (e->type() == QEvent::ActivationChange && isActiveWindow()) {
+        // Tray manage dialog may have rewritten shortcuts.txt
+        if (stack_ && stack_->currentIndex() == 1)
+            reloadShortcutsList();
+    }
+}
+
+bool SettingsWindow::eventFilter(QObject* obj, QEvent* e) {
+    if (obj == scList_ && e->type() == QEvent::KeyPress) {
+        auto* ke = static_cast<QKeyEvent*>(e);
+        if (ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) {
+            onShortcutDelete();
+            return true;
+        }
+    }
+    return QMainWindow::eventFilter(obj, e);
 }
 
 QLabel* SettingsWindow::sectionTitle(const QString& text) {
@@ -66,6 +100,20 @@ QWidget* SettingsWindow::makeCard(QWidget* inner) {
     lay->setSpacing(kRowGap);
     lay->addWidget(inner);
     return card;
+}
+
+QWidget* SettingsWindow::wrapScroll(QWidget* col) {
+    auto* scroll = new QScrollArea;
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    auto* holder = new QWidget;
+    auto* hl = new QVBoxLayout(holder);
+    hl->setContentsMargins(kContentPadH, kContentPadV, kContentPadH, kContentPadV);
+    hl->setSpacing(0);
+    hl->addWidget(col);
+    scroll->setWidget(holder);
+    return scroll;
 }
 
 void SettingsWindow::buildUi() {
@@ -188,30 +236,60 @@ QWidget* SettingsWindow::buildGeneralPage() {
     }
 
     lay->addStretch();
-
-    auto* scroll = new QScrollArea;
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    auto* holder = new QWidget;
-    auto* hl = new QVBoxLayout(holder);
-    hl->setContentsMargins(kRightPad, 16, kRightPad, 16);
-    hl->setSpacing(0);
-    hl->addWidget(col);
-    scroll->setWidget(holder);
-    return scroll;
+    return wrapScroll(col);
 }
 
 QWidget* SettingsWindow::buildShortcutsPage() {
-    auto* page = new QWidget;
-    auto* lay = new QVBoxLayout(page);
-    lay->setContentsMargins(kRightPad, 16, kRightPad, 16);
-    auto* cardInner = new QLabel(QStringLiteral("快捷方式稍后接入"));
-    cardInner->setWordWrap(true);
-    cardInner->setAlignment(Qt::AlignLeft | Qt::AlignTop);
-    lay->addWidget(makeCard(cardInner));
-    lay->addStretch();
-    return page;
+    auto* col = new QWidget;
+    auto* lay = new QVBoxLayout(col);
+    lay->setContentsMargins(0, 0, 0, 0);
+    lay->setSpacing(kCardGap);
+
+    auto* inner = new QWidget;
+    auto* v = new QVBoxLayout(inner);
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(kRowGap);
+    v->addWidget(sectionTitle(QStringLiteral("快捷方式")));
+
+    scEmpty_ = new QLabel(QStringLiteral("还没有快捷方式，点下方添加"));
+    scEmpty_->setObjectName("scEmpty");
+    scEmpty_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    scEmpty_->setWordWrap(true);
+    v->addWidget(scEmpty_);
+
+    scList_ = new QListWidget;
+    scList_->setObjectName("scList");
+    scList_->setIconSize(QSize(28, 28));
+    scList_->setSpacing(2);
+    scList_->setUniformItemSizes(true);
+    scList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scList_->setSelectionMode(QAbstractItemView::SingleSelection);
+    scList_->installEventFilter(this);
+    connect(scList_, &QListWidget::itemDoubleClicked, this, &SettingsWindow::onShortcutOpen);
+    connect(scList_, &QListWidget::itemSelectionChanged, this, &SettingsWindow::onShortcutSelectionChanged);
+    v->addWidget(scList_, 1);
+
+    auto* btnRow = new QHBoxLayout;
+    btnRow->setSpacing(kChipGap);
+    btnRow->setAlignment(Qt::AlignLeft);
+    scAddBtn_ = new QPushButton(QStringLiteral("添加"));
+    scAddBtn_->setObjectName("secondaryBtn");
+    scAddBtn_->setFixedSize(kBtnW, kBtnH);
+    scAddBtn_->setCursor(Qt::PointingHandCursor);
+    connect(scAddBtn_, &QPushButton::clicked, this, &SettingsWindow::onShortcutAdd);
+    scDelBtn_ = new QPushButton(QStringLiteral("删除"));
+    scDelBtn_->setObjectName("ghostBtn");
+    scDelBtn_->setFixedSize(kBtnW, kBtnH);
+    scDelBtn_->setCursor(Qt::PointingHandCursor);
+    scDelBtn_->setEnabled(false);
+    connect(scDelBtn_, &QPushButton::clicked, this, &SettingsWindow::onShortcutDelete);
+    btnRow->addWidget(scAddBtn_);
+    btnRow->addWidget(scDelBtn_);
+    btnRow->addStretch();
+    v->addLayout(btnRow);
+
+    lay->addWidget(makeCard(inner), 1);
+    return wrapScroll(col);
 }
 
 QWidget* SettingsWindow::buildWallpaperPage() {
@@ -277,16 +355,7 @@ QWidget* SettingsWindow::buildWallpaperPage() {
     v->addWidget(wpExtra_);
     lay->addWidget(makeCard(inner));
     lay->addStretch();
-
-    auto* scroll = new QScrollArea;
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    auto* holder = new QWidget;
-    auto* hl = new QVBoxLayout(holder);
-    hl->setContentsMargins(kRightPad, 16, kRightPad, 16);
-    hl->addWidget(col);
-    scroll->setWidget(holder);
-    return scroll;
+    return wrapScroll(col);
 }
 
 QWidget* SettingsWindow::buildClearPage() {
@@ -336,29 +405,25 @@ QWidget* SettingsWindow::buildClearPage() {
 
     lay->addWidget(makeCard(inner));
     lay->addStretch();
-
-    auto* scroll = new QScrollArea;
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    auto* holder = new QWidget;
-    auto* hl = new QVBoxLayout(holder);
-    hl->setContentsMargins(kRightPad, 16, kRightPad, 16);
-    hl->addWidget(col);
-    scroll->setWidget(holder);
-    return scroll;
+    return wrapScroll(col);
 }
 
 void SettingsWindow::applyStyle() {
     setStyleSheet(QStringLiteral(R"(
         QMainWindow, QWidget { background: #F4F6FA; color: #111827; font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; font-size: 13px; }
         #nav { background: #EEF1F6; border: none; outline: none; padding: 10px 0; color: #111827; }
-        #nav::item { height: 36px; padding-left: 12px; margin: 2px 10px; border-radius: 8px; color: #111827; }
+        #nav::item { height: %1px; padding-left: 12px; padding-right: 12px; margin: 2px 10px; border-radius: 8px; color: #111827; }
         #nav::item:selected { background: #EFF6FF; color: #111827; }
         #nav::item:selected:!active { background: #EFF6FF; color: #111827; }
         #card { background: #FFFFFF; border: 1px solid #E6E8EF; border-radius: 10px; }
         #sectionTitle { color: #6B7280; font-size: 13px; font-weight: 500; }
         #notice { color: #6B7280; background: #F0F4FF; border-radius: 8px; padding: 10px; }
         #risk { color: #D97706; font-size: 12px; }
+        #scEmpty { color: #6B7280; }
+        #scList { background: transparent; border: none; outline: none; }
+        #scList::item { height: 36px; padding: 4px 8px; border-radius: 6px; color: #111827; }
+        #scList::item:selected { background: #EFF6FF; color: #111827; }
+        #scList::item:hover { background: #F3F4F6; }
         QPushButton#chip { background: #FFFFFF; border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 12px; text-align: left; color: #111827; }
         QPushButton#chip:checked { background: #EFF6FF; border-color: #3B82F6; color: #1D4ED8; }
         QPushButton#dangerBtn { background: #EF4444; color: white; border: none; border-radius: 6px; font-weight: 600; }
@@ -367,6 +432,9 @@ void SettingsWindow::applyStyle() {
         QPushButton#secondaryBtn { background: #3B82F6; color: white; border: none; border-radius: 6px; }
         QPushButton#secondaryBtn:hover { background: #2563EB; }
         QPushButton#secondaryBtn:disabled { background: #E6E8EF; color: #9CA3AF; }
+        QPushButton#ghostBtn { background: #FFFFFF; color: #111827; border: 1px solid #E6E8EF; border-radius: 6px; }
+        QPushButton#ghostBtn:hover { background: #F3F4F6; }
+        QPushButton#ghostBtn:disabled { background: #F9FAFB; color: #9CA3AF; border-color: #E6E8EF; }
         QLineEdit { border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 8px; background: #FFF; color: #111827; }
         QLineEdit:focus { border: 1px solid #3B82F6; }
         QComboBox { border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 8px; background: #FFF; color: #111827; }
@@ -375,7 +443,7 @@ void SettingsWindow::applyStyle() {
         QCheckBox { spacing: 8px; color: #111827; }
         QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #E6E8EF; background: #FFFFFF; }
         QCheckBox::indicator:checked { background: #3B82F6; border-color: #3B82F6; }
-    )"));
+    )").arg(kNavItemH));
 }
 
 void SettingsWindow::loadFromConfig() {
@@ -398,6 +466,55 @@ void SettingsWindow::loadFromConfig() {
     loading_ = false;
 }
 
+void SettingsWindow::reloadShortcutsList() {
+    if (!scList_) return;
+    const QStringList paths = ConfigStore::loadShortcuts();
+    scList_->clear();
+    QFileIconProvider icons;
+    for (const QString& p : paths) {
+        QFileInfo fi(p);
+        auto* item = new QListWidgetItem(icons.icon(fi), fi.completeBaseName().isEmpty() ? fi.fileName() : fi.completeBaseName());
+        item->setData(Qt::UserRole, p);
+        item->setToolTip(p);
+        item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+        scList_->addItem(item);
+    }
+    const bool empty = paths.isEmpty();
+    scEmpty_->setVisible(empty);
+    scList_->setVisible(!empty);
+    onShortcutSelectionChanged();
+}
+
+void SettingsWindow::persistShortcutsAndNotify() {
+    QStringList paths;
+    for (int i = 0; i < scList_->count(); ++i) {
+        paths.append(scList_->item(i)->data(Qt::UserRole).toString());
+    }
+    ConfigStore::saveShortcuts(paths);
+    HostBridge::notifyConfigChanged();
+    reloadShortcutsList();
+}
+
+void SettingsWindow::addShortcutPath(const QString& path) {
+    if (path.isEmpty()) return;
+    if (scList_->count() >= ConfigStore::kMaxShortcuts) {
+        QMessageBox::information(this, QStringLiteral("快捷方式"),
+                                 QStringLiteral("最多 %1 个快捷方式。").arg(ConfigStore::kMaxShortcuts));
+        return;
+    }
+    for (int i = 0; i < scList_->count(); ++i) {
+        if (scList_->item(i)->data(Qt::UserRole).toString().compare(path, Qt::CaseInsensitive) == 0)
+            return;
+    }
+    QFileInfo fi(path);
+    QFileIconProvider icons;
+    auto* item = new QListWidgetItem(icons.icon(fi), fi.completeBaseName().isEmpty() ? fi.fileName() : fi.completeBaseName());
+    item->setData(Qt::UserRole, path);
+    item->setToolTip(path);
+    scList_->addItem(item);
+    persistShortcutsAndNotify();
+}
+
 void SettingsWindow::persistAndNotify() {
     AppConfig c = ConfigStore::load();
     c.dockEdge = dockGroup_->checkedId() >= 0 ? dockGroup_->checkedId() : c.dockEdge;
@@ -416,6 +533,7 @@ void SettingsWindow::persistAndNotify() {
 
 void SettingsWindow::onNavChanged(int row) {
     if (row >= 0) stack_->setCurrentIndex(row);
+    if (row == 1) reloadShortcutsList();
 }
 
 void SettingsWindow::onGeneralChanged() {
@@ -435,6 +553,47 @@ void SettingsWindow::onWallpaperNow() {
         QMessageBox::warning(this, QStringLiteral("立即换壁纸"),
                              QStringLiteral("未找到运行中的托盘进程（CursorUsageWidget）。请先启动用量小窗。"));
     }
+}
+
+void SettingsWindow::onShortcutAdd() {
+    // Prefer tray's installed-apps manage dialog (same as GDI settings).
+    if (HostBridge::requestOpenManageShortcuts()) {
+        // Reload after manage dialog likely closes; poll briefly.
+        QTimer::singleShot(800, this, [this]() { reloadShortcutsList(); });
+        QTimer::singleShot(2500, this, [this]() { reloadShortcutsList(); });
+        return;
+    }
+    // Fallback: local file picker when tray is not running.
+    if (scList_->count() >= ConfigStore::kMaxShortcuts) {
+        QMessageBox::information(this, QStringLiteral("快捷方式"),
+                                 QStringLiteral("最多 %1 个快捷方式。").arg(ConfigStore::kMaxShortcuts));
+        return;
+    }
+    const QString path = QFileDialog::getOpenFileName(
+        this, QStringLiteral("添加快捷方式"),
+        QString(),
+        QStringLiteral("程序或快捷方式 (*.exe *.lnk);;所有文件 (*.*)"));
+    if (path.isEmpty()) return;
+    addShortcutPath(QDir::toNativeSeparators(path));
+}
+
+void SettingsWindow::onShortcutDelete() {
+    auto* item = scList_ ? scList_->currentItem() : nullptr;
+    if (!item) return;
+    delete scList_->takeItem(scList_->row(item));
+    persistShortcutsAndNotify();
+}
+
+void SettingsWindow::onShortcutOpen(QListWidgetItem* item) {
+    if (!item) return;
+    const QString path = item->data(Qt::UserRole).toString();
+    if (path.isEmpty()) return;
+    QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+}
+
+void SettingsWindow::onShortcutSelectionChanged() {
+    if (scDelBtn_)
+        scDelBtn_->setEnabled(scList_ && scList_->currentItem() != nullptr);
 }
 
 void SettingsWindow::onClearClicked() {
