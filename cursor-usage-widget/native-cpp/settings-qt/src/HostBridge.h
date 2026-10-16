@@ -8,6 +8,8 @@ public:
     static bool notifyConfigChanged();
     // Ask tray to run ClearCursorHistory with flags (does not duplicate path logic).
     static bool requestClearHistory(const ClearOptions& opt);
+    // Ask tray to change wallpaper immediately (WpStart).
+    static bool requestWallpaperNow();
     // Bring existing settings singleton to front, or report none.
     static bool findOwnWindow();
 };

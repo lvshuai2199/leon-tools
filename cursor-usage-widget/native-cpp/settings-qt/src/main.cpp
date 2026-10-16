@@ -11,6 +11,7 @@ int main(int argc, char* argv[]) {
 #ifdef _WIN32
     HANDLE mutex = CreateMutexW(nullptr, TRUE, L"Local\\CursorUsageSettingsQt");
     if (mutex && GetLastError() == ERROR_ALREADY_EXISTS) {
+        // Must match SettingsWindow::setWindowTitle(QStringLiteral("设置"))
         HWND h = FindWindowW(nullptr, L"设置");
         if (h) {
             ShowWindow(h, SW_SHOW);

@@ -1,4 +1,4 @@
-#define _CRT_SECURE_NO_WARNINGS
+﻿#define _CRT_SECURE_NO_WARNINGS
 #define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
@@ -1831,6 +1831,7 @@ static const int IDM_LAUNCH_BASE = 200;
 static void OpenManageShortcuts();
 static constexpr UINT WM_CUW_RELOAD_CONFIG = WM_APP + 0x41;
 static constexpr UINT WM_CUW_CLEAR_HISTORY = WM_APP + 0x42;
+static constexpr UINT WM_CUW_WALLPAPER_NOW = WM_APP + 0x43;
 
 static void OpenSettings();
 static void RefreshSettingsShortcuts();
@@ -5181,6 +5182,15 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         g_settings.clrCache = cache;
         g_settings.clrSidebar = sidebar;
         OnClearCursorHistoryClick(h);
+        return 0;
+    }
+    case WM_CUW_WALLPAPER_NOW: {
+        LoadConfig();
+        if (g_wp.enabled && WpUrlOk() && !g_wp.busy) {
+            KillTimer(h, 11);
+            SaveConfig();
+            WpStart();
+        }
         return 0;
     }
     case WM_DESTROY:

@@ -7,7 +7,9 @@
 #include <QPushButton>
 #include <QLabel>
 #include <QCloseEvent>
+#include <QKeyEvent>
 #include <QButtonGroup>
+#include <QComboBox>
 #include "ConfigStore.h"
 
 class SettingsWindow : public QMainWindow {
@@ -17,12 +19,14 @@ public:
 
 protected:
     void closeEvent(QCloseEvent* e) override;
+    void keyPressEvent(QKeyEvent* e) override;
 
 private slots:
     void onNavChanged(int row);
     void onGeneralChanged();
     void onWallpaperChanged();
     void onClearClicked();
+    void onWallpaperNow();
 
 private:
     void buildUi();
@@ -48,6 +52,8 @@ private:
 
     QCheckBox* wpEnabled_ = nullptr;
     QLineEdit* wpUrl_ = nullptr;
+    QComboBox* wpInterval_ = nullptr;
+    QPushButton* wpNowBtn_ = nullptr;
     QWidget* wpExtra_ = nullptr;
 
     QCheckBox* clrLocal_ = nullptr;

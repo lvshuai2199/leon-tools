@@ -13,6 +13,9 @@
 #ifndef WM_CUW_CLEAR_HISTORY
 #define WM_CUW_CLEAR_HISTORY (WM_APP + 0x42)
 #endif
+#ifndef WM_CUW_WALLPAPER_NOW
+#define WM_CUW_WALLPAPER_NOW (WM_APP + 0x43)
+#endif
 
 bool HostBridge::notifyConfigChanged() {
 #ifdef _WIN32
@@ -36,6 +39,16 @@ bool HostBridge::requestClearHistory(const ClearOptions& opt) {
     return PostMessageW(h, WM_CUW_CLEAR_HISTORY, flags, 0) != 0;
 #else
     (void)opt;
+    return false;
+#endif
+}
+
+bool HostBridge::requestWallpaperNow() {
+#ifdef _WIN32
+    HWND h = FindWindowW(L"CursorUsageWidget", nullptr);
+    if (!h) return false;
+    return PostMessageW(h, WM_CUW_WALLPAPER_NOW, 0, 0) != 0;
+#else
     return false;
 #endif
 }

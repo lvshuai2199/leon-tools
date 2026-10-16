@@ -5,13 +5,13 @@
 #include <QFrame>
 #include <QMessageBox>
 #include <QScrollArea>
-#include <QRadioButton>
 #include <QApplication>
+#include <QShortcut>
 
 namespace {
 constexpr int kNavW = 120;
-constexpr int kWinW = 520;
-constexpr int kWinH = 560;
+constexpr int kWinW = 700;
+constexpr int kWinH = 520;
 constexpr int kRightPad = 16;
 constexpr int kCardGap = 12;
 constexpr int kCardPad = 12;
@@ -25,19 +25,30 @@ constexpr int kBtnH = 28;
 SettingsWindow::SettingsWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("设置"));
     setObjectName(QStringLiteral("CursorUsageSettingsQt"));
-    setWindowFlags(Qt::Tool | Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+    // System title bar + close; no FramelessWindowHint, no WindowStaysOnTopHint.
+    setWindowFlags(Qt::Window);
     setAttribute(Qt::WA_DeleteOnClose, false);
     resize(kWinW, kWinH);
-    setMinimumSize(kWinW, 420);
+    setMinimumSize(700, 480);
     buildUi();
     applyStyle();
     loadFromConfig();
+    // Esc closes (Alt+F4 is system default for Qt::Window)
+    auto* esc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    connect(esc, &QShortcut::activated, this, &QWidget::close);
 }
 
 void SettingsWindow::closeEvent(QCloseEvent* e) {
-    // Hide only — do not quit the tray (settings is a separate process; just exit this process).
     e->accept();
     QApplication::quit();
+}
+
+void SettingsWindow::keyPressEvent(QKeyEvent* e) {
+    if (e->key() == Qt::Key_Escape) {
+        close();
+        return;
+    }
+    QMainWindow::keyPressEvent(e);
 }
 
 QLabel* SettingsWindow::sectionTitle(const QString& text) {
@@ -82,28 +93,13 @@ void SettingsWindow::buildUi() {
     rootLay->addWidget(stack_, 1);
 }
 
-static QWidget* wrapScroll(QWidget* content) {
-    auto* scroll = new QScrollArea;
-    scroll->setWidgetResizable(true);
-    scroll->setFrameShape(QFrame::NoFrame);
-    scroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    auto* holder = new QWidget;
-    auto* lay = new QVBoxLayout(holder);
-    lay->setContentsMargins(kRightPad, 16, kRightPad, 16);
-    lay->setSpacing(kCardGap);
-    lay->addWidget(content);
-    // content may already be a column of cards — rebuild: caller passes column widget
-    scroll->setWidget(holder);
-    return scroll;
-}
-
 QWidget* SettingsWindow::buildGeneralPage() {
     auto* col = new QWidget;
     auto* lay = new QVBoxLayout(col);
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(kCardGap);
 
-    // Dock card
+    // Dock card — chip order: 上｜左｜右 (ids: 0 left, 1 right, 2 top)
     {
         auto* inner = new QWidget;
         auto* v = new QVBoxLayout(inner);
@@ -114,14 +110,15 @@ QWidget* SettingsWindow::buildGeneralPage() {
         row->setSpacing(kChipGap);
         row->setAlignment(Qt::AlignLeft);
         dockGroup_ = new QButtonGroup(this);
-        const char* labels[] = {"左", "右", "上"};
-        for (int i = 0; i < 3; ++i) {
-            auto* b = new QPushButton(QString::fromUtf8(labels[i]));
+        struct DockChip { const char* label; int id; };
+        const DockChip chips[] = {{"上", 2}, {"左", 0}, {"右", 1}};
+        for (const auto& ch : chips) {
+            auto* b = new QPushButton(QString::fromUtf8(ch.label));
             b->setCheckable(true);
             b->setFixedHeight(kRowH);
             b->setMinimumWidth(56);
             b->setObjectName("chip");
-            dockGroup_->addButton(b, i);
+            dockGroup_->addButton(b, ch.id);
             row->addWidget(b);
             connect(b, &QPushButton::clicked, this, &SettingsWindow::onGeneralChanged);
         }
@@ -130,11 +127,13 @@ QWidget* SettingsWindow::buildGeneralPage() {
         lay->addWidget(makeCard(inner));
     }
 
-    // Auto-hide
+    // Behavior / auto-hide
     {
         auto* inner = new QWidget;
         auto* v = new QVBoxLayout(inner);
         v->setContentsMargins(0, 0, 0, 0);
+        v->setSpacing(kRowGap);
+        v->addWidget(sectionTitle(QStringLiteral("行为")));
         autoHide_ = new QCheckBox(QStringLiteral("贴边自动隐藏"));
         autoHide_->setFixedHeight(kRowH);
         connect(autoHide_, &QCheckBox::toggled, this, &SettingsWindow::onGeneralChanged);
@@ -207,7 +206,7 @@ QWidget* SettingsWindow::buildShortcutsPage() {
     auto* page = new QWidget;
     auto* lay = new QVBoxLayout(page);
     lay->setContentsMargins(kRightPad, 16, kRightPad, 16);
-    auto* cardInner = new QLabel(QStringLiteral("快捷方式管理仍由托盘进程处理（本页占位）。\n请暂时使用旧版设置或后续里程碑迁移。"));
+    auto* cardInner = new QLabel(QStringLiteral("快捷方式稍后接入"));
     cardInner->setWordWrap(true);
     cardInner->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     lay->addWidget(makeCard(cardInner));
@@ -240,6 +239,41 @@ QWidget* SettingsWindow::buildWallpaperPage() {
     wpUrl_->setFixedHeight(kRowH);
     connect(wpUrl_, &QLineEdit::editingFinished, this, &SettingsWindow::onWallpaperChanged);
     ev->addWidget(wpUrl_);
+
+    auto* ivRow = new QHBoxLayout;
+    ivRow->setSpacing(kChipGap);
+    ivRow->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
+    auto* ivLab = new QLabel(QStringLiteral("更换间隔"));
+    ivLab->setFixedHeight(kRowH);
+    wpInterval_ = new QComboBox;
+    wpInterval_->setObjectName("wpInterval");
+    wpInterval_->setFixedHeight(kRowH);
+    wpInterval_->setMinimumWidth(160);
+    wpInterval_->addItems({
+        QStringLiteral("30 分钟"),
+        QStringLiteral("1 小时"),
+        QStringLiteral("3 小时"),
+        QStringLiteral("每天"),
+        QStringLiteral("只在开机时换"),
+    });
+    connect(wpInterval_, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &SettingsWindow::onWallpaperChanged);
+    ivRow->addWidget(ivLab);
+    ivRow->addWidget(wpInterval_);
+    ivRow->addStretch();
+    ev->addLayout(ivRow);
+
+    wpNowBtn_ = new QPushButton(QStringLiteral("立即换"));
+    wpNowBtn_->setObjectName("secondaryBtn");
+    wpNowBtn_->setFixedSize(kBtnW, kBtnH);
+    wpNowBtn_->setCursor(Qt::PointingHandCursor);
+    connect(wpNowBtn_, &QPushButton::clicked, this, &SettingsWindow::onWallpaperNow);
+    auto* btnRow = new QHBoxLayout;
+    btnRow->setAlignment(Qt::AlignLeft);
+    btnRow->addWidget(wpNowBtn_);
+    btnRow->addStretch();
+    ev->addLayout(btnRow);
+
     v->addWidget(wpExtra_);
     lay->addWidget(makeCard(inner));
     lay->addStretch();
@@ -268,9 +302,9 @@ QWidget* SettingsWindow::buildClearPage() {
     v->addWidget(sectionTitle(QStringLiteral("清除数据")));
 
     auto* notice = new QLabel(
-        QStringLiteral("当前清除仅针对本地 Composer 对话 / 已归档 / 可选本地缓存。\n"
-                       "不会删除账号下的云端 Agents 与云端项目记录（左侧带云图标那栏）。\n"
-                       "云端真正删除：暂不支持。"));
+        QStringLiteral("仅本地；云端 Agents 暂不支持。\n"
+                       "当前清除仅针对本地 Composer 对话 / 已归档 / 可选本地缓存。\n"
+                       "不会删除账号下的云端 Agents 与云端项目记录。"));
     notice->setObjectName("notice");
     notice->setWordWrap(true);
     notice->setAlignment(Qt::AlignLeft | Qt::AlignTop);
@@ -317,9 +351,10 @@ QWidget* SettingsWindow::buildClearPage() {
 void SettingsWindow::applyStyle() {
     setStyleSheet(QStringLiteral(R"(
         QMainWindow, QWidget { background: #F5F6F8; color: #1F2329; font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; font-size: 13px; }
-        #nav { background: #EBEDF0; border: none; outline: none; padding: 10px 0; }
-        #nav::item { height: 36px; padding-left: 12px; margin: 2px 10px; border-radius: 8px; }
-        #nav::item:selected { background: #FFFFFF; }
+        #nav { background: #EBEDF0; border: none; outline: none; padding: 10px 0; color: #1F2329; }
+        #nav::item { height: 36px; padding-left: 12px; margin: 2px 10px; border-radius: 8px; color: #1F2329; }
+        #nav::item:selected { background: #E8F3FF; color: #1F2329; }
+        #nav::item:selected:!active { background: #E8F3FF; color: #1F2329; }
         #card { background: #FFFFFF; border: 1px solid #E5E6EB; border-radius: 10px; }
         #sectionTitle { color: #8A8F98; font-size: 13px; font-weight: 500; }
         #notice { color: #4E5969; background: #F2F3F5; border-radius: 8px; padding: 10px; }
@@ -329,7 +364,12 @@ void SettingsWindow::applyStyle() {
         QPushButton#dangerBtn { background: #F53F3F; color: white; border: none; border-radius: 6px; font-weight: 600; }
         QPushButton#dangerBtn:hover { background: #E33939; }
         QPushButton#dangerBtn:disabled { background: #E5E6EB; color: #A9AEB8; }
+        QPushButton#secondaryBtn { background: #F8F8FA; color: #202022; border: 1px solid #D8DCE1; border-radius: 6px; }
+        QPushButton#secondaryBtn:hover { background: #F2F3F5; }
+        QPushButton#secondaryBtn:disabled { background: #F3F4F6; color: #A8ADB5; }
         QLineEdit { border: 1px solid #E5E6EB; border-radius: 6px; padding: 0 8px; background: #FFF; }
+        QComboBox { border: 1px solid #E5E6EB; border-radius: 6px; padding: 0 8px; background: #FFF; }
+        QComboBox::drop-down { border: none; width: 24px; }
         QCheckBox { spacing: 8px; }
     )"));
 }
@@ -345,6 +385,7 @@ void SettingsWindow::loadFromConfig() {
     if (auto* b = ringGroup_->button(c.ringMode)) b->setChecked(true);
     wpEnabled_->setChecked(c.wpEnabled);
     wpUrl_->setText(c.wpUrl);
+    wpInterval_->setCurrentIndex(qBound(0, c.wpInterval, 4));
     wpExtra_->setVisible(c.wpEnabled);
     clrLocal_->setChecked(true);
     clrArchived_->setChecked(true);
@@ -363,6 +404,8 @@ void SettingsWindow::persistAndNotify() {
     c.ringMode = ringGroup_->checkedId() >= 0 ? ringGroup_->checkedId() : c.ringMode;
     c.wpEnabled = wpEnabled_->isChecked();
     c.wpUrl = wpUrl_->text().trimmed();
+    c.wpInterval = wpInterval_->currentIndex();
+    if (c.wpInterval < 0 || c.wpInterval > 4) c.wpInterval = 3;
     ConfigStore::save(c);
     HostBridge::notifyConfigChanged();
 }
@@ -380,6 +423,14 @@ void SettingsWindow::onWallpaperChanged() {
     if (loading_) return;
     wpExtra_->setVisible(wpEnabled_->isChecked());
     persistAndNotify();
+}
+
+void SettingsWindow::onWallpaperNow() {
+    persistAndNotify();
+    if (!HostBridge::requestWallpaperNow()) {
+        QMessageBox::warning(this, QStringLiteral("立即换壁纸"),
+                             QStringLiteral("未找到运行中的托盘进程（CursorUsageWidget）。请先启动用量小窗。"));
+    }
 }
 
 void SettingsWindow::onClearClicked() {
