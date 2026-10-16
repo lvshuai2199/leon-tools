@@ -31,7 +31,7 @@ add_executable(CursorUsageSettings WIN32 ${CUW_SOURCES})
 target_link_libraries(CursorUsageSettings PRIVATE Qt6::Widgets)
 
 if(WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Windows")
-  target_link_libraries(CursorUsageSettings PRIVATE user32 shell32 ole32 uuid advapi32 propsys gdi32 oleaut32 comctl32)
+  target_link_libraries(CursorUsageSettings PRIVATE user32 shell32 ole32 uuid advapi32)
 endif()
 
 install(TARGETS CursorUsageSettings RUNTIME DESTINATION bin)
