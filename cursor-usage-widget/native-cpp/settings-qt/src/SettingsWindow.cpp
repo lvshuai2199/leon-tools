@@ -482,9 +482,30 @@ void SettingsWindow::applyStyle() {
         QPushButton#ghostBtn:disabled { background: #F9FAFB; color: #9CA3AF; border-color: #E6E8EF; }
         QLineEdit { border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 8px; background: #FFF; color: #111827; }
         QLineEdit:focus { border: 1px solid #3B82F6; }
-        QComboBox { border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 8px; background: #FFF; color: #111827; }
+        QComboBox {
+            border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 8px;
+            background: #FFFFFF; color: #111827;
+            selection-background-color: #EFF6FF; selection-color: #111827;
+        }
         QComboBox:focus { border: 1px solid #3B82F6; }
-        QComboBox::drop-down { border: none; width: 24px; }
+        QComboBox:on { background: #FFFFFF; color: #111827; }
+        QComboBox::drop-down { border: none; width: 24px; background: transparent; }
+        QComboBox::down-arrow { width: 10px; height: 10px; }
+        QComboBox QAbstractItemView {
+            background: #FFFFFF; color: #111827;
+            border: 1px solid #E6E8EF; outline: none;
+            selection-background-color: #EFF6FF; selection-color: #111827;
+        }
+        QComboBox QAbstractItemView::item {
+            min-height: 28px; padding: 4px 8px;
+            background: #FFFFFF; color: #111827;
+        }
+        QComboBox QAbstractItemView::item:hover {
+            background: #F3F4F6; color: #111827;
+        }
+        QComboBox QAbstractItemView::item:selected {
+            background: #EFF6FF; color: #111827;
+        }
         QCheckBox { spacing: 8px; color: #111827; }
         QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #E6E8EF; background: #FFFFFF; }
         QCheckBox::indicator:checked { background: #3B82F6; border-color: #3B82F6; }
