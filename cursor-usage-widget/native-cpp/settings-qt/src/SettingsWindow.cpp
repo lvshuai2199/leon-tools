@@ -299,15 +299,17 @@ QWidget* SettingsWindow::buildShortcutsPage() {
     scRightList_->setViewMode(QListView::IconMode);
     scRightList_->setFlow(QListView::LeftToRight);
     scRightList_->setWrapping(true);
-    scRightList_->setIconSize(QSize(40, 40));
-    scRightList_->setGridSize(QSize(84, 82));
+    // Compact tiles: 3x3 of max-9 fits without scroll at min window size.
+    scRightList_->setIconSize(QSize(28, 28));
+    scRightList_->setGridSize(QSize(58, 60));
     scRightList_->setResizeMode(QListView::Adjust);
     scRightList_->setMovement(QListView::Static);
     scRightList_->setUniformItemSizes(true);
     scRightList_->setDragDropMode(QAbstractItemView::NoDragDrop);
-    scRightList_->setSpacing(6);
+    scRightList_->setSpacing(2);
     scRightList_->setWordWrap(true);
     scRightList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scRightList_->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     scRightList_->setSelectionMode(QAbstractItemView::NoSelection);
     scRightList_->setVisible(false);
     connect(scRightList_, &QListWidget::itemDoubleClicked, this, &SettingsWindow::onShortcutOpen);
@@ -461,11 +463,11 @@ void SettingsWindow::applyStyle() {
         #scList { background: #FAFBFC; border: 1px solid #E6E8EF; border-radius: 8px; outline: none; padding: 4px; }
         #scList::item { height: 34px; padding: 2px 6px; border-radius: 6px; color: #111827; }
         #scList::item:hover { background: #F3F4F6; }
-        #scPreview { background: transparent; border: none; outline: none; padding: 4px 2px; }
+        #scPreview { background: transparent; border: none; outline: none; padding: 2px 0; }
         #scPreview::item {
-            color: #374151; font-size: 11px;
+            color: #374151; font-size: 10px;
             background: transparent; border: 1px solid transparent;
-            border-radius: 10px; padding: 6px 4px 4px 4px; margin: 2px;
+            border-radius: 8px; padding: 2px 1px 1px 1px; margin: 0px;
         }
         #scPreview::item:hover { background: #F3F4F6; border-color: #E6E8EF; }
         #scPane { background: transparent; }
@@ -605,8 +607,8 @@ void SettingsWindow::rebuildRightPreview() {
         }
         const QString iconPath = !a.target.isEmpty() ? a.target : a.launchPath;
         QString shortName = a.name;
-        if (shortName.size() > 10)
-            shortName = shortName.left(9) + QStringLiteral("…");
+        if (shortName.size() > 8)
+            shortName = shortName.left(7) + QStringLiteral("…");
         auto* item = new QListWidgetItem(icons.icon(QFileInfo(iconPath)), shortName);
         item->setData(kRoleLaunch, a.launchPath);
         item->setToolTip(a.name + QChar(QChar::LineFeed) + a.launchPath);
