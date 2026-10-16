@@ -24,6 +24,7 @@ protected:
     void closeEvent(QCloseEvent* e) override;
     void keyPressEvent(QKeyEvent* e) override;
     void changeEvent(QEvent* e) override;
+    bool eventFilter(QObject* obj, QEvent* e) override;
 
 private slots:
     void onNavChanged(int row);
@@ -51,6 +52,7 @@ private:
     void reloadInstalledApps();
     void rebuildLeftList();
     void rebuildRightPreview();
+    void syncSelectedFromRightPreview();
     void syncChecksFromSelected();
     QWidget* wrapScroll(QWidget* col);
 

@@ -119,7 +119,9 @@ QStringList ConfigStore::loadShortcuts() {
     while (!in.atEnd()) {
         QString line = in.readLine().trimmed();
         if (line.isEmpty()) continue;
-        if (!QFileInfo::exists(line)) continue;
+        // shell:AppsFolder\AUMID is not a filesystem path but is launchable.
+        const bool shellPath = line.startsWith(QStringLiteral("shell:"), Qt::CaseInsensitive);
+        if (!shellPath && !QFileInfo::exists(line)) continue;
         // Dedup case-insensitive (Windows)
         bool dup = false;
         for (const QString& e : out) {

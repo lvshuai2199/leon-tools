@@ -8,12 +8,20 @@
 #include <QApplication>
 #include <QShortcut>
 #include <QDir>
-#include <QFileIconProvider>
 #include <QFileInfo>
 #include <QDesktopServices>
 #include <QUrl>
 #include <QSet>
 #include <QHash>
+#include <QTimer>
+#include <string>
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#include <shellapi.h>
+#endif
 
 namespace {
 constexpr int kNavW = 120;
@@ -60,6 +68,14 @@ void SettingsWindow::keyPressEvent(QKeyEvent* e) {
         return;
     }
     QMainWindow::keyPressEvent(e);
+}
+
+bool SettingsWindow::eventFilter(QObject* obj, QEvent* e) {
+    if (scRightList_ && obj == scRightList_->viewport() && e->type() == QEvent::Drop) {
+        // Let QListWidget finish InternalMove, then sync order.
+        QTimer::singleShot(0, this, [this]() { syncSelectedFromRightPreview(); });
+    }
+    return QMainWindow::eventFilter(obj, e);
 }
 
 void SettingsWindow::changeEvent(QEvent* e) {
@@ -239,7 +255,7 @@ QWidget* SettingsWindow::buildShortcutsPage() {
     v->setSpacing(kRowGap);
     v->addWidget(sectionTitle(QStringLiteral("快捷方式")));
 
-    scHint_ = new QLabel(QStringLiteral("勾选本机已装软件，右侧预览排版；最多 %1 个。")
+    scHint_ = new QLabel(QStringLiteral("勾选本机已装软件，右侧预览可拖拽排序；最多 %1 个。")
                              .arg(ConfigStore::kMaxShortcuts));
     scHint_->setObjectName("scEmpty");
     scHint_->setWordWrap(true);
@@ -299,12 +315,18 @@ QWidget* SettingsWindow::buildShortcutsPage() {
     scRightList_->setViewMode(QListView::IconMode);
     scRightList_->setIconSize(QSize(40, 40));
     scRightList_->setResizeMode(QListView::Adjust);
-    scRightList_->setMovement(QListView::Static);
+    scRightList_->setMovement(QListView::Snap);
+    scRightList_->setDragEnabled(true);
+    scRightList_->setAcceptDrops(true);
+    scRightList_->setDropIndicatorShown(true);
+    scRightList_->setDefaultDropAction(Qt::MoveAction);
+    scRightList_->setDragDropMode(QAbstractItemView::InternalMove);
     scRightList_->setSpacing(10);
     scRightList_->setWordWrap(true);
     scRightList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scRightList_->setSelectionMode(QAbstractItemView::NoSelection);
+    scRightList_->setSelectionMode(QAbstractItemView::SingleSelection);
     scRightList_->setVisible(false);
+    scRightList_->viewport()->installEventFilter(this);
     connect(scRightList_, &QListWidget::itemDoubleClicked, this, &SettingsWindow::onShortcutOpen);
     rightLay->addWidget(scRightList_, 1);
 
@@ -457,6 +479,7 @@ void SettingsWindow::applyStyle() {
         #scList::item { height: 34px; padding: 2px 6px; border-radius: 6px; color: #111827; }
         #scList::item:hover { background: #F3F4F6; }
         #scPreview::item { color: #111827; padding: 6px; border-radius: 8px; }
+        #scPreview::item:selected { background: #EFF6FF; }
         #scPane { background: transparent; }
         QPushButton#chip { background: #FFFFFF; border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 12px; text-align: left; color: #111827; }
         QPushButton#chip:checked { background: #EFF6FF; border-color: #3B82F6; color: #1D4ED8; }
@@ -505,7 +528,6 @@ void SettingsWindow::reloadInstalledApps() {
     scApps_ = InstalledApps::enumerate();
 
     // Inject saved shortcuts missing from enum so they stay visible/checked.
-    QFileIconProvider icons;
     QSet<QString> known;
     for (const auto& a : scApps_)
         known.insert(a.launchPath.toLower());
@@ -513,10 +535,19 @@ void SettingsWindow::reloadInstalledApps() {
         if (p.isEmpty() || known.contains(p.toLower())) continue;
         InstalledApp a;
         a.launchPath = p;
-        a.target = p.endsWith(QStringLiteral(".lnk"), Qt::CaseInsensitive)
-                       ? InstalledApps::resolveLnk(p) : p;
-        a.name = QFileInfo(p).completeBaseName();
-        if (a.name.isEmpty()) a.name = QFileInfo(p).fileName();
+        if (InstalledApps::isShellAppsPath(p)) {
+            a.target.clear();
+            const int slash = p.lastIndexOf(QLatin1Char('\\'));
+            a.name = slash >= 0 ? p.mid(slash + 1) : p;
+            // Prefer friendly AUMID leaf before '!'.
+            const int bang = a.name.indexOf(QLatin1Char('!'));
+            if (bang > 0) a.name = a.name.left(bang);
+        } else {
+            a.target = p.endsWith(QStringLiteral(".lnk"), Qt::CaseInsensitive)
+                           ? InstalledApps::resolveLnk(p) : p;
+            a.name = QFileInfo(p).completeBaseName();
+            if (a.name.isEmpty()) a.name = QFileInfo(p).fileName();
+        }
         a.isSystem = InstalledApps::isSystemApp(a.name, a.launchPath, a.target);
         scApps_.prepend(a);
         known.insert(p.toLower());
@@ -530,15 +561,13 @@ void SettingsWindow::rebuildLeftList() {
     if (!scLeftList_) return;
     scRebuilding_ = true;
     scLeftList_->clear();
-    QFileIconProvider icons;
     const QString filter = scSearch_ ? scSearch_->text().trimmed() : QString();
     const bool showSys = scShowSystem_ && scShowSystem_->isChecked();
 
     for (const auto& a : scApps_) {
         if (!showSys && a.isSystem) continue;
         if (!filter.isEmpty() && !a.name.contains(filter, Qt::CaseInsensitive)) continue;
-        const QString iconPath = !a.target.isEmpty() ? a.target : a.launchPath;
-        auto* item = new QListWidgetItem(icons.icon(QFileInfo(iconPath)), a.name);
+        auto* item = new QListWidgetItem(InstalledApps::iconFor(a.launchPath, a.target), a.name);
         item->setData(kRoleLaunch, a.launchPath);
         item->setData(kRoleTarget, a.target);
         item->setData(kRoleIsSystem, a.isSystem);
@@ -557,7 +586,6 @@ void SettingsWindow::rebuildLeftList() {
 void SettingsWindow::rebuildRightPreview() {
     if (!scRightList_ || !scRightEmpty_) return;
     scRightList_->clear();
-    QFileIconProvider icons;
     QHash<QString, InstalledApp> byLaunch;
     for (const auto& a : scApps_)
         byLaunch.insert(a.launchPath.toLower(), a);
@@ -566,13 +594,18 @@ void SettingsWindow::rebuildRightPreview() {
         InstalledApp a = byLaunch.value(p.toLower());
         if (a.launchPath.isEmpty()) {
             a.launchPath = p;
-            a.name = QFileInfo(p).completeBaseName();
-            if (a.name.isEmpty()) a.name = QFileInfo(p).fileName();
-            a.target = p.endsWith(QStringLiteral(".lnk"), Qt::CaseInsensitive)
-                           ? InstalledApps::resolveLnk(p) : p;
+            if (InstalledApps::isShellAppsPath(p)) {
+                a.target.clear();
+                const int slash = p.lastIndexOf(QLatin1Char('\\'));
+                a.name = slash >= 0 ? p.mid(slash + 1) : p;
+            } else {
+                a.name = QFileInfo(p).completeBaseName();
+                if (a.name.isEmpty()) a.name = QFileInfo(p).fileName();
+                a.target = p.endsWith(QStringLiteral(".lnk"), Qt::CaseInsensitive)
+                               ? InstalledApps::resolveLnk(p) : p;
+            }
         }
-        const QString iconPath = !a.target.isEmpty() ? a.target : a.launchPath;
-        auto* item = new QListWidgetItem(icons.icon(QFileInfo(iconPath)), a.name);
+        auto* item = new QListWidgetItem(InstalledApps::iconFor(a.launchPath, a.target), a.name);
         item->setData(kRoleLaunch, a.launchPath);
         item->setToolTip(a.launchPath);
         item->setTextAlignment(Qt::AlignHCenter | Qt::AlignTop);
@@ -679,6 +712,19 @@ void SettingsWindow::onShortcutItemChanged(QListWidgetItem* item) {
     rebuildRightPreview();
 }
 
+void SettingsWindow::syncSelectedFromRightPreview() {
+    if (!scRightList_) return;
+    QStringList next;
+    for (int i = 0; i < scRightList_->count(); ++i) {
+        const QString launch = scRightList_->item(i)->data(kRoleLaunch).toString();
+        if (!launch.isEmpty())
+            next.append(launch);
+    }
+    if (next == scSelectedPaths_) return;
+    scSelectedPaths_ = next;
+    syncChecksFromSelected();
+}
+
 void SettingsWindow::onShortcutSave() {
     ConfigStore::saveShortcuts(scSelectedPaths_);
     HostBridge::notifyConfigChanged();  // WM_APP+0x41 only
@@ -691,6 +737,13 @@ void SettingsWindow::onShortcutOpen(QListWidgetItem* item) {
     if (!item) return;
     const QString path = item->data(kRoleLaunch).toString();
     if (path.isEmpty()) return;
+#ifdef _WIN32
+    if (InstalledApps::isShellAppsPath(path)) {
+        const std::wstring w = path.toStdWString();
+        ShellExecuteW(nullptr, L"open", w.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+        return;
+    }
+#endif
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
 }
 

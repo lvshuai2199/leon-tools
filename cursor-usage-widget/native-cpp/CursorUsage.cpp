@@ -1882,6 +1882,44 @@ static bool EndsWithI(const std::wstring& s, const wchar_t* ext) {
     return _wcsicmp(s.c_str() + (s.size() - n), ext) == 0;
 }
 
+static bool IsShellAppsPath(const std::wstring& p) {
+    return p.size() >= 6 && _wcsnicmp(p.c_str(), L"shell:", 6) == 0;
+}
+
+static bool ShortcutPathReachable(const std::wstring& p) {
+    if (p.empty()) return false;
+    if (IsShellAppsPath(p)) return true;
+    return GetFileAttributesW(p.c_str()) != INVALID_FILE_ATTRIBUTES;
+}
+
+static HICON IconFromShellParsingName(const std::wstring& parsing) {
+    if (parsing.empty()) return nullptr;
+    IShellItem* item = nullptr;
+    if (FAILED(SHCreateItemFromParsingName(parsing.c_str(), nullptr, IID_PPV_ARGS(&item))) || !item)
+        return nullptr;
+    IShellItemImageFactory* factory = nullptr;
+    HICON ico = nullptr;
+    if (SUCCEEDED(item->QueryInterface(IID_PPV_ARGS(&factory))) && factory) {
+        SIZE sz{48, 48};
+        HBITMAP hbm = nullptr;
+        if (SUCCEEDED(factory->GetImage(sz, SIIGBF_RESIZETOFIT | SIIGBF_ICONBACKGROUND, &hbm)) && hbm) {
+            ICONINFO ii{};
+            ii.fIcon = TRUE;
+            ii.hbmColor = hbm;
+            BITMAP bm{};
+            GetObject(hbm, sizeof(bm), &bm);
+            ii.hbmMask = CreateBitmap(bm.bmWidth, bm.bmHeight, 1, 1, nullptr);
+            ico = CreateIconIndirect(&ii);
+            if (ii.hbmMask) DeleteObject(ii.hbmMask);
+            DeleteObject(hbm);
+        }
+        factory->Release();
+    }
+    item->Release();
+    return ico;
+}
+
+
 static std::wstring ShortcutsPath() {
     wchar_t ad[MAX_PATH];
     GetEnvironmentVariableW(L"APPDATA", ad, MAX_PATH);
@@ -1912,6 +1950,10 @@ static HICON IconFromSysList(const std::wstring& path, int shil) {
 
 static HICON LoadPathIcon(const std::wstring& path) {
     if (path.empty()) return nullptr;
+    if (IsShellAppsPath(path)) {
+        HICON shellIco = IconFromShellParsingName(path);
+        if (shellIco) return shellIco;
+    }
     HICON ico = nullptr;
     if (EndsWithI(path, L".exe")) {
         UINT n = PrivateExtractIconsW(path.c_str(), 0, 256, 256, &ico, nullptr, 1, LR_DEFAULTCOLOR);
@@ -2025,6 +2067,15 @@ static bool ResolveLnk(const std::wstring& lnk, std::wstring& target) {
 }
 
 static void FillShortcutMeta(ShortcutItem& it) {
+    if (IsShellAppsPath(it.path)) {
+        size_t slash = it.path.find_last_of(L"\\/");
+        std::wstring leaf = (slash == std::wstring::npos) ? it.path : it.path.substr(slash + 1);
+        size_t bang = leaf.find(L'!');
+        if (bang != std::wstring::npos && bang > 0) leaf.resize(bang);
+        it.name = leaf.empty() ? FileTitleOf(it.path) : leaf;
+        it.target.clear();
+        return;
+    }
     it.name = FileTitleOf(it.path);
     if (EndsWithI(it.path, L".lnk"))
         ResolveLnk(it.path, it.target);
@@ -2194,7 +2245,7 @@ static void LoadShortcuts() {
         ShortcutItem it;
         it.path = Utf8ToWide(line);
         if (it.path.empty()) continue;
-        if (GetFileAttributesW(it.path.c_str()) == INVALID_FILE_ATTRIBUTES) continue;
+        if (!ShortcutPathReachable(it.path)) continue;
         FillShortcutMeta(it);
         AttachIcon(it);
         g_shortcuts.push_back(it);
