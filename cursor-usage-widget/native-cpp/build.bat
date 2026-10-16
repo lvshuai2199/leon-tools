@@ -7,3 +7,7 @@ if errorlevel 1 exit /b 1
 cl /nologo /O2 /EHsc /utf-8 /DUNICODE /D_UNICODE /W3 CursorUsage.cpp usage-mark.res /Fe:CursorUsage.exe /link /SUBSYSTEM:WINDOWS user32.lib gdi32.lib gdiplus.lib winhttp.lib shell32.lib ole32.lib oleaut32.lib dwmapi.lib uuid.lib advapi32.lib comctl32.lib shlwapi.lib
 if errorlevel 1 exit /b 1
 echo Built %~dp0CursorUsage.exe
+
+echo Note: Qt settings is separate - see settings-qt\ and qt-runtime\
+if exist "%~dp0qt-runtime\CursorUsageSettings.exe" echo Qt settings runtime: %~dp0qt-runtime\
+

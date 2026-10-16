@@ -5,3 +5,7 @@ setup/*.obj
 setup/*.res
 setup/*.exe
 dist/
+
+# Qt settings portable runtime (synced from cross-build; large DLLs)
+native-cpp/qt-runtime/
+

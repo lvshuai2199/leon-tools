@@ -75,6 +75,22 @@ foreach ($name in @("uninstall.bat", "uninstall.ps1")) {
   }
 }
 
+# Qt settings window + portable runtime (optional until present)
+$qtRuntimeCandidates = @(
+  (Join-Path $here "native-cpp\qt-runtime"),
+  (Join-Path $here "qt-runtime")
+)
+foreach ($qsrc in $qtRuntimeCandidates) {
+  if (Test-Path -LiteralPath (Join-Path $qsrc "CursorUsageSettings.exe")) {
+    $qdest = Join-Path $dest "qt-runtime"
+    New-Item -ItemType Directory -Force -Path $qdest | Out-Null
+    Copy-Item -LiteralPath (Join-Path $qsrc "*") -Destination $qdest -Recurse -Force
+    Write-Host "已同步 Qt 设置窗运行库：$qdest"
+    break
+  }
+}
+
+
 New-Item -ItemType Directory -Force -Path $cfgDir | Out-Null
 Set-Content -LiteralPath $pathFile -Value $dest -Encoding UTF8
 

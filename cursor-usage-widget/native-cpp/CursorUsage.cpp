@@ -259,6 +259,282 @@ static std::map<std::string, std::string> ReadAuth() {
     return out;
 }
 
+
+// ---- Clear Cursor conversation history (paths verified on this machine) ----
+typedef int (*sqlite3_exec_t)(sqlite3*, const char*, int (*)(void*, int, char**, char**), void*, char**);
+typedef int (*sqlite3_column_int_t)(sqlite3_stmt*, int);
+typedef void (*sqlite3_free_t)(void*);
+
+static bool CursorExeRunning() {
+    HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (snap == INVALID_HANDLE_VALUE) return false;
+    PROCESSENTRY32W pe{ sizeof(pe) };
+    bool found = false;
+    if (Process32FirstW(snap, &pe)) {
+        do {
+            if (_wcsicmp(pe.szExeFile, L"Cursor.exe") == 0) { found = true; break; }
+        } while (Process32NextW(snap, &pe));
+    }
+    CloseHandle(snap);
+    return found;
+}
+
+static std::wstring EnvPathW(const wchar_t* name) {
+    wchar_t buf[MAX_PATH];
+    DWORD n = GetEnvironmentVariableW(name, buf, MAX_PATH);
+    if (!n || n >= MAX_PATH) return L"";
+    return buf;
+}
+
+static bool DeletePathRecursive(const std::wstring& path) {
+    if (path.empty()) return true;
+    if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) return true;
+    std::vector<wchar_t> from(path.begin(), path.end());
+    from.push_back(L'\0');
+    from.push_back(L'\0');
+    SHFILEOPSTRUCTW op{};
+    op.wFunc = FO_DELETE;
+    op.pFrom = from.data();
+    op.fFlags = FOF_NOCONFIRMATION | FOF_NOERRORUI | FOF_SILENT;
+    int rc = SHFileOperationW(&op);
+    return rc == 0 || GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES;
+}
+
+static void DeleteGlobPrefix(const std::wstring& dir, const std::wstring& prefix) {
+    std::wstring pattern = dir + L"\\" + prefix + L"*";
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (wcscmp(fd.cFileName, L".") == 0 || wcscmp(fd.cFileName, L"..") == 0) continue;
+        DeleteFileW((dir + L"\\" + fd.cFileName).c_str());
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+struct ClearHistResult {
+    bool ok = false;
+    int localHeaders = 0, archHeaders = 0, kvOps = 0, storesDeleted = 0, sidebarOps = 0;
+    std::wstring detail;
+};
+
+static bool SqlExec(sqlite3* db, sqlite3_exec_t execFn, sqlite3_free_t freeFn, const char* sql, std::wstring& err) {
+    char* errmsg = nullptr;
+    int rc = execFn(db, sql, nullptr, nullptr, &errmsg);
+    if (rc != 0) {
+        if (errmsg) { err = Utf8ToWide(errmsg); freeFn(errmsg); }
+        else err = L"sqlite error";
+        return false;
+    }
+    return true;
+}
+
+static ClearHistResult ClearCursorHistory(bool clearLocal, bool clearArchived, bool clearCache, bool clearSidebar) {
+    ClearHistResult r;
+    if (!clearLocal && !clearArchived && !clearCache && !clearSidebar) {
+        r.detail = L"\u672a\u52fe\u9009\u4efb\u4f55\u6e05\u9664\u9879";
+        return r;
+    }
+    HMODULE mod = LoadLibraryW(L"winsqlite3.dll");
+    if (!mod) { r.detail = L"\u65e0\u6cd5\u52a0\u8f7d winsqlite3.dll"; return r; }
+    auto open = (sqlite3_open_v2_t)GetProcAddress(mod, "sqlite3_open_v2");
+    auto close = (sqlite3_close_t)GetProcAddress(mod, "sqlite3_close");
+    auto prep = (sqlite3_prepare_v2_t)GetProcAddress(mod, "sqlite3_prepare_v2");
+    auto step = (sqlite3_step_t)GetProcAddress(mod, "sqlite3_step");
+    auto textCol = (sqlite3_column_text_t)GetProcAddress(mod, "sqlite3_column_text");
+    auto colint = (sqlite3_column_int_t)GetProcAddress(mod, "sqlite3_column_int");
+    auto fin = (sqlite3_finalize_t)GetProcAddress(mod, "sqlite3_finalize");
+    auto execFn = (sqlite3_exec_t)GetProcAddress(mod, "sqlite3_exec");
+    auto freeFn = (sqlite3_free_t)GetProcAddress(mod, "sqlite3_free");
+    if (!open || !close || !prep || !step || !textCol || !fin || !execFn || !freeFn || !colint) {
+        FreeLibrary(mod);
+        r.detail = L"winsqlite3 \u7b26\u53f7\u4e0d\u5b8c\u6574";
+        return r;
+    }
+
+    std::wstring appdata = EnvPathW(L"APPDATA");
+    std::wstring localapp = EnvPathW(L"LOCALAPPDATA");
+    std::wstring userprofile = EnvPathW(L"USERPROFILE");
+    if (appdata.empty()) { FreeLibrary(mod); r.detail = L"APPDATA \u4e0d\u53ef\u7528"; return r; }
+
+    std::wstring statePath = appdata + L"\\Cursor\\User\\globalStorage\\state.vscdb";
+    std::wstring searchPath = appdata + L"\\Cursor\\User\\globalStorage\\conversation-search.db";
+    std::wstring storesRoot = localapp + L"\\Cursor\\AgentStores\\cursor_agent_stores";
+    std::wstring workerDir = appdata + L"\\Cursor\\User\\globalStorage\\anysphere.cursor-agent-worker";
+    std::wstring projectsDir = userprofile + L"\\.cursor\\projects";
+    std::wstring trackingDir = userprofile + L"\\.cursor\\ai-tracking";
+    std::wstring gsDir = appdata + L"\\Cursor\\User\\globalStorage";
+
+    std::set<std::string> ids;
+    std::wstring err;
+    std::map<std::string, int> idArch; // 0 local-active, 1 archived
+
+    auto openDb = [&](const std::wstring& path, sqlite3** pdb) -> bool {
+        *pdb = nullptr;
+        if (GetFileAttributesW(path.c_str()) == INVALID_FILE_ATTRIBUTES) return true;
+        std::string uri = "file:///" + WideToUtf8(path);
+        for (auto& c : uri) if (c == '\\') c = '/';
+        if (open(uri.c_str(), pdb, 0x00000002 | 0x00000040, nullptr) != 0 || !*pdb) {
+            err = L"\u65e0\u6cd5\u6253\u5f00 " + path;
+            return false;
+        }
+        return true;
+    };
+
+    sqlite3* db = nullptr;
+    if (!openDb(statePath, &db)) { FreeLibrary(mod); r.detail = err; return r; }
+    if (db) {
+        SqlExec(db, execFn, freeFn, "PRAGMA busy_timeout=5000;", err);
+        sqlite3_stmt* st = nullptr;
+        if (prep(db, "SELECT composerId, IFNULL(isArchived,0) FROM composerHeaders", -1, &st, nullptr) == 0) {
+            while (step(st) == 100) {
+                const unsigned char* idp = textCol(st, 0);
+                if (!idp) continue;
+                std::string id = (const char*)idp;
+                int arch = colint(st, 1);
+                if ((clearLocal && arch == 0) || (clearArchived && arch != 0)) {
+                    ids.insert(id);
+                    idArch[id] = arch;
+                }
+            }
+            fin(st);
+        }
+        for (const auto& id : ids) {
+            if (idArch[id]) r.archHeaders++; else r.localHeaders++;
+            std::string delH = "DELETE FROM composerHeaders WHERE composerId='" + id + "'";
+            SqlExec(db, execFn, freeFn, delH.c_str(), err);
+
+            auto runFmt = [&](const char* fmt) {
+                char sql[640];
+                _snprintf_s(sql, _TRUNCATE, fmt, id.c_str());
+                if (SqlExec(db, execFn, freeFn, sql, err)) r.kvOps++;
+            };
+            runFmt("DELETE FROM cursorDiskKV WHERE key = 'composerData:%s'");
+            runFmt("DELETE FROM cursorDiskKV WHERE key = 'composerRootWriterDiagnostic:%s'");
+            runFmt("DELETE FROM cursorDiskKV WHERE key = 'composerTranscriptHeightTail:%s'");
+            runFmt("DELETE FROM cursorDiskKV WHERE key = 'composerDraft:%s'");
+            runFmt("DELETE FROM cursorDiskKV WHERE key LIKE 'bubbleId:%s:%%'");
+            runFmt("DELETE FROM cursorDiskKV WHERE key LIKE 'ofsContent:%s:%%'");
+            runFmt("DELETE FROM cursorDiskKV WHERE key LIKE 'checkpointId:%s%%'");
+            runFmt("DELETE FROM cursorDiskKV WHERE key LIKE 'inlineDiff:%s%%'");
+            runFmt("DELETE FROM ItemTable WHERE key = 'glass.agentConversationPanes.%s'");
+            runFmt("DELETE FROM ItemTable WHERE key = 'glass/cursor.editorPanelVisibility.agent/%s'");
+            runFmt("DELETE FROM ItemTable WHERE key = 'cursor/glass.editorPanelFullscreen/%s'");
+        }
+
+        // Optional: local sidebar cache (Projects pins + Agents local cache). No cloud API.
+        if (clearSidebar) {
+            auto delItem = [&](const char* sql) -> bool {
+                std::wstring e;
+                if (!SqlExec(db, execFn, freeFn, sql, e)) {
+                    if (!e.empty()) err = e;
+                    return false;
+                }
+                r.sidebarOps++;
+                return true;
+            };
+            bool sbOk = true;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key LIKE 'cloudAgentRepository.agents.%'") && sbOk;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key = 'glass.cloudAgentProjects.v1'") && sbOk;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key = 'glass.cloudAgentProjectMembership.v1'") && sbOk;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key = 'cursor/glass.additionalProjects'") && sbOk;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key LIKE 'serverPinnedBcIds.%'") && sbOk;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key = 'recentCloudTargets'") && sbOk;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key LIKE 'glass.agentConversationPanes.bc-%'") && sbOk;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key LIKE 'glass/%/agent/bc-%'") && sbOk;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key LIKE 'glass/cursor.editorPanelVisibility.agent/bc-%'") && sbOk;
+            sbOk = delItem("DELETE FROM ItemTable WHERE key LIKE 'cursor/glass.editorPanelFullscreen/bc-%'") && sbOk;
+            if (!sbOk) {
+                close(db);
+                FreeLibrary(mod);
+                r.ok = false;
+                r.detail = L"\u4fa7\u680f\u7f13\u5b58\u6e05\u7406\u5931\u8d25";
+                if (!err.empty()) r.detail += L"\n" + err;
+                return r;
+            }
+        }
+        close(db);
+    } else if (clearSidebar) {
+        FreeLibrary(mod);
+        r.ok = false;
+        r.detail = L"\u65e0\u6cd5\u6253\u5f00 state.vscdb\uff0c\u4fa7\u680f\u7f13\u5b58\u672a\u6e05\u9664";
+        if (!err.empty()) r.detail += L"\n" + err;
+        return r;
+    }
+
+    // conversation-search: collect ids then remove index files (Cursor rebuilds; avoids FTS orphans)
+    if (clearLocal || clearArchived) {
+    sqlite3* sdb = nullptr;
+    if (openDb(searchPath, &sdb) && sdb) {
+        SqlExec(sdb, execFn, freeFn, "PRAGMA busy_timeout=5000;", err);
+        std::string where;
+        if (clearLocal && clearArchived) where = "1=1";
+        else if (clearLocal) where = "source='local' AND IFNULL(is_archived,0)=0";
+        else where = "IFNULL(is_archived,0)=1";
+        sqlite3_stmt* st = nullptr;
+        std::string sel = "SELECT id FROM conversations WHERE " + where;
+        if (prep(sdb, sel.c_str(), -1, &st, nullptr) == 0) {
+            while (step(st) == 100) {
+                const unsigned char* idp = textCol(st, 0);
+                if (idp) ids.insert((const char*)idp);
+            }
+            fin(st);
+        }
+        close(sdb);
+    }
+    DeleteGlobPrefix(gsDir, L"conversation-search.db");
+
+    if (!storesRoot.empty() && GetFileAttributesW(storesRoot.c_str()) != INVALID_FILE_ATTRIBUTES) {
+        for (const auto& id : ids) {
+            std::wstring p = storesRoot + L"\\" + Utf8ToWide(id);
+            std::wstring ctrl = storesRoot + L"\\.control\\" + Utf8ToWide(id);
+            if (GetFileAttributesW(p.c_str()) != INVALID_FILE_ATTRIBUTES) {
+                if (DeletePathRecursive(p)) r.storesDeleted++;
+            }
+            DeletePathRecursive(ctrl);
+        }
+    }
+    } // clearLocal || clearArchived
+
+    if (clearCache) {
+        DeletePathRecursive(trackingDir);
+        std::wstring retrievalDir = gsDir + L"\\anysphere.cursor-retrieval";
+        DeletePathRecursive(retrievalDir);
+        if (!workerDir.empty()) {
+            DeletePathRecursive(workerDir + L"\\worker-data");
+            DeletePathRecursive(workerDir + L"\\agent-cli");
+        }
+        if (!projectsDir.empty() && GetFileAttributesW(projectsDir.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            WIN32_FIND_DATAW fd;
+            HANDLE h = FindFirstFileW((projectsDir + L"\\*").c_str(), &fd);
+            if (h != INVALID_HANDLE_VALUE) {
+                do {
+                    if (fd.cFileName[0] == L'.') continue;
+                    DeletePathRecursive(projectsDir + L"\\" + fd.cFileName);
+                } while (FindNextFileW(h, &fd));
+                FindClose(h);
+            }
+        }
+    }
+
+    // If only archived cleared, still drop search index matching archived already handled via file delete when where collected.
+    // When only archived: we deleted whole conversation-search.db — remaining local chats reindex on next Cursor start.
+    FreeLibrary(mod);
+    r.ok = true;
+    wchar_t buf[768];
+    _snwprintf_s(buf, _TRUNCATE,
+        L"\u5b8c\u6210\uff1a\u672c\u5730\u4f1a\u8bdd\u5934 %d\uff0c\u5f52\u6863\u4f1a\u8bdd\u5934 %d\uff0cKV/UI \u6e05\u7406 %d \u6b21\uff0cAgentStores %d \u4e2a\uff0c\u4fa7\u680f %d \u6b21\u3002\n"
+        L"conversation-search \u7d22\u5f15\u5df2\u5220\u9664\uff08Cursor \u4e0b\u6b21\u542f\u52a8\u4f1a\u91cd\u5efa\uff09\u3002\n"
+        L"\u672a\u6539\u52a8\u767b\u5f55\u6001\u4e0e settings.json\u3002\n"
+        L"\u672a\u5220\u9664\u4e91\u7aef Agents / \u4e91\u7aef\u9879\u76ee\u8bb0\u5f55\u3002",
+        r.localHeaders, r.archHeaders, r.kvOps, r.storesDeleted, r.sidebarOps);
+    r.detail = buf;
+    if (!err.empty()) r.detail += L"\n(" + err + L")";
+    return r;
+}
+
+static void OnClearCursorHistoryClick(HWND owner); // defined after g_settings
+
 struct Session {
     std::string access, refresh, sub, email, membership;
 };
@@ -1553,6 +1829,9 @@ static const int kMaxShortcuts = 9;
 static const int IDM_MANAGE_APPS = 199;
 static const int IDM_LAUNCH_BASE = 200;
 static void OpenManageShortcuts();
+static constexpr UINT WM_CUW_RELOAD_CONFIG = WM_APP + 0x41;
+static constexpr UINT WM_CUW_CLEAR_HISTORY = WM_APP + 0x42;
+
 static void OpenSettings();
 static void RefreshSettingsShortcuts();
 
@@ -2446,7 +2725,8 @@ static void OpenManageShortcuts() {
 
 // ---- Settings window: two columns, #F8F8FA ----
 static const int IDM_SETTINGS = 18;
-static const int kSettingsW = 560;
+static const int kSettingsW = 700;
+static const int kSettingsNavW = 132;
 static const int kSettingsWinH = 360;
 
 struct SettingsDlg {
@@ -2469,6 +2749,7 @@ struct SettingsDlg {
     RECT shortcutRow[9]{};
     int shortcutRows = 0;
     RECT dockCard{};
+    RECT hideCard{};
     RECT hideRow{};
     RECT hideSwitch{};
     RECT modeCard{};
@@ -2494,6 +2775,25 @@ struct SettingsDlg {
     HFONT wpFont = nullptr;
     bool wpEditFocus = false;
     bool scrollable = false;
+    // Clear Cursor history card
+    bool clrLocal = true;
+    bool clrArchived = true;
+    bool clrCache = false;
+    bool clrSidebar = false;
+    RECT clrCard{};
+    RECT clrNotice{};
+    RECT clrLocalRow{};
+    RECT clrLocalSwitch{};
+    RECT clrArchRow{};
+    RECT clrArchSwitch{};
+    RECT clrCacheRow{};
+    RECT clrCacheSwitch{};
+    RECT clrSidebarRow{};
+    RECT clrSidebarSwitch{};
+    RECT clrSidebarRisk{};
+    RECT clrBtn{};
+    int settingsPage = 0;
+    RECT navItem[4]{};
 } g_settings;
 static const int kSettingsHdrH = 52; // fixed header (title + close), draggable
 
@@ -2510,12 +2810,12 @@ static void RoundRectPath(GraphicsPath& path, float x, float y, float w, float h
 
 static int SettingsTilePx() {
     const int pad = 16;
-    const int colGap = 14;
-    const int cardPad = 10;
+    const int cardPad = 12;
     const int gap = 10;
-    const int cols = 3;
-    const int colW = (kSettingsW - pad * 2 - colGap) / 2;
-    const int inner = colW - cardPad * 2;
+    const int cols = 4;
+    const int contentW = kSettingsW - kSettingsNavW;
+    const int fullW = contentW - pad * 2;
+    const int inner = fullW - cardPad * 2;
     int tile = (inner - gap * (cols - 1)) / cols;
     if (tile < 56) tile = 56;
     if (tile > 84) tile = 84;
@@ -2524,7 +2824,7 @@ static int SettingsTilePx() {
 
 static int SettingsGridRows(int n) {
     if (n <= 0) return 0;
-    if (n >= 3) return 3;
+    if (n >= 4) return 4;
     return n;
 }
 
@@ -3070,119 +3370,135 @@ static int SettingsContentY(int y) { return y >= kSettingsHdrH ? y + g_settings.
 
 static int LayoutSettings() {
     const int pad = 16;
-    const int colGap = 14;
     const int cardGap = 12;
-    const int cardPad = 10;
+    const int cardPad = 12;
     const int secLabelH = 16;
     const int secGap = 6;
-    const int chipH = 26;
-    const int listAddGap = 6;
+    const int chipH = 28;
+    const int rowH = 28;
+    const int rowGap = 8;
+    const int listAddGap = 8;
     const int addH = 28;
-    const int colW = (kSettingsW - pad * 2 - colGap) / 2;
-    const int leftX = pad;
-    const int rightX = pad + colW + colGap;
+    const int btnW = 96;
+    const int chipW = 64;
+    const int modeChipW = 72;
+    const int contentLeft = kSettingsNavW;
+    const int contentW = kSettingsW - contentLeft;
+    const int fullW = contentW - pad * 2;
+    const int leftX = contentLeft + pad;
     const int y0 = pad + 28 + 14;
 
     g_settings.closeBtn = { kSettingsW - pad - 28, pad, kSettingsW - pad, pad + 24 };
+    int navY = kSettingsHdrH + 12;
+    const int navH = 36, navGap = 8;
+    for (int ni = 0; ni < 4; ++ni) {
+        int top = navY + ni * (navH + navGap);
+        g_settings.navItem[ni] = { 10, top, kSettingsNavW - 10, top + navH };
+    }
 
-    int y = y0;
-    auto placeCard = [&](int x, int top, int h) -> RECT {
-        return { x, top, x + colW, top + h };
+    auto placeCard = [&](int top, int h) -> RECT {
+        return { leftX, top, leftX + fullW, top + h };
     };
 
-    // Left: dock
+    // ---- Page 0: 常规 — 4 full-width cards ----
+    int y = y0;
+
+    // 1) 贴边 chips
     int cardTop = y + secLabelH + secGap;
     int contentTop = cardTop + cardPad;
-    int inner = colW - cardPad * 2;
-    int bw = (inner - 8 * 2) / 3;
-    for (int i = 0; i < 3; ++i) {
-        int x0 = leftX + cardPad + i * (bw + 8);
-        g_settings.dockBtn[i] = { x0, contentTop, x0 + bw, contentTop + chipH };
+    const int dockVis[3] = { 2, 0, 1 }; // 上 左 右
+    for (int k = 0; k < 3; ++k) {
+        int i = dockVis[k];
+        int x0 = leftX + cardPad + k * (chipW + 8);
+        g_settings.dockBtn[i] = { x0, contentTop, x0 + chipW, contentTop + chipH };
     }
-    int dockH = cardPad + chipH + 8 + 26 + cardPad;
-    g_settings.dockCard = placeCard(leftX, cardTop, dockH);
-    g_settings.hideRow = { leftX + cardPad, contentTop + chipH + 8, leftX + colW - cardPad, contentTop + chipH + 8 + 26 };
-    g_settings.hideSwitch = { g_settings.hideRow.right - 44, g_settings.hideRow.top + 2, g_settings.hideRow.right, g_settings.hideRow.top + 24 };
+    int dockH = cardPad + chipH + cardPad;
+    g_settings.dockCard = placeCard(cardTop, dockH);
     y = g_settings.dockCard.bottom + cardGap;
 
-    // Left: display mode
+    // 2) 行为 — auto-hide
     cardTop = y + secLabelH + secGap;
     contentTop = cardTop + cardPad;
-    int mw = (inner - 8) / 2;
-    int mx = leftX + cardPad;
-    g_settings.modeBtn[0] = { mx, contentTop, mx + mw, contentTop + chipH };
-    g_settings.modeBtn[1] = { mx + mw + 8, contentTop, mx + mw + 8 + mw, contentTop + chipH };
+    g_settings.hideRow = { leftX + cardPad, contentTop, leftX + fullW - cardPad, contentTop + rowH };
+    g_settings.hideSwitch = { g_settings.hideRow.right - 44, contentTop + (rowH - 22) / 2, g_settings.hideRow.right, contentTop + (rowH - 22) / 2 + 22 };
+    int hideH = cardPad + rowH + cardPad;
+    g_settings.hideCard = placeCard(cardTop, hideH);
+    y = g_settings.hideCard.bottom + cardGap;
+
+    // 3) 用量环显示
+    cardTop = y + secLabelH + secGap;
+    contentTop = cardTop + cardPad;
+    g_settings.modelsRow = { leftX + cardPad, contentTop, leftX + fullW - cardPad, contentTop + rowH };
+    g_settings.modelsSwitch = { g_settings.modelsRow.right - 44, contentTop + (rowH - 22) / 2, g_settings.modelsRow.right, contentTop + (rowH - 22) / 2 + 22 };
+    contentTop += rowH + rowGap;
+    g_settings.apiRow = { leftX + cardPad, contentTop, leftX + fullW - cardPad, contentTop + rowH };
+    g_settings.apiSwitch = { g_settings.apiRow.right - 44, contentTop + (rowH - 22) / 2, g_settings.apiRow.right, contentTop + (rowH - 22) / 2 + 22 };
+    contentTop += rowH + rowGap;
+    g_settings.botRow = { leftX + cardPad, contentTop, leftX + fullW - cardPad, contentTop + rowH };
+    g_settings.botSwitch = { g_settings.botRow.right - 44, contentTop + (rowH - 22) / 2, g_settings.botRow.right, contentTop + (rowH - 22) / 2 + 22 };
+    int visH = cardPad + rowH + rowGap + rowH + rowGap + rowH + cardPad;
+    g_settings.visCard = placeCard(cardTop, visH);
+    y = g_settings.visCard.bottom + cardGap;
+
+    // 4) 环模式
+    cardTop = y + secLabelH + secGap;
+    contentTop = cardTop + cardPad;
+    g_settings.modeBtn[0] = { leftX + cardPad, contentTop, leftX + cardPad + modeChipW, contentTop + chipH };
+    g_settings.modeBtn[1] = { leftX + cardPad + modeChipW + 8, contentTop, leftX + cardPad + modeChipW + 8 + modeChipW, contentTop + chipH };
     int modeH = cardPad + chipH + cardPad;
-    g_settings.modeCard = placeCard(leftX, cardTop, modeH);
-    y = g_settings.modeCard.bottom + cardGap;
+    g_settings.modeCard = placeCard(cardTop, modeH);
+    int page0End = g_settings.modeCard.bottom;
 
-    // Left: visibility
-    cardTop = y + secLabelH + secGap;
-    contentTop = cardTop + cardPad;
-    g_settings.modelsRow = { leftX + cardPad, contentTop, leftX + colW - cardPad, contentTop + 26 };
-    g_settings.modelsSwitch = { g_settings.modelsRow.right - 44, contentTop + 2, g_settings.modelsRow.right, contentTop + 24 };
-    contentTop += 26 + 8;
-    g_settings.botRow = { leftX + cardPad, contentTop, leftX + colW - cardPad, contentTop + 26 };
-    g_settings.botSwitch = { g_settings.botRow.right - 44, contentTop + 2, g_settings.botRow.right, contentTop + 24 };
-    contentTop += 26 + 8;
-    g_settings.apiRow = { leftX + cardPad, contentTop, leftX + colW - cardPad, contentTop + 26 };
-    g_settings.apiSwitch = { g_settings.apiRow.right - 44, contentTop + 2, g_settings.apiRow.right, contentTop + 24 };
-    int visH = cardPad + 26 + 8 + 26 + 8 + 26 + cardPad;
-    g_settings.visCard = placeCard(leftX, cardTop, visH);
-    int leftEnd = g_settings.visCard.bottom;
-
-    // Right: shortcuts, stretched to the left column when the list is short
-    int scTop = y0 + secLabelH + secGap;
-    int listH = SettingsShortcutListH();
-    int natural = cardPad + listH + listAddGap + addH + cardPad;
-    int scH = natural;
-    if (scTop + scH < leftEnd) scH = leftEnd - scTop;
-    g_settings.scCard = placeCard(rightX, scTop, scH);
-    int listTop = scTop + cardPad;
-    int addY = scTop + scH - cardPad - addH;
-    g_settings.addBtn = { rightX + cardPad, addY, rightX + cardPad + 72, addY + addH };
-    g_settings.emptyHit = { rightX + cardPad, listTop, rightX + colW - cardPad, addY - listAddGap };
-    g_settings.shortcutRows = 0;
-    if (!g_shortcuts.empty()) {
-        int n = (int)g_shortcuts.size();
-        if (n > kMaxShortcuts) n = kMaxShortcuts;
-        int rows = SettingsGridRows(n);
-        int tile = SettingsTilePx();
-        const int gap = 10;
-        const int nameH = 16;
-        const int rowGap = 8;
-        for (int i = 0; i < n; ++i) {
-            int col = i / rows;
-            int row = i % rows;
-            int x = rightX + cardPad + col * (tile + gap);
-            int ry = listTop + row * (tile + nameH + rowGap);
-            g_settings.shortcutRow[i] = { x, ry, x + tile, ry + tile + nameH };
+    // ---- Page 1: 快捷方式 (full width) ----
+    {
+        int scTop = y0 + secLabelH + secGap;
+        int listH = SettingsShortcutListH();
+        int scH = cardPad + listH + listAddGap + addH + cardPad;
+        g_settings.scCard = placeCard(scTop, scH);
+        int listTop = scTop + cardPad;
+        int addY = scTop + scH - cardPad - addH;
+        g_settings.addBtn = { leftX + cardPad, addY, leftX + cardPad + btnW, addY + addH };
+        g_settings.emptyHit = { leftX + cardPad, listTop, leftX + fullW - cardPad, addY - listAddGap };
+        g_settings.shortcutRows = 0;
+        if (!g_shortcuts.empty()) {
+            int n = (int)g_shortcuts.size();
+            if (n > kMaxShortcuts) n = kMaxShortcuts;
+            int rows = SettingsGridRows(n);
+            int tile = SettingsTilePx();
+            const int gap = 10;
+            const int nameH = 16;
+            const int rg = 8;
+            for (int i = 0; i < n; ++i) {
+                int col = i / rows;
+                int row = i % rows;
+                int x = leftX + cardPad + col * (tile + gap);
+                int ry = listTop + row * (tile + nameH + rg);
+                g_settings.shortcutRow[i] = { x, ry, x + tile, ry + tile + nameH };
+            }
+            g_settings.shortcutRows = n;
         }
-        g_settings.shortcutRows = n;
     }
 
-    // Bottom: wallpaper, full width under both columns
+    // ---- Page 2: 壁纸 (full width) ----
     {
-        int top = leftEnd;
-        if (g_settings.scCard.bottom > top) top = g_settings.scCard.bottom;
-        int wpTop = top + cardGap + secLabelH + secGap;
-        int fullW = kSettingsW - pad * 2;
+        int wpTop = y0 + secLabelH + secGap;
         int lx = leftX + cardPad, rx = leftX + fullW - cardPad;
         int cy = wpTop + cardPad;
-        g_settings.wpRow = { lx, cy, rx, cy + 26 };
-        g_settings.wpSwitch = { rx - 44, cy + 2, rx, cy + 24 };
-        cy += 26;
+        g_settings.wpRow = { lx, cy, rx, cy + rowH };
+        g_settings.wpSwitch = { rx - 44, cy + (rowH - 22) / 2, rx, cy + (rowH - 22) / 2 + 22 };
+        cy += rowH;
         if (g_wp.enabled) {
-            cy += 10;
+            cy += rowGap;
             g_settings.wpUrlBox = { lx, cy, rx, cy + 28 };
             cy += 28;
             g_settings.wpHint = { lx, cy + 3, rx, cy + 18 };
             cy += 20;
             g_settings.wpIntervalRow = { lx, cy, rx, cy + 28 };
-            g_settings.wpDrop = { rx - 120, cy, rx, cy + 28 };
-            cy += 28 + 10;
-            g_settings.wpBtn = { rx - 84, cy, rx, cy + 28 };
-            g_settings.wpStatus = { lx, cy, rx - 84 - 12, cy + 28 };
+            // label left, dropdown immediately after (~80px label + 8 gap)
+            g_settings.wpDrop = { lx + 80 + 8, cy, lx + 80 + 8 + 120, cy + 28 };
+            cy += 28 + rowGap;
+            g_settings.wpBtn = { lx, cy, lx + btnW, cy + 28 };
+            g_settings.wpStatus = { lx + btnW + 12, cy, rx, cy + 28 };
             cy += 28;
         } else {
             g_settings.wpUrlBox = g_settings.wpHint = g_settings.wpIntervalRow = RECT{};
@@ -3192,9 +3508,43 @@ static int LayoutSettings() {
         g_settings.wpCard = { leftX, wpTop, leftX + fullW, cy };
     }
 
-    int bottom = leftEnd;
-    if (g_settings.scCard.bottom > bottom) bottom = g_settings.scCard.bottom;
-    if (g_settings.wpCard.bottom > bottom) bottom = g_settings.wpCard.bottom;
+    // ---- Page 3: 清除数据 ----
+    {
+        int clrTop = y0 + secLabelH + secGap;
+        int lx = leftX + cardPad, rx = leftX + fullW - cardPad;
+        int cy = clrTop + cardPad;
+        // top notice (~3 lines)
+        g_settings.clrNotice = { lx, cy, rx, cy + 54 };
+        cy += 54 + rowGap;
+        g_settings.clrLocalRow = { lx, cy, rx, cy + rowH };
+        g_settings.clrLocalSwitch = { rx - 44, cy + (rowH - 22) / 2, rx, cy + (rowH - 22) / 2 + 22 };
+        cy += rowH + rowGap;
+        g_settings.clrArchRow = { lx, cy, rx, cy + rowH };
+        g_settings.clrArchSwitch = { rx - 44, cy + (rowH - 22) / 2, rx, cy + (rowH - 22) / 2 + 22 };
+        cy += rowH + rowGap;
+        g_settings.clrCacheRow = { lx, cy, rx, cy + rowH };
+        g_settings.clrCacheSwitch = { rx - 44, cy + (rowH - 22) / 2, rx, cy + (rowH - 22) / 2 + 22 };
+        cy += rowH + rowGap;
+        g_settings.clrSidebarRow = { lx, cy, rx, cy + rowH };
+        g_settings.clrSidebarSwitch = { rx - 44, cy + (rowH - 22) / 2, rx, cy + (rowH - 22) / 2 + 22 };
+        cy += rowH + 4;
+        g_settings.clrSidebarRisk = { lx, cy, rx, cy + 36 };
+        cy += 36 + rowGap;
+        g_settings.clrBtn = { lx, cy, lx + btnW, cy + addH };
+        cy += addH + cardPad;
+        g_settings.clrCard = { leftX, clrTop, leftX + fullW, cy };
+    }
+
+    int bottom = page0End;
+    if (g_settings.settingsPage == 0) {
+        bottom = page0End;
+    } else if (g_settings.settingsPage == 1) {
+        bottom = g_settings.scCard.bottom;
+    } else if (g_settings.settingsPage == 2) {
+        bottom = g_settings.wpCard.bottom;
+    } else {
+        bottom = g_settings.clrCard.bottom;
+    }
     bottom += pad;
     g_settings.contentH = bottom;
     return bottom;
@@ -3300,7 +3650,7 @@ static void PaintSettings(HWND h) {
         FontFamily yahei(L"Microsoft YaHei UI");
         const FontFamily* fam = (yahei.GetLastStatus() == Gdiplus::Ok) ? &yahei : FontFamily::GenericSansSerif();
         Font title(fam, 15.f, Gdiplus::FontStyleBold, Gdiplus::UnitPixel);
-        Font sec(fam, 11.f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
+        Font sec(fam, 13.f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         Font ui(fam, 12.f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         Font uiSm(fam, 11.f, Gdiplus::FontStyleRegular, Gdiplus::UnitPixel);
         SolidBrush titleBr(Color(255, 0x20, 0x20, 0x22));
@@ -3339,20 +3689,50 @@ static void PaintSettings(HWND h) {
         }
 
         Gdiplus::GraphicsState wpScrollState = gph.Save();
+
+        // Left category nav
+        {
+            SolidBrush navBg(Color(255, 0xF3, 0xF4, 0xF6));
+            gph.FillRectangle(&navBg, 0.f, (float)kSettingsHdrH, (float)kSettingsNavW, (float)(ch - kSettingsHdrH));
+            Pen navSep(Color(255, 0xE2, 0xE5, 0xEA), 1.f);
+            gph.DrawLine(&navSep, (float)kSettingsNavW - 0.5f, (float)kSettingsHdrH, (float)kSettingsNavW - 0.5f, (float)ch);
+            const wchar_t* navLabels[4] = { L"\u5e38\u89c4", L"\u5feb\u6377\u65b9\u5f0f", L"\u58c1\u7eb8", L"\u6e05\u9664\u6570\u636e" };
+            for (int ni = 0; ni < 4; ++ni) {
+                RECT nr = g_settings.navItem[ni];
+                bool on = (g_settings.settingsPage == ni);
+                float nx = (float)nr.left, ny = (float)nr.top, nw = (float)(nr.right - nr.left), nh = (float)(nr.bottom - nr.top);
+                if (on) {
+                    GraphicsPath np;
+                    RoundRectPath(np, nx, ny, nw, nh, 8.f);
+                    SolidBrush nb(Color(255, 0xE8, 0xEE, 0xFC));
+                    gph.FillPath(&nb, &np);
+                }
+                StringFormat nf;
+                nf.SetAlignment(StringAlignmentNear);
+                nf.SetLineAlignment(StringAlignmentCenter);
+                SolidBrush nk(on ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0x5A, 0x5E, 0x66));
+                Font* nfnt = on ? &ui : &uiSm;
+                gph.DrawString(navLabels[ni], -1, nfnt, RectF(nx + 12.f, ny, nw - 16.f, nh), &nf, &nk);
+            }
+        }
+
         if (g_settings.scrollable) {
-            gph.SetClip(RectF(1.f, (float)kSettingsHdrH, (float)cw - 2.f, (float)(ch - kSettingsHdrH) - 1.f));
+            gph.SetClip(RectF((float)kSettingsNavW + 1.f, (float)kSettingsHdrH, (float)(cw - kSettingsNavW) - 2.f, (float)(ch - kSettingsHdrH) - 1.f));
             gph.TranslateTransform(0.f, (float)-g_settings.scrollY);
         }
         {
+        if (g_settings.settingsPage == 0) {
             labelOf(L"\u8d34\u8fb9", g_settings.dockCard);
             cardOf(g_settings.dockCard);
-            const wchar_t* docks[] = { L"\u5de6", L"\u53f3", L"\u9876" };
+            const wchar_t* docks[] = { L"\u5de6", L"\u53f3", L"\u4e0a" };
             for (int i = 0; i < 3; ++i)
                 DrawSettingsChip(gph, g_settings.dockBtn[i], docks[i], g.dockEdge == i, true, ui);
+            labelOf(L"\u884c\u4e3a", g_settings.hideCard);
+            cardOf(g_settings.hideCard);
             {
                 const RECT& row = g_settings.hideRow;
                 const RECT& sw = g_settings.hideSwitch;
-                gph.DrawString(L"\u81ea\u52a8\u9690\u85cf", -1, &ui, PointF((float)row.left, (float)row.top + 3.f), &titleBr);
+                gph.DrawString(L"\u8d34\u8fb9\u81ea\u52a8\u9690\u85cf", -1, &ui, PointF((float)row.left, (float)row.top + 3.f), &titleBr);
                 float tx = (float)sw.left, ty = (float)sw.top, tw = 44.f, th = 22.f;
                 GraphicsPath tpath;
                 RoundRectPath(tpath, tx, ty, tw, th, th / 2.f);
@@ -3363,15 +3743,7 @@ static void PaintSettings(HWND h) {
                 SolidBrush knobBr(Color(255, 255, 255, 255));
                 gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
             }
-        }
-        {
-            labelOf(L"\u663e\u793a\u6a21\u5f0f", g_settings.modeCard);
-            cardOf(g_settings.modeCard);
-            DrawSettingsChip(gph, g_settings.modeBtn[0], L"\u56db\u73af", g.ringMode == 0, true, ui);
-            DrawSettingsChip(gph, g_settings.modeBtn[1], L"\u53cc\u73af", g.ringMode == 1, true, ui);
-        }
-        {
-            labelOf(L"\u663e\u793a\u9879", g_settings.visCard);
+            labelOf(L"\u7528\u91cf\u73af\u663e\u793a", g_settings.visCard);
             cardOf(g_settings.visCard);
             auto drawSwitch = [&](const RECT& row, const RECT& sw, const wchar_t* text, bool on) {
                 gph.DrawString(text, -1, &ui, PointF((float)row.left, (float)row.top + 3.f), &titleBr);
@@ -3385,11 +3757,15 @@ static void PaintSettings(HWND h) {
                 SolidBrush knobBr(Color(255, 255, 255, 255));
                 gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
             };
-            drawSwitch(g_settings.modelsRow, g_settings.modelsSwitch, L"\u663e\u793a Other Models \u7528\u91cf", g.showModels);
-            drawSwitch(g_settings.botRow, g_settings.botSwitch, L"\u663e\u793a Bot \u7528\u91cf", g.showBot);
-            drawSwitch(g_settings.apiRow, g_settings.apiSwitch, L"\u663e\u793a Api \u7528\u91cf", g.showApi);
+            drawSwitch(g_settings.modelsRow, g_settings.modelsSwitch, L"Models", g.showModels);
+            drawSwitch(g_settings.apiRow, g_settings.apiSwitch, L"API", g.showApi);
+            drawSwitch(g_settings.botRow, g_settings.botSwitch, L"Bot", g.showBot);
+            labelOf(L"\u73af\u6a21\u5f0f", g_settings.modeCard);
+            cardOf(g_settings.modeCard);
+            DrawSettingsChip(gph, g_settings.modeBtn[0], L"\u56db\u73af", g.ringMode == 0, true, ui);
+            DrawSettingsChip(gph, g_settings.modeBtn[1], L"\u53cc\u73af", g.ringMode == 1, true, ui);
         }
-        {
+        if (g_settings.settingsPage == 1) {
             labelOf(L"\u5feb\u6377\u65b9\u5f0f", g_settings.scCard);
             if (!g_shortcuts.empty()) {
                 gph.DrawString(L"\u62d6\u52a8\u6362\u4f4d", -1, &uiSm,
@@ -3398,11 +3774,11 @@ static void PaintSettings(HWND h) {
             cardOf(g_settings.scCard);
             if (g_shortcuts.empty()) {
                 StringFormat fmt;
-                fmt.SetAlignment(StringAlignmentCenter);
-                fmt.SetLineAlignment(StringAlignmentCenter);
+                fmt.SetAlignment(StringAlignmentNear);
+                fmt.SetLineAlignment(StringAlignmentNear);
                 RECT er = g_settings.emptyHit;
                 gph.DrawString(L"\u6dfb\u52a0\u5e38\u7528\u8f6f\u4ef6", -1, &uiSm,
-                    RectF((float)er.left, (float)er.top, (float)(er.right - er.left), (float)(er.bottom - er.top)),
+                    RectF((float)er.left, (float)er.top + 4.f, (float)(er.right - er.left), (float)(er.bottom - er.top) - 4.f),
                     &fmt, &muted);
             } else {
                 int n = g_settings.shortcutRows;
@@ -3469,6 +3845,8 @@ static void PaintSettings(HWND h) {
         }
 
         {
+        }
+        if (g_settings.settingsPage == 2) {
             labelOf(L"\u58c1\u7eb8", g_settings.wpCard);
             cardOf(g_settings.wpCard);
             auto drawSwitch = [&](const RECT& row, const RECT& sw, const wchar_t* text, bool on) {
@@ -3572,9 +3950,78 @@ static void PaintSettings(HWND h) {
                     fmt.SetAlignment(StringAlignmentCenter);
                     fmt.SetLineAlignment(StringAlignmentCenter);
                     SolidBrush ink(disabled ? Color(255, 0xA8, 0xAD, 0xB5) : Color(255, 0x20, 0x20, 0x22));
-                    gph.DrawString(g_wp.busy ? L"\u66f4\u6362\u4e2d\u2026" : L"\u7acb\u5373\u66f4\u6362", -1, &uiSm, RectF(x, yy, ww, hh), &fmt, &ink);
+                    gph.DrawString(g_wp.busy ? L"\u66f4\u6362\u4e2d\u2026" : L"\u7acb\u5373\u6362", -1, &uiSm, RectF(x, yy, ww, hh), &fmt, &ink);
                 }
             }
+        }
+
+        }
+        if (g_settings.settingsPage == 3) {
+        // Clear Cursor history card
+        {
+            labelOf(L"\u6e05\u9664\u6570\u636e", g_settings.clrCard);
+            cardOf(g_settings.clrCard);
+            {
+                RECT nr = g_settings.clrNotice;
+                SolidBrush noticeBr(Color(255, 0x5A, 0x60, 0x69));
+                StringFormat nf;
+                nf.SetAlignment(StringAlignmentNear);
+                gph.DrawString(
+                    L"\u5f53\u524d\u6e05\u9664\u4ec5\u9488\u5bf9\u672c\u673a Composer \u5bf9\u8bdd / \u5df2\u5f52\u6863 / \u53ef\u9009\u672c\u5730\u7f13\u5b58\u3002\n"
+                    L"\u4e0d\u4f1a\u5220\u9664\u8d26\u53f7\u4e0b\u7684\u4e91\u7aef Agents \u4e0e\u4e91\u7aef\u9879\u76ee\u8bb0\u5f55\uff08\u5de6\u4fa7\u5e26\u4e91\u56fe\u6807\u90a3\u680f\uff09\u3002\n"
+                    L"\u4e91\u7aef\u771f\u6b63\u5220\u9664\uff1a\u6682\u4e0d\u652f\u6301\u3002",
+                    -1, &uiSm,
+                    RectF((float)nr.left, (float)nr.top, (float)(nr.right - nr.left), (float)(nr.bottom - nr.top)),
+                    &nf, &noticeBr);
+            }
+            auto drawSwitch2 = [&](const RECT& row, const RECT& sw, const wchar_t* textLabel, bool on) {
+                gph.DrawString(textLabel, -1, &ui, PointF((float)row.left, (float)row.top + 3.f), &titleBr);
+                float tx = (float)sw.left, ty = (float)sw.top, tw = 44.f, th = 22.f;
+                GraphicsPath tpath;
+                RoundRectPath(tpath, tx, ty, tw, th, th / 2.f);
+                SolidBrush tfill(on ? Color(255, 0x2F, 0x6F, 0xED) : Color(255, 0xD0, 0xD4, 0xDA));
+                gph.FillPath(&tfill, &tpath);
+                float knob = th - 4.f;
+                float kx = on ? (tx + tw - knob - 2.f) : (tx + 2.f);
+                SolidBrush knobBr(Color(255, 255, 255, 255));
+                gph.FillEllipse(&knobBr, kx, ty + 2.f, knob, knob);
+            };
+            drawSwitch2(g_settings.clrLocalRow, g_settings.clrLocalSwitch,
+                L"\u6e05\u9664\u672c\u5730\u5bf9\u8bdd\uff08Composer/Agent\uff09", g_settings.clrLocal);
+            drawSwitch2(g_settings.clrArchRow, g_settings.clrArchSwitch,
+                L"\u6e05\u9664\u5df2\u5f52\u6863\u5bf9\u8bdd", g_settings.clrArchived);
+            drawSwitch2(g_settings.clrCacheRow, g_settings.clrCacheSwitch,
+                L"\u6e05\u9664\u672c\u5730\u7f13\u5b58\uff08\u68c0\u7d22\u002f\u7d22\u5f15\u002f\u0041\u0067\u0065\u006e\u0074\u0020\u4ea7\u7269\uff09", g_settings.clrCache);
+            drawSwitch2(g_settings.clrSidebarRow, g_settings.clrSidebarSwitch,
+                L"\u6e05\u9664\u672c\u5730\u4fa7\u680f\u7f13\u5b58\uff08Projects \u9489\u9009 + Agents \u672c\u5730\u7f13\u5b58\uff09", g_settings.clrSidebar);
+            {
+                RECT rr = g_settings.clrSidebarRisk;
+                SolidBrush riskBr(Color(255, 0xA0, 0x64, 0x00));
+                StringFormat rf;
+                rf.SetAlignment(StringAlignmentNear);
+                gph.DrawString(
+                    L"\u4e91\u7aef Agents \u91cd\u542f\u6216\u5237\u65b0\u540e\u53ef\u80fd\u518d\u6b21\u51fa\u73b0\uff1b\u4e0d\u4f1a\u5220\u4e91\u7aef\u8bb0\u5f55\u3002Projects \u672c\u5730\u9489\u9009\u4f1a\u88ab\u79fb\u9664\u3002",
+                    -1, &uiSm,
+                    RectF((float)rr.left, (float)rr.top, (float)(rr.right - rr.left), (float)(rr.bottom - rr.top)),
+                    &rf, &riskBr);
+            }
+            {
+                RECT br = g_settings.clrBtn;
+                float x = (float)br.left, yy = (float)br.top, ww = (float)(br.right - br.left), hh = (float)(br.bottom - br.top);
+                GraphicsPath bp;
+                RoundRectPath(bp, x + 0.5f, yy + 0.5f, ww - 1.f, hh - 1.f, 6.f);
+                bool can = g_settings.clrLocal || g_settings.clrArchived || g_settings.clrCache || g_settings.clrSidebar;
+                SolidBrush bf(can ? Color(255, 0xD1, 0x43, 0x43) : Color(255, 0xF3, 0xF4, 0xF6));
+                gph.FillPath(&bf, &bp);
+                StringFormat fmt;
+                fmt.SetAlignment(StringAlignmentCenter);
+                fmt.SetLineAlignment(StringAlignmentCenter);
+                SolidBrush ink(can ? Color(255, 255, 255, 255) : Color(255, 0xA8, 0xAD, 0xB5));
+                gph.DrawString(L"\u7acb\u5373\u6e05\u9664", -1, &uiSm, RectF(x, yy, ww, hh), &fmt, &ink);
+            }
+        }
+
+
         }
         gph.Restore(wpScrollState);
         if (g_settings.scrollable && g_settings.contentH > 0) {
@@ -3781,46 +4228,89 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             else InvalidateRect(h, nullptr, FALSE);
             return 0;
         }
-        for (int i = 0; i < 3; ++i) if (PtIn(g_settings.dockBtn[i], x, y)) {
+        if (g_settings.settingsPage == 0) for (int i = 0; i < 3; ++i) if (PtIn(g_settings.dockBtn[i], x, y)) {
             if (g.dockEdge != i) { g.dockEdge = i; g.y = -1; }
             SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
-        if (PtIn(g_settings.hideRow, x, y) || PtIn(g_settings.hideSwitch, x, y)) {
+        if (g_settings.settingsPage == 0 && (PtIn(g_settings.hideRow, x, y) || PtIn(g_settings.hideSwitch, x, y))) {
             g.autoHide = !g.autoHide;
             g.peeking = !g.autoHide || CursorNearPeek();
             SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
-        for (int i = 0; i < 2; ++i) if (PtIn(g_settings.modeBtn[i], x, y)) {
+        if (g_settings.settingsPage == 0) for (int i = 0; i < 2; ++i) if (PtIn(g_settings.modeBtn[i], x, y)) {
             g.ringMode = i; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
-        if (PtIn(g_settings.modelsRow, x, y) || PtIn(g_settings.modelsSwitch, x, y)) {
+        if (g_settings.settingsPage == 0 && (PtIn(g_settings.modelsRow, x, y) || PtIn(g_settings.modelsSwitch, x, y))) {
             g.showModels = !g.showModels; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
-        if (PtIn(g_settings.botRow, x, y) || PtIn(g_settings.botSwitch, x, y)) {
+        if (g_settings.settingsPage == 0 && (PtIn(g_settings.botRow, x, y) || PtIn(g_settings.botSwitch, x, y))) {
             g.showBot = !g.showBot; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
-        if (PtIn(g_settings.apiRow, x, y) || PtIn(g_settings.apiSwitch, x, y)) {
+        if (g_settings.settingsPage == 0 && (PtIn(g_settings.apiRow, x, y) || PtIn(g_settings.apiSwitch, x, y))) {
             g.showApi = !g.showApi; SaveConfig(); SettingsApplyMain(true); InvalidateRect(h, nullptr, FALSE); return 0;
         }
-        if (PtIn(g_settings.addBtn, x, y) || (g_shortcuts.empty() && PtIn(g_settings.emptyHit, x, y))) {
+        if (g_settings.settingsPage == 1 && (PtIn(g_settings.addBtn, x, y) || (g_shortcuts.empty() && PtIn(g_settings.emptyHit, x, y)))) {
             OpenManageShortcuts();
             return 0;
         }
-        if (PtIn(g_settings.wpRow, x, y) || PtIn(g_settings.wpSwitch, x, y)) {
+        if (g_settings.settingsPage == 2 && (PtIn(g_settings.wpRow, x, y) || PtIn(g_settings.wpSwitch, x, y))) {
             WpSetEnabled(!g_wp.enabled);
             return 0;
         }
-        if (g_wp.enabled && PtIn(g_settings.wpDrop, x, y)) {
+        if (g_settings.settingsPage == 2 && g_wp.enabled && PtIn(g_settings.wpDrop, x, y)) {
             WpShowIntervalMenu(h);
             return 0;
         }
-        if (g_wp.enabled && PtIn(g_settings.wpBtn, x, y)) {
+        if (g_settings.settingsPage == 2 && g_wp.enabled && PtIn(g_settings.wpBtn, x, y)) {
             if (!g_wp.busy && WpUrlOk()) {
                 KillTimer(h, 11);
                 SaveConfig();
                 WpStart();
             }
             return 0;
+        }
+        {
+            int cx = (int)(short)LOWORD(l);
+            int cy = (int)(short)HIWORD(l);
+            for (int ni = 0; ni < 4; ++ni) {
+                if (PtIn(g_settings.navItem[ni], cx, cy)) {
+                    if (g_settings.settingsPage != ni) {
+                        g_settings.settingsPage = ni;
+                        g_settings.scrollY = 0;
+                        SettingsResize(h);
+                        InvalidateRect(h, nullptr, FALSE);
+                    }
+                    return 0;
+                }
+            }
+        }
+        if (g_settings.settingsPage == 3) {
+        if (PtIn(g_settings.clrLocalRow, x, y) || PtIn(g_settings.clrLocalSwitch, x, y)) {
+            g_settings.clrLocal = !g_settings.clrLocal;
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        if (PtIn(g_settings.clrArchRow, x, y) || PtIn(g_settings.clrArchSwitch, x, y)) {
+            g_settings.clrArchived = !g_settings.clrArchived;
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        if (PtIn(g_settings.clrCacheRow, x, y) || PtIn(g_settings.clrCacheSwitch, x, y)) {
+            g_settings.clrCache = !g_settings.clrCache;
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        if (PtIn(g_settings.clrSidebarRow, x, y) || PtIn(g_settings.clrSidebarSwitch, x, y)) {
+            g_settings.clrSidebar = !g_settings.clrSidebar;
+            InvalidateRect(h, nullptr, FALSE);
+            return 0;
+        }
+        if (PtIn(g_settings.clrBtn, x, y)) {
+            if (g_settings.clrLocal || g_settings.clrArchived || g_settings.clrCache || g_settings.clrSidebar)
+                OnClearCursorHistoryClick(h);
+            return 0;
+        }
+        return 0;
         }
         return 0;
     }
@@ -3896,41 +4386,124 @@ static LRESULT CALLBACK SettingsProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProcW(h, m, w, l);
 }
 
-static void OpenSettings() {
-    if (g_settings.hwnd && !IsWindow(g_settings.hwnd))
-        g_settings.hwnd = nullptr;
-    if (g_settings.hwnd && IsWindow(g_settings.hwnd)) {
-        SettingsResize(g_settings.hwnd);
-        ShowWindow(g_settings.hwnd, SW_SHOW);
-        SetForegroundWindow(g_settings.hwnd);
+
+static void OnClearCursorHistoryClick(HWND owner) {
+    bool loc = g_settings.clrLocal;
+    bool arch = g_settings.clrArchived;
+    bool cache = g_settings.clrCache;
+    bool sidebar = g_settings.clrSidebar;
+    if (!loc && !arch && !cache && !sidebar) {
+        MessageBoxW(owner, L"\u8bf7\u5148\u52fe\u9009\u8981\u6e05\u9664\u7684\u9879\u3002", L"\u6e05\u9664\u0020\u0043\u0075\u0072\u0073\u006f\u0072\u0020\u5386\u53f2", MB_OK | MB_ICONINFORMATION);
         return;
     }
-    g_settings.hwnd = nullptr;
-    static ATOM atom = 0;
-    if (!atom) {
-        WNDCLASSEXW wc{ sizeof(wc) };
-        wc.lpfnWndProc = SettingsProc;
-        wc.hInstance = GetModuleHandleW(nullptr);
-        wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
-        wc.hbrBackground = nullptr;
-        wc.lpszClassName = L"CursorUsageSettings";
-        wc.style = CS_HREDRAW | CS_VREDRAW;
-        atom = RegisterClassExW(&wc);
+    std::wstring msg = L"\u5c06\u6c38\u4e45\u5220\u9664\u672c\u673a\u6570\u636e\uff08\u4e0d\u53ef\u6062\u590d\uff09\uff1a" L"\n\n";
+    if (loc) {
+        msg += L"\u2022\u0020\u672c\u5730\u5bf9\u8bdd\uff08\u0043\u006f\u006d\u0070\u006f\u0073\u0065\u0072\u002f\u0041\u0067\u0065\u006e\u0074\uff0c\u542b\u0020\u0041\u0067\u0065\u006e\u0074\u0053\u0074\u006f\u0072\u0065\u0073\uff09" L"\n";
     }
-    int hgt = SettingsWinH();
-    RECT wa; SystemParametersInfo(SPI_GETWORKAREA, 0, &wa, 0);
-    int x = wa.left + (wa.right - wa.left - kSettingsW) / 2;
-    int y = wa.top + (wa.bottom - wa.top - hgt) / 3;
-    HWND hw = CreateWindowExW(WS_EX_TOOLWINDOW | WS_EX_TOPMOST,
-        L"CursorUsageSettings", L"\u8bbe\u7f6e",
-        WS_POPUP | WS_CLIPCHILDREN,
-        x, y, kSettingsW, hgt,
-        nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
-    if (!hw) return;
-    ShowWindow(hw, SW_SHOW);
-    UpdateWindow(hw);
+    if (arch) {
+        msg += L"\u2022\u0020\u5df2\u5f52\u6863\u5bf9\u8bdd\uff08\u542b\u672c\u5730\u5e93\u5f52\u6863\u4e0e\u4e91\u7aef\u7f13\u5b58\u6761\u76ee\uff09" L"\n";
+    }
+    if (cache) {
+        msg += L"\u2022\u0020\u672c\u5730\u7f13\u5b58\uff08\u0072\u0065\u0074\u0072\u0069\u0065\u0076\u0061\u006c\u3001\u0061\u0067\u0065\u006e\u0074\u002d\u0077\u006f\u0072\u006b\u0065\u0072\u3001\u002e\u0063\u0075\u0072\u0073\u006f\u0072\u005c\u0070\u0072\u006f\u006a\u0065\u0063\u0074\u0073\u3001\u0061\u0069\u002d\u0074\u0072\u0061\u0063\u006b\u0069\u006e\u0067\uff09" L"\n";
+        msg += L"\u0020\u0020\u4e0d\u5220\u5de5\u4f5c\u533a\u6e90\u7801" L"\n";
+    }
+    if (sidebar) {
+        msg += L"\u2022\u0020\u672c\u5730\u4fa7\u680f\u7f13\u5b58\uff08Projects \u9489\u9009 + Agents \u672c\u5730\u7f13\u5b58\uff09" L"\n";
+        msg += L"\u0020\u0020\u98ce\u9669\uff1a\u4e91\u7aef Agents \u91cd\u542f/\u5237\u65b0\u540e\u53ef\u80fd\u518d\u73b0\uff1b\u4e0d\u4f1a\u5220\u4e91\u7aef\u8bb0\u5f55\u3002Projects \u672c\u5730\u9489\u9009\u4f1a\u88ab\u79fb\u9664\u3002" L"\n";
+    }
+    msg += L"\n" L"\u4e0d\u4f1a\u5220\u9664\uff1a\u767b\u5f55\u6001\u3001\u0073\u0065\u0074\u0074\u0069\u006e\u0067\u0073\u002e\u006a\u0073\u006f\u006e\u3001\u6269\u5c55\u4e0e\u0020\u004d\u0043\u0050\u0020\u914d\u7f6e\u3001\u4e91\u7aef Agents/\u9879\u76ee\u8bb0\u5f55\u3002" L"\n";
+    if (CursorExeRunning())
+        msg += L"\n" L"\u68c0\u6d4b\u5230\u0020\u0043\u0075\u0072\u0073\u006f\u0072\u0020\u6b63\u5728\u8fd0\u884c\uff1a\u5efa\u8bae\u5148\u5b8c\u5168\u9000\u51fa\u0020\u0043\u0075\u0072\u0073\u006f\u0072\uff0c\u5426\u5219\u53ef\u80fd\u6e05\u9664\u5931\u8d25\u6216\u88ab\u5199\u56de\u3002" L"\n" L"\u4ecd\u8981\u7ee7\u7eed\u5417\uff1f";
+    else
+        msg += L"\n" L"\u786e\u5b9a\u6e05\u9664\u5417\uff1f";
+    if (MessageBoxW(owner, msg.c_str(), L"\u786e\u8ba4\u6e05\u9664\u0020\u0043\u0075\u0072\u0073\u006f\u0072\u0020\u5386\u53f2", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+        return;
+    if (CursorExeRunning()) {
+        if (MessageBoxW(owner,
+            L"\u0043\u0075\u0072\u0073\u006f\u0072\u0020\u4ecd\u5728\u8fd0\u884c\u3002\u5f3a\u884c\u6e05\u9664\u53ef\u80fd\u56e0\u6587\u4ef6\u5360\u7528\u5931\u8d25\uff0c\u6216\u91cd\u542f\u540e\u90e8\u5206\u6570\u636e\u6062\u590d\u3002" L"\n\n" L"\u5efa\u8bae\uff1a\u9000\u51fa\u0020\u0043\u0075\u0072\u0073\u006f\u0072\u0020\u540e\u518d\u6e05\u3002" L"\n" L"\u4ecd\u8981\u5f3a\u5236\u6e05\u9664\u5417\uff1f",
+            L"\u4e8c\u6b21\u786e\u8ba4", MB_YESNO | MB_ICONWARNING | MB_DEFBUTTON2) != IDYES)
+            return;
+    }
+    ClearHistResult res = ClearCursorHistory(loc, arch, cache, sidebar);
+    MessageBoxW(owner, res.detail.c_str(), res.ok ? L"\u6e05\u9664\u5b8c\u6210" : L"\u6e05\u9664\u5931\u8d25",
+                MB_OK | (res.ok ? MB_ICONINFORMATION : MB_ICONERROR));
 }
 
+static void OpenSettings() {
+    // Prefer Qt settings process (same dir as CursorUsage.exe, or native-cpp\\qt-runtime when running from build tree).
+    wchar_t mod[MAX_PATH];
+    GetModuleFileNameW(nullptr, mod, MAX_PATH);
+    std::wstring dir(mod);
+    size_t slash = dir.find_last_of(L"\\/");
+    if (slash != std::wstring::npos) dir.resize(slash);
+    const wchar_t* candidates[] = {
+        L"\\CursorUsageSettings.exe",
+        L"\\qt-runtime\\CursorUsageSettings.exe",
+        L"\\settings-qt\\..\\qt-runtime\\CursorUsageSettings.exe",
+    };
+    std::wstring exe;
+    for (auto rel : candidates) {
+        std::wstring tryPath = dir + rel;
+        if (GetFileAttributesW(tryPath.c_str()) != INVALID_FILE_ATTRIBUTES) {
+            exe = tryPath;
+            break;
+        }
+    }
+    // Also try sibling qt-runtime when exe lives in install folder with qt-runtime next to it — already covered.
+    if (exe.empty()) {
+        // Fallback: legacy GDI+ settings window
+        if (g_settings.hwnd && !IsWindow(g_settings.hwnd))
+            g_settings.hwnd = nullptr;
+        if (g_settings.hwnd && IsWindow(g_settings.hwnd)) {
+            SettingsResize(g_settings.hwnd);
+            ShowWindow(g_settings.hwnd, SW_SHOW);
+            SetForegroundWindow(g_settings.hwnd);
+            return;
+        }
+        g_settings.hwnd = nullptr;
+        static ATOM atom = 0;
+        if (!atom) {
+            WNDCLASSEXW wc{ sizeof(wc) };
+            wc.lpfnWndProc = SettingsProc;
+            wc.hInstance = GetModuleHandleW(nullptr);
+            wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
+            wc.hbrBackground = nullptr;
+            wc.lpszClassName = L"CursorUsageSettings";
+            wc.style = CS_HREDRAW | CS_VREDRAW;
+            atom = RegisterClassExW(&wc);
+        }
+        int hgt = SettingsWinH();
+        RECT wa; SystemParametersInfo(SPI_GETWORKAREA, 0, &wa, 0);
+        int x = wa.left + (wa.right - wa.left - kSettingsW) / 2;
+        int y = wa.top + (wa.bottom - wa.top - hgt) / 3;
+        HWND hw = CreateWindowExW(WS_EX_TOOLWINDOW,
+            L"CursorUsageSettings", L"\u8bbe\u7f6e",
+            WS_POPUP | WS_CLIPCHILDREN,
+            x, y, kSettingsW, hgt,
+            nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
+        if (!hw) return;
+        ShowWindow(hw, SW_SHOW);
+        UpdateWindow(hw);
+        return;
+    }
+    // Soft single-instance: if settings already open, the Qt exe mutex brings it forward.
+    SHELLEXECUTEINFOW sei{ sizeof(sei) };
+    sei.fMask = SEE_MASK_NOCLOSEPROCESS;
+    sei.lpVerb = L"open";
+    sei.lpFile = exe.c_str();
+    sei.lpDirectory = dir.c_str();
+    // Prefer running with cwd = qt-runtime so Qt plugins/platforms resolve
+    std::wstring runtimeDir = exe;
+    size_t rs = runtimeDir.find_last_of(L"\\/");
+    if (rs != std::wstring::npos) runtimeDir.resize(rs);
+    sei.lpDirectory = runtimeDir.c_str();
+    sei.nShow = SW_SHOWNORMAL;
+    if (!ShellExecuteExW(&sei)) {
+        MessageBoxW(g.hwnd, L"\u65e0\u6cd5\u542f\u52a8 Qt \u8bbe\u7f6e\u7a97", L"\u8bbe\u7f6e", MB_OK | MB_ICONERROR);
+        return;
+    }
+    if (sei.hProcess) CloseHandle(sei.hProcess);
+}
 
 
 static void DrawQuickLaunch(Graphics& gph, Font& ui, float x, float y, float qw, float qh) {
@@ -4590,6 +5163,24 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         if (cmd == 11) ShellExecuteW(nullptr, L"open", L"https://cursor.com/dashboard/spending", nullptr, nullptr, SW_SHOWNORMAL);
         if (cmd == IDM_SETTINGS) OpenSettings();
         if (cmd == 14) DestroyWindow(h);
+        return 0;
+    }
+    case WM_CUW_RELOAD_CONFIG: {
+        LoadConfig();
+        SettingsApplyMain(true);
+        return 0;
+    }
+    case WM_CUW_CLEAR_HISTORY: {
+        bool loc = (w & 1) != 0;
+        bool arch = (w & 2) != 0;
+        bool cache = (w & 4) != 0;
+        bool sidebar = (w & 8) != 0;
+        // Reuse confirmation UI path
+        g_settings.clrLocal = loc;
+        g_settings.clrArchived = arch;
+        g_settings.clrCache = cache;
+        g_settings.clrSidebar = sidebar;
+        OnClearCursorHistoryClick(h);
         return 0;
     }
     case WM_DESTROY:
