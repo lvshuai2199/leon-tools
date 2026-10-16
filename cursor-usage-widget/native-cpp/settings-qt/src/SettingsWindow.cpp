@@ -7,19 +7,20 @@
 #include <QScrollArea>
 #include <QApplication>
 #include <QShortcut>
-#include <QFileDialog>
 #include <QDir>
 #include <QFileIconProvider>
 #include <QFileInfo>
 #include <QDesktopServices>
 #include <QUrl>
+#include <QSet>
+#include <QHash>
 
 namespace {
 constexpr int kNavW = 120;
-constexpr int kWinW = 700;
-constexpr int kWinH = 520;
-constexpr int kContentPadH = 24;  // left/right content margin
-constexpr int kContentPadV = 20;  // top/bottom content margin
+constexpr int kWinW = 820;
+constexpr int kWinH = 560;
+constexpr int kContentPadH = 24;
+constexpr int kContentPadV = 20;
 constexpr int kCardGap = 16;
 constexpr int kCardPad = 16;
 constexpr int kRowH = 30;
@@ -28,21 +29,22 @@ constexpr int kChipGap = 10;
 constexpr int kBtnW = 104;
 constexpr int kBtnH = 32;
 constexpr int kNavItemH = 40;
+constexpr int kRoleLaunch = Qt::UserRole;
+constexpr int kRoleTarget = Qt::UserRole + 1;
+constexpr int kRoleIsSystem = Qt::UserRole + 2;
 }
 
 SettingsWindow::SettingsWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowTitle(QStringLiteral("设置"));
     setObjectName(QStringLiteral("CursorUsageSettingsQt"));
-    // System title bar + close; no FramelessWindowHint, no WindowStaysOnTopHint.
     setWindowFlags(Qt::Window);
     setAttribute(Qt::WA_DeleteOnClose, false);
     resize(kWinW, kWinH);
-    setMinimumSize(700, 480);
+    setMinimumSize(760, 500);
     buildUi();
     applyStyle();
     loadFromConfig();
-    reloadShortcutsList();
-    // Esc closes (Alt+F4 is system default for Qt::Window)
+    reloadInstalledApps();
     auto* esc = new QShortcut(QKeySequence(Qt::Key_Escape), this);
     connect(esc, &QShortcut::activated, this, &QWidget::close);
 }
@@ -57,31 +59,22 @@ void SettingsWindow::keyPressEvent(QKeyEvent* e) {
         close();
         return;
     }
-    if (e->key() == Qt::Key_Delete && stack_ && stack_->currentIndex() == 1) {
-        onShortcutDelete();
-        return;
-    }
     QMainWindow::keyPressEvent(e);
 }
 
 void SettingsWindow::changeEvent(QEvent* e) {
     QMainWindow::changeEvent(e);
     if (e->type() == QEvent::ActivationChange && isActiveWindow()) {
-        // Reload if shortcuts.txt changed while we were inactive (e.g. tray menu).
-        if (stack_ && stack_->currentIndex() == 1)
-            reloadShortcutsList();
-    }
-}
-
-bool SettingsWindow::eventFilter(QObject* obj, QEvent* e) {
-    if (obj == scList_ && e->type() == QEvent::KeyPress) {
-        auto* ke = static_cast<QKeyEvent*>(e);
-        if (ke->key() == Qt::Key_Delete || ke->key() == Qt::Key_Backspace) {
-            onShortcutDelete();
-            return true;
+        if (stack_ && stack_->currentIndex() == 1) {
+            // Re-sync selection from disk if tray wrote shortcuts while inactive.
+            const QStringList disk = ConfigStore::loadShortcuts();
+            if (disk != scSelectedPaths_) {
+                scSelectedPaths_ = disk;
+                syncChecksFromSelected();
+                rebuildRightPreview();
+            }
         }
     }
-    return QMainWindow::eventFilter(obj, e);
 }
 
 QLabel* SettingsWindow::sectionTitle(const QString& text) {
@@ -126,7 +119,7 @@ void SettingsWindow::buildUi() {
     nav_->setObjectName("nav");
     nav_->setFixedWidth(kNavW);
     nav_->addItems({QStringLiteral("常规"), QStringLiteral("快捷方式"),
-                    QStringLiteral("壁纸"), QStringLiteral("清除数据")});
+                    QStringLiteral("壁纸"), QStringLiteral("清除历史")});
     nav_->setCurrentRow(0);
     connect(nav_, &QListWidget::currentRowChanged, this, &SettingsWindow::onNavChanged);
 
@@ -146,13 +139,12 @@ QWidget* SettingsWindow::buildGeneralPage() {
     lay->setContentsMargins(0, 0, 0, 0);
     lay->setSpacing(kCardGap);
 
-    // Dock card — chip order: 上｜左｜右 (ids: 0 left, 1 right, 2 top)
     {
         auto* inner = new QWidget;
         auto* v = new QVBoxLayout(inner);
         v->setContentsMargins(0, 0, 0, 0);
         v->setSpacing(kRowGap);
-        v->addWidget(sectionTitle(QStringLiteral("贴边")));
+        v->addWidget(sectionTitle(QStringLiteral("停靠")));
         auto* row = new QHBoxLayout;
         row->setSpacing(kChipGap);
         row->setAlignment(Qt::AlignLeft);
@@ -174,21 +166,19 @@ QWidget* SettingsWindow::buildGeneralPage() {
         lay->addWidget(makeCard(inner));
     }
 
-    // Behavior / auto-hide
     {
         auto* inner = new QWidget;
         auto* v = new QVBoxLayout(inner);
         v->setContentsMargins(0, 0, 0, 0);
         v->setSpacing(kRowGap);
         v->addWidget(sectionTitle(QStringLiteral("行为")));
-        autoHide_ = new QCheckBox(QStringLiteral("贴边自动隐藏"));
+        autoHide_ = new QCheckBox(QStringLiteral("鼠标离开自动隐藏"));
         autoHide_->setFixedHeight(kRowH);
         connect(autoHide_, &QCheckBox::toggled, this, &SettingsWindow::onGeneralChanged);
         v->addWidget(autoHide_);
         lay->addWidget(makeCard(inner));
     }
 
-    // Usage rings visibility
     {
         auto* inner = new QWidget;
         auto* v = new QVBoxLayout(inner);
@@ -196,7 +186,7 @@ QWidget* SettingsWindow::buildGeneralPage() {
         v->setSpacing(kRowGap);
         v->addWidget(sectionTitle(QStringLiteral("用量环显示")));
         showModels_ = new QCheckBox(QStringLiteral("Models"));
-        showApi_ = new QCheckBox(QStringLiteral("API / 总量"));
+        showApi_ = new QCheckBox(QStringLiteral("API / 用量"));
         showBot_ = new QCheckBox(QStringLiteral("Bot"));
         for (auto* c : {showModels_, showApi_, showBot_}) {
             c->setFixedHeight(kRowH);
@@ -206,7 +196,6 @@ QWidget* SettingsWindow::buildGeneralPage() {
         lay->addWidget(makeCard(inner));
     }
 
-    // Ring mode
     {
         auto* inner = new QWidget;
         auto* v = new QVBoxLayout(inner);
@@ -239,10 +228,10 @@ QWidget* SettingsWindow::buildGeneralPage() {
 }
 
 QWidget* SettingsWindow::buildShortcutsPage() {
-    auto* col = new QWidget;
-    auto* lay = new QVBoxLayout(col);
-    lay->setContentsMargins(0, 0, 0, 0);
-    lay->setSpacing(kCardGap);
+    auto* page = new QWidget;
+    auto* pageLay = new QVBoxLayout(page);
+    pageLay->setContentsMargins(kContentPadH, kContentPadV, kContentPadH, kContentPadV);
+    pageLay->setSpacing(kCardGap);
 
     auto* inner = new QWidget;
     auto* v = new QVBoxLayout(inner);
@@ -250,45 +239,93 @@ QWidget* SettingsWindow::buildShortcutsPage() {
     v->setSpacing(kRowGap);
     v->addWidget(sectionTitle(QStringLiteral("快捷方式")));
 
-    scEmpty_ = new QLabel(QStringLiteral("还没有快捷方式，点下方添加"));
-    scEmpty_->setObjectName("scEmpty");
-    scEmpty_->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    scEmpty_->setWordWrap(true);
-    v->addWidget(scEmpty_);
+    scHint_ = new QLabel(QStringLiteral("勾选本机已装软件，右侧预览排版；最多 %1 个。")
+                             .arg(ConfigStore::kMaxShortcuts));
+    scHint_->setObjectName("scEmpty");
+    scHint_->setWordWrap(true);
+    v->addWidget(scHint_);
 
-    scList_ = new QListWidget;
-    scList_->setObjectName("scList");
-    scList_->setIconSize(QSize(28, 28));
-    scList_->setSpacing(2);
-    scList_->setUniformItemSizes(true);
-    scList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
-    scList_->setSelectionMode(QAbstractItemView::SingleSelection);
-    scList_->installEventFilter(this);
-    connect(scList_, &QListWidget::itemDoubleClicked, this, &SettingsWindow::onShortcutOpen);
-    connect(scList_, &QListWidget::itemSelectionChanged, this, &SettingsWindow::onShortcutSelectionChanged);
-    v->addWidget(scList_, 1);
+    auto* split = new QHBoxLayout;
+    split->setSpacing(12);
+
+    // ---- Left: installed apps ----
+    auto* left = new QWidget;
+    left->setObjectName("scPane");
+    auto* leftLay = new QVBoxLayout(left);
+    leftLay->setContentsMargins(0, 0, 0, 0);
+    leftLay->setSpacing(8);
+
+    scSearch_ = new QLineEdit;
+    scSearch_->setPlaceholderText(QStringLiteral("搜索软件名称…"));
+    scSearch_->setFixedHeight(kRowH);
+    scSearch_->setClearButtonEnabled(true);
+    connect(scSearch_, &QLineEdit::textChanged, this, &SettingsWindow::onShortcutSearchChanged);
+    leftLay->addWidget(scSearch_);
+
+    scShowSystem_ = new QCheckBox(QStringLiteral("显示系统应用"));
+    scShowSystem_->setFixedHeight(kRowH);
+    connect(scShowSystem_, &QCheckBox::toggled, this, &SettingsWindow::onShortcutShowSystemToggled);
+    leftLay->addWidget(scShowSystem_);
+
+    scLeftList_ = new QListWidget;
+    scLeftList_->setObjectName("scList");
+    scLeftList_->setIconSize(QSize(24, 24));
+    scLeftList_->setSpacing(1);
+    scLeftList_->setUniformItemSizes(true);
+    scLeftList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scLeftList_->setSelectionMode(QAbstractItemView::NoSelection);
+    connect(scLeftList_, &QListWidget::itemChanged, this, &SettingsWindow::onShortcutItemChanged);
+    connect(scLeftList_, &QListWidget::itemDoubleClicked, this, &SettingsWindow::onShortcutOpen);
+    leftLay->addWidget(scLeftList_, 1);
+
+    // ---- Right: selected preview ----
+    auto* right = new QWidget;
+    right->setObjectName("scPane");
+    auto* rightLay = new QVBoxLayout(right);
+    rightLay->setContentsMargins(0, 0, 0, 0);
+    rightLay->setSpacing(8);
+
+    auto* rightTitle = new QLabel(QStringLiteral("已选预览"));
+    rightTitle->setObjectName("sectionTitle");
+    rightLay->addWidget(rightTitle);
+
+    scRightEmpty_ = new QLabel(QStringLiteral("勾选左侧软件"));
+    scRightEmpty_->setObjectName("scEmpty");
+    scRightEmpty_->setAlignment(Qt::AlignCenter);
+    rightLay->addWidget(scRightEmpty_, 1);
+
+    scRightList_ = new QListWidget;
+    scRightList_->setObjectName("scPreview");
+    scRightList_->setViewMode(QListView::IconMode);
+    scRightList_->setIconSize(QSize(40, 40));
+    scRightList_->setResizeMode(QListView::Adjust);
+    scRightList_->setMovement(QListView::Static);
+    scRightList_->setSpacing(10);
+    scRightList_->setWordWrap(true);
+    scRightList_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    scRightList_->setSelectionMode(QAbstractItemView::NoSelection);
+    scRightList_->setVisible(false);
+    connect(scRightList_, &QListWidget::itemDoubleClicked, this, &SettingsWindow::onShortcutOpen);
+    rightLay->addWidget(scRightList_, 1);
+
+    split->addWidget(left, 3);
+    split->addWidget(right, 2);
+    v->addLayout(split, 1);
 
     auto* btnRow = new QHBoxLayout;
     btnRow->setSpacing(kChipGap);
     btnRow->setAlignment(Qt::AlignLeft);
-    scAddBtn_ = new QPushButton(QStringLiteral("添加"));
-    scAddBtn_->setObjectName("secondaryBtn");
-    scAddBtn_->setFixedSize(kBtnW, kBtnH);
-    scAddBtn_->setCursor(Qt::PointingHandCursor);
-    connect(scAddBtn_, &QPushButton::clicked, this, &SettingsWindow::onShortcutAdd);
-    scDelBtn_ = new QPushButton(QStringLiteral("删除"));
-    scDelBtn_->setObjectName("ghostBtn");
-    scDelBtn_->setFixedSize(kBtnW, kBtnH);
-    scDelBtn_->setCursor(Qt::PointingHandCursor);
-    scDelBtn_->setEnabled(false);
-    connect(scDelBtn_, &QPushButton::clicked, this, &SettingsWindow::onShortcutDelete);
-    btnRow->addWidget(scAddBtn_);
-    btnRow->addWidget(scDelBtn_);
+    scSaveBtn_ = new QPushButton(QStringLiteral("保存"));
+    scSaveBtn_->setObjectName("secondaryBtn");
+    scSaveBtn_->setFixedSize(kBtnW, kBtnH);
+    scSaveBtn_->setCursor(Qt::PointingHandCursor);
+    connect(scSaveBtn_, &QPushButton::clicked, this, &SettingsWindow::onShortcutSave);
+    btnRow->addWidget(scSaveBtn_);
     btnRow->addStretch();
     v->addLayout(btnRow);
 
-    lay->addWidget(makeCard(inner), 1);
-    return wrapScroll(col);
+    pageLay->addWidget(makeCard(inner), 1);
+    return page;
 }
 
 QWidget* SettingsWindow::buildWallpaperPage() {
@@ -301,8 +338,9 @@ QWidget* SettingsWindow::buildWallpaperPage() {
     auto* v = new QVBoxLayout(inner);
     v->setContentsMargins(0, 0, 0, 0);
     v->setSpacing(kRowGap);
-    v->addWidget(sectionTitle(QStringLiteral("定时更换桌面壁纸")));
-    wpEnabled_ = new QCheckBox(QStringLiteral("启用"));
+    v->addWidget(sectionTitle(QStringLiteral("壁纸")));
+
+    wpEnabled_ = new QCheckBox(QStringLiteral("启用动态壁纸"));
     wpEnabled_->setFixedHeight(kRowH);
     connect(wpEnabled_, &QCheckBox::toggled, this, &SettingsWindow::onWallpaperChanged);
     v->addWidget(wpEnabled_);
@@ -311,45 +349,40 @@ QWidget* SettingsWindow::buildWallpaperPage() {
     auto* ev = new QVBoxLayout(wpExtra_);
     ev->setContentsMargins(0, 0, 0, 0);
     ev->setSpacing(kRowGap);
-    wpUrl_ = new QLineEdit;
-    wpUrl_->setPlaceholderText(QStringLiteral("粘贴管理端复制的接口地址"));
-    wpUrl_->setFixedHeight(kRowH);
-    connect(wpUrl_, &QLineEdit::editingFinished, this, &SettingsWindow::onWallpaperChanged);
-    ev->addWidget(wpUrl_);
 
-    auto* ivRow = new QHBoxLayout;
-    ivRow->setSpacing(kChipGap);
-    ivRow->setAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-    auto* ivLab = new QLabel(QStringLiteral("更换间隔"));
-    ivLab->setFixedHeight(kRowH);
+    auto* urlRow = new QHBoxLayout;
+    urlRow->addWidget(new QLabel(QStringLiteral("图片 URL")));
+    wpUrl_ = new QLineEdit;
+    wpUrl_->setFixedHeight(kRowH);
+    wpUrl_->setPlaceholderText(QStringLiteral("https://…"));
+    connect(wpUrl_, &QLineEdit::editingFinished, this, &SettingsWindow::onWallpaperChanged);
+    urlRow->addWidget(wpUrl_, 1);
+    ev->addLayout(urlRow);
+
+    auto* intRow = new QHBoxLayout;
+    intRow->addWidget(new QLabel(QStringLiteral("更换间隔")));
     wpInterval_ = new QComboBox;
-    wpInterval_->setObjectName("wpInterval");
     wpInterval_->setFixedHeight(kRowH);
-    wpInterval_->setMinimumWidth(160);
     wpInterval_->addItems({
-        QStringLiteral("30 分钟"),
-        QStringLiteral("1 小时"),
-        QStringLiteral("3 小时"),
-        QStringLiteral("每天"),
-        QStringLiteral("只在开机时换"),
+        QStringLiteral("每小时"), QStringLiteral("每 3 小时"), QStringLiteral("每 6 小时"),
+        QStringLiteral("每天"), QStringLiteral("每周")
     });
     connect(wpInterval_, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &SettingsWindow::onWallpaperChanged);
-    ivRow->addWidget(ivLab);
-    ivRow->addWidget(wpInterval_);
-    ivRow->addStretch();
-    ev->addLayout(ivRow);
+    intRow->addWidget(wpInterval_);
+    intRow->addStretch();
+    ev->addLayout(intRow);
 
-    wpNowBtn_ = new QPushButton(QStringLiteral("立即换"));
-    wpNowBtn_->setObjectName("secondaryBtn");
+    wpNowBtn_ = new QPushButton(QStringLiteral("立即更换"));
+    wpNowBtn_->setObjectName("ghostBtn");
     wpNowBtn_->setFixedSize(kBtnW, kBtnH);
     wpNowBtn_->setCursor(Qt::PointingHandCursor);
     connect(wpNowBtn_, &QPushButton::clicked, this, &SettingsWindow::onWallpaperNow);
-    auto* btnRow = new QHBoxLayout;
-    btnRow->setAlignment(Qt::AlignLeft);
-    btnRow->addWidget(wpNowBtn_);
-    btnRow->addStretch();
-    ev->addLayout(btnRow);
+    auto* nowRow = new QHBoxLayout;
+    nowRow->setAlignment(Qt::AlignLeft);
+    nowRow->addWidget(wpNowBtn_);
+    nowRow->addStretch();
+    ev->addLayout(nowRow);
 
     v->addWidget(wpExtra_);
     lay->addWidget(makeCard(inner));
@@ -367,31 +400,28 @@ QWidget* SettingsWindow::buildClearPage() {
     auto* v = new QVBoxLayout(inner);
     v->setContentsMargins(0, 0, 0, 0);
     v->setSpacing(kRowGap);
-    v->addWidget(sectionTitle(QStringLiteral("清除数据")));
+    v->addWidget(sectionTitle(QStringLiteral("清除 Cursor 历史")));
 
-    auto* notice = new QLabel(
-        QStringLiteral("仅本地；云端 Agents 暂不支持。\n"
-                       "当前清除仅针对本地 Composer 对话 / 已归档 / 可选本地缓存。\n"
-                       "不会删除账号下的云端 Agents 与云端项目记录。"));
+    auto* notice = new QLabel(QStringLiteral("由托盘进程执行清理；请先勾选要清除的项。"));
     notice->setObjectName("notice");
     notice->setWordWrap(true);
-    notice->setAlignment(Qt::AlignLeft | Qt::AlignTop);
     v->addWidget(notice);
 
-    clrLocal_ = new QCheckBox(QStringLiteral("清除本地对话（Composer/Agent）"));
-    clrArchived_ = new QCheckBox(QStringLiteral("清除已归档对话"));
-    clrCache_ = new QCheckBox(QStringLiteral("清除本地缓存（检索/索引/Agent 产物）"));
-    clrSidebar_ = new QCheckBox(QStringLiteral("清除本地侧栏缓存（Projects 钉选 + Agents 本地缓存）"));
+    clrLocal_ = new QCheckBox(QStringLiteral("本地 Agent / 项目记录"));
+    clrArchived_ = new QCheckBox(QStringLiteral("已归档对话"));
+    clrCache_ = new QCheckBox(QStringLiteral("缓存"));
+    clrSidebar_ = new QCheckBox(QStringLiteral("侧边栏状态"));
     for (auto* c : {clrLocal_, clrArchived_, clrCache_, clrSidebar_}) {
         c->setFixedHeight(kRowH);
         v->addWidget(c);
     }
-    auto* risk = new QLabel(QStringLiteral("云端 Agents 重启或刷新后可能再次出现；不会删云端记录。Projects 本地钉选会被移除。"));
+
+    auto* risk = new QLabel(QStringLiteral("注意：可能删除本地会话态、settings.json、扩展与 MCP 配置、移动 Agents/项目目录。"));
     risk->setObjectName("risk");
     risk->setWordWrap(true);
     v->addWidget(risk);
 
-    clrBtn_ = new QPushButton(QStringLiteral("立即清除"));
+    clrBtn_ = new QPushButton(QStringLiteral("清除"));
     clrBtn_->setObjectName("dangerBtn");
     clrBtn_->setFixedSize(kBtnW, kBtnH);
     clrBtn_->setCursor(Qt::PointingHandCursor);
@@ -423,10 +453,11 @@ void SettingsWindow::applyStyle() {
         #card #notice, #notice { color: #6B7280; background: #F0F4FF; border-radius: 8px; padding: 10px; }
         #risk { color: #D97706; font-size: 12px; }
         #scEmpty { color: #6B7280; }
-        #scList { background: transparent; border: none; outline: none; }
-        #scList::item { height: 36px; padding: 4px 8px; border-radius: 6px; color: #111827; }
-        #scList::item:selected { background: #EFF6FF; color: #111827; }
+        #scList, #scPreview { background: #FAFBFC; border: 1px solid #E6E8EF; border-radius: 8px; outline: none; padding: 4px; }
+        #scList::item { height: 34px; padding: 2px 6px; border-radius: 6px; color: #111827; }
         #scList::item:hover { background: #F3F4F6; }
+        #scPreview::item { color: #111827; padding: 6px; border-radius: 8px; }
+        #scPane { background: transparent; }
         QPushButton#chip { background: #FFFFFF; border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 12px; text-align: left; color: #111827; }
         QPushButton#chip:checked { background: #EFF6FF; border-color: #3B82F6; color: #1D4ED8; }
         QPushButton#dangerBtn { background: #EF4444; color: white; border: none; border-radius: 6px; font-weight: 600; }
@@ -469,53 +500,103 @@ void SettingsWindow::loadFromConfig() {
     loading_ = false;
 }
 
-void SettingsWindow::reloadShortcutsList() {
-    if (!scList_) return;
-    const QStringList paths = ConfigStore::loadShortcuts();
-    scList_->clear();
+void SettingsWindow::reloadInstalledApps() {
+    scSelectedPaths_ = ConfigStore::loadShortcuts();
+    scApps_ = InstalledApps::enumerate();
+
+    // Inject saved shortcuts missing from enum so they stay visible/checked.
     QFileIconProvider icons;
-    for (const QString& p : paths) {
-        QFileInfo fi(p);
-        auto* item = new QListWidgetItem(icons.icon(fi), fi.completeBaseName().isEmpty() ? fi.fileName() : fi.completeBaseName());
-        item->setData(Qt::UserRole, p);
-        item->setToolTip(p);
-        item->setTextAlignment(Qt::AlignLeft | Qt::AlignVCenter);
-        scList_->addItem(item);
+    QSet<QString> known;
+    for (const auto& a : scApps_)
+        known.insert(a.launchPath.toLower());
+    for (const QString& p : scSelectedPaths_) {
+        if (p.isEmpty() || known.contains(p.toLower())) continue;
+        InstalledApp a;
+        a.launchPath = p;
+        a.target = p.endsWith(QStringLiteral(".lnk"), Qt::CaseInsensitive)
+                       ? InstalledApps::resolveLnk(p) : p;
+        a.name = QFileInfo(p).completeBaseName();
+        if (a.name.isEmpty()) a.name = QFileInfo(p).fileName();
+        a.isSystem = InstalledApps::isSystemApp(a.name, a.launchPath, a.target);
+        scApps_.prepend(a);
+        known.insert(p.toLower());
     }
-    const bool empty = paths.isEmpty();
-    scEmpty_->setVisible(empty);
-    scList_->setVisible(!empty);
-    onShortcutSelectionChanged();
+
+    rebuildLeftList();
+    rebuildRightPreview();
 }
 
-void SettingsWindow::persistShortcutsAndNotify() {
-    QStringList paths;
-    for (int i = 0; i < scList_->count(); ++i) {
-        paths.append(scList_->item(i)->data(Qt::UserRole).toString());
+void SettingsWindow::rebuildLeftList() {
+    if (!scLeftList_) return;
+    scRebuilding_ = true;
+    scLeftList_->clear();
+    QFileIconProvider icons;
+    const QString filter = scSearch_ ? scSearch_->text().trimmed() : QString();
+    const bool showSys = scShowSystem_ && scShowSystem_->isChecked();
+
+    for (const auto& a : scApps_) {
+        if (!showSys && a.isSystem) continue;
+        if (!filter.isEmpty() && !a.name.contains(filter, Qt::CaseInsensitive)) continue;
+        const QString iconPath = !a.target.isEmpty() ? a.target : a.launchPath;
+        auto* item = new QListWidgetItem(icons.icon(QFileInfo(iconPath)), a.name);
+        item->setData(kRoleLaunch, a.launchPath);
+        item->setData(kRoleTarget, a.target);
+        item->setData(kRoleIsSystem, a.isSystem);
+        item->setToolTip(a.launchPath);
+        item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
+        bool checked = false;
+        for (const QString& s : scSelectedPaths_) {
+            if (s.compare(a.launchPath, Qt::CaseInsensitive) == 0) { checked = true; break; }
+        }
+        item->setCheckState(checked ? Qt::Checked : Qt::Unchecked);
+        scLeftList_->addItem(item);
     }
-    ConfigStore::saveShortcuts(paths);
-    HostBridge::notifyConfigChanged();
-    reloadShortcutsList();
+    scRebuilding_ = false;
 }
 
-void SettingsWindow::addShortcutPath(const QString& path) {
-    if (path.isEmpty()) return;
-    if (scList_->count() >= ConfigStore::kMaxShortcuts) {
-        QMessageBox::information(this, QStringLiteral("快捷方式"),
-                                 QStringLiteral("最多 %1 个快捷方式。").arg(ConfigStore::kMaxShortcuts));
-        return;
-    }
-    for (int i = 0; i < scList_->count(); ++i) {
-        if (scList_->item(i)->data(Qt::UserRole).toString().compare(path, Qt::CaseInsensitive) == 0)
-            return;
-    }
-    QFileInfo fi(path);
+void SettingsWindow::rebuildRightPreview() {
+    if (!scRightList_ || !scRightEmpty_) return;
+    scRightList_->clear();
     QFileIconProvider icons;
-    auto* item = new QListWidgetItem(icons.icon(fi), fi.completeBaseName().isEmpty() ? fi.fileName() : fi.completeBaseName());
-    item->setData(Qt::UserRole, path);
-    item->setToolTip(path);
-    scList_->addItem(item);
-    persistShortcutsAndNotify();
+    QHash<QString, InstalledApp> byLaunch;
+    for (const auto& a : scApps_)
+        byLaunch.insert(a.launchPath.toLower(), a);
+
+    for (const QString& p : scSelectedPaths_) {
+        InstalledApp a = byLaunch.value(p.toLower());
+        if (a.launchPath.isEmpty()) {
+            a.launchPath = p;
+            a.name = QFileInfo(p).completeBaseName();
+            if (a.name.isEmpty()) a.name = QFileInfo(p).fileName();
+            a.target = p.endsWith(QStringLiteral(".lnk"), Qt::CaseInsensitive)
+                           ? InstalledApps::resolveLnk(p) : p;
+        }
+        const QString iconPath = !a.target.isEmpty() ? a.target : a.launchPath;
+        auto* item = new QListWidgetItem(icons.icon(QFileInfo(iconPath)), a.name);
+        item->setData(kRoleLaunch, a.launchPath);
+        item->setToolTip(a.launchPath);
+        item->setTextAlignment(Qt::AlignHCenter | Qt::AlignTop);
+        item->setSizeHint(QSize(88, 78));
+        scRightList_->addItem(item);
+    }
+    const bool empty = scSelectedPaths_.isEmpty();
+    scRightEmpty_->setVisible(empty);
+    scRightList_->setVisible(!empty);
+}
+
+void SettingsWindow::syncChecksFromSelected() {
+    if (!scLeftList_) return;
+    scRebuilding_ = true;
+    for (int i = 0; i < scLeftList_->count(); ++i) {
+        auto* item = scLeftList_->item(i);
+        const QString launch = item->data(kRoleLaunch).toString();
+        bool on = false;
+        for (const QString& s : scSelectedPaths_) {
+            if (s.compare(launch, Qt::CaseInsensitive) == 0) { on = true; break; }
+        }
+        item->setCheckState(on ? Qt::Checked : Qt::Unchecked);
+    }
+    scRebuilding_ = false;
 }
 
 void SettingsWindow::persistAndNotify() {
@@ -536,7 +617,7 @@ void SettingsWindow::persistAndNotify() {
 
 void SettingsWindow::onNavChanged(int row) {
     if (row >= 0) stack_->setCurrentIndex(row);
-    if (row == 1) reloadShortcutsList();
+    if (row == 1) reloadInstalledApps();
 }
 
 void SettingsWindow::onGeneralChanged() {
@@ -553,43 +634,64 @@ void SettingsWindow::onWallpaperChanged() {
 void SettingsWindow::onWallpaperNow() {
     persistAndNotify();
     if (!HostBridge::requestWallpaperNow()) {
-        QMessageBox::warning(this, QStringLiteral("立即换壁纸"),
-                             QStringLiteral("未找到运行中的托盘进程（CursorUsageWidget）。请先启动用量小窗。"));
+        QMessageBox::warning(this, QStringLiteral("立即更换壁纸"),
+                             QStringLiteral("未找到运行中的托盘进程（CursorUsageWidget）。请先启动用量环托盘。"));
     }
 }
 
-void SettingsWindow::onShortcutAdd() {
-    // Always pick in-settings via QFileDialog; do not open tray manage dialog.
-    if (scList_->count() >= ConfigStore::kMaxShortcuts) {
-        QMessageBox::information(this, QStringLiteral("快捷方式"),
-                                 QStringLiteral("最多 %1 个快捷方式。").arg(ConfigStore::kMaxShortcuts));
-        return;
-    }
-    const QString path = QFileDialog::getOpenFileName(
-        this, QStringLiteral("添加快捷方式"),
-        QString(),
-        QStringLiteral("程序或快捷方式 (*.exe *.lnk);;所有文件 (*.*)"));
-    if (path.isEmpty()) return;
-    addShortcutPath(QDir::toNativeSeparators(path));
+void SettingsWindow::onShortcutSearchChanged(const QString&) {
+    rebuildLeftList();
 }
 
-void SettingsWindow::onShortcutDelete() {
-    auto* item = scList_ ? scList_->currentItem() : nullptr;
-    if (!item) return;
-    delete scList_->takeItem(scList_->row(item));
-    persistShortcutsAndNotify();
+void SettingsWindow::onShortcutShowSystemToggled(bool) {
+    rebuildLeftList();
+}
+
+void SettingsWindow::onShortcutItemChanged(QListWidgetItem* item) {
+    if (scRebuilding_ || !item) return;
+    const QString launch = item->data(kRoleLaunch).toString();
+    if (launch.isEmpty()) return;
+
+    if (item->checkState() == Qt::Checked) {
+        for (const QString& s : scSelectedPaths_) {
+            if (s.compare(launch, Qt::CaseInsensitive) == 0) {
+                rebuildRightPreview();
+                return;
+            }
+        }
+        if (scSelectedPaths_.size() >= ConfigStore::kMaxShortcuts) {
+            scRebuilding_ = true;
+            item->setCheckState(Qt::Unchecked);
+            scRebuilding_ = false;
+            QMessageBox::information(this, QStringLiteral("快捷方式"),
+                                     QStringLiteral("最多 %1 个快捷方式。").arg(ConfigStore::kMaxShortcuts));
+            return;
+        }
+        scSelectedPaths_.append(launch);
+    } else {
+        for (int i = 0; i < scSelectedPaths_.size(); ++i) {
+            if (scSelectedPaths_[i].compare(launch, Qt::CaseInsensitive) == 0) {
+                scSelectedPaths_.removeAt(i);
+                break;
+            }
+        }
+    }
+    rebuildRightPreview();
+}
+
+void SettingsWindow::onShortcutSave() {
+    ConfigStore::saveShortcuts(scSelectedPaths_);
+    HostBridge::notifyConfigChanged();  // WM_APP+0x41 only
+    scSelectedPaths_ = ConfigStore::loadShortcuts();
+    syncChecksFromSelected();
+    rebuildRightPreview();
 }
 
 void SettingsWindow::onShortcutOpen(QListWidgetItem* item) {
     if (!item) return;
-    const QString path = item->data(Qt::UserRole).toString();
+    const QString path = item->data(kRoleLaunch).toString();
     if (path.isEmpty()) return;
     QDesktopServices::openUrl(QUrl::fromLocalFile(path));
-}
-
-void SettingsWindow::onShortcutSelectionChanged() {
-    if (scDelBtn_)
-        scDelBtn_->setEnabled(scList_ && scList_->currentItem() != nullptr);
 }
 
 void SettingsWindow::onClearClicked() {
@@ -605,11 +707,11 @@ void SettingsWindow::onClearClicked() {
     }
     const auto ans = QMessageBox::question(
         this, QStringLiteral("确认清除 Cursor 历史"),
-        QStringLiteral("确定清除吗？\n不会删除：登录态、settings.json、扩展与 MCP 配置、云端 Agents/项目记录。"),
+        QStringLiteral("确定继续吗？\n可能删除本地会话态、settings.json、扩展与 MCP 配置、移动 Agents/项目目录。"),
         QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
     if (ans != QMessageBox::Yes) return;
     if (!HostBridge::requestClearHistory(opt)) {
         QMessageBox::warning(this, QStringLiteral("清除失败"),
-                             QStringLiteral("未找到运行中的托盘进程（CursorUsageWidget）。请先启动用量小窗。"));
+                             QStringLiteral("未找到运行中的托盘进程（CursorUsageWidget）。请先启动用量环托盘。"));
     }
 }

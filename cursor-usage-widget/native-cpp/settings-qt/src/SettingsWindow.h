@@ -11,7 +11,9 @@
 #include <QButtonGroup>
 #include <QComboBox>
 #include <QEvent>
+#include <QStringList>
 #include "ConfigStore.h"
+#include "InstalledApps.h"
 
 class SettingsWindow : public QMainWindow {
     Q_OBJECT
@@ -22,7 +24,6 @@ protected:
     void closeEvent(QCloseEvent* e) override;
     void keyPressEvent(QKeyEvent* e) override;
     void changeEvent(QEvent* e) override;
-    bool eventFilter(QObject* obj, QEvent* e) override;
 
 private slots:
     void onNavChanged(int row);
@@ -30,10 +31,11 @@ private slots:
     void onWallpaperChanged();
     void onClearClicked();
     void onWallpaperNow();
-    void onShortcutAdd();
-    void onShortcutDelete();
+    void onShortcutSearchChanged(const QString& text);
+    void onShortcutShowSystemToggled(bool on);
+    void onShortcutItemChanged(QListWidgetItem* item);
+    void onShortcutSave();
     void onShortcutOpen(QListWidgetItem* item);
-    void onShortcutSelectionChanged();
 
 private:
     void buildUi();
@@ -46,9 +48,10 @@ private:
     void loadFromConfig();
     void applyStyle();
     void persistAndNotify();
-    void reloadShortcutsList();
-    void persistShortcutsAndNotify();
-    void addShortcutPath(const QString& path);
+    void reloadInstalledApps();
+    void rebuildLeftList();
+    void rebuildRightPreview();
+    void syncChecksFromSelected();
     QWidget* wrapScroll(QWidget* col);
 
     QListWidget* nav_ = nullptr;
@@ -61,10 +64,17 @@ private:
     QCheckBox* showBot_ = nullptr;
     QButtonGroup* ringGroup_ = nullptr;
 
-    QLabel* scEmpty_ = nullptr;
-    QListWidget* scList_ = nullptr;
-    QPushButton* scAddBtn_ = nullptr;
-    QPushButton* scDelBtn_ = nullptr;
+    // Shortcuts page: left enumerate / right selected preview
+    QLineEdit* scSearch_ = nullptr;
+    QCheckBox* scShowSystem_ = nullptr;
+    QListWidget* scLeftList_ = nullptr;
+    QListWidget* scRightList_ = nullptr;
+    QLabel* scRightEmpty_ = nullptr;
+    QPushButton* scSaveBtn_ = nullptr;
+    QLabel* scHint_ = nullptr;
+    QVector<InstalledApp> scApps_;
+    QStringList scSelectedPaths_;  // ordered launch paths (max 9)
+    bool scRebuilding_ = false;
 
     QCheckBox* wpEnabled_ = nullptr;
     QLineEdit* wpUrl_ = nullptr;
