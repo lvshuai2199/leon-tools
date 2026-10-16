@@ -17,8 +17,8 @@
 
 namespace {
 constexpr int kNavW = 120;
-constexpr int kWinW = 820;
-constexpr int kWinH = 560;
+constexpr int kWinW = 700;
+constexpr int kWinH = 480;
 constexpr int kContentPadH = 24;
 constexpr int kContentPadV = 20;
 constexpr int kCardGap = 16;
@@ -40,7 +40,7 @@ SettingsWindow::SettingsWindow(QWidget* parent) : QMainWindow(parent) {
     setWindowFlags(Qt::Window);
     setAttribute(Qt::WA_DeleteOnClose, false);
     resize(kWinW, kWinH);
-    setMinimumSize(760, 500);
+    setMinimumSize(640, 420);
     buildUi();
     applyStyle();
     loadFromConfig();
