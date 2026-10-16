@@ -350,27 +350,31 @@ QWidget* SettingsWindow::buildClearPage() {
 
 void SettingsWindow::applyStyle() {
     setStyleSheet(QStringLiteral(R"(
-        QMainWindow, QWidget { background: #F5F6F8; color: #1F2329; font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; font-size: 13px; }
-        #nav { background: #EBEDF0; border: none; outline: none; padding: 10px 0; color: #1F2329; }
-        #nav::item { height: 36px; padding-left: 12px; margin: 2px 10px; border-radius: 8px; color: #1F2329; }
-        #nav::item:selected { background: #E8F3FF; color: #1F2329; }
-        #nav::item:selected:!active { background: #E8F3FF; color: #1F2329; }
-        #card { background: #FFFFFF; border: 1px solid #E5E6EB; border-radius: 10px; }
-        #sectionTitle { color: #8A8F98; font-size: 13px; font-weight: 500; }
-        #notice { color: #4E5969; background: #F2F3F5; border-radius: 8px; padding: 10px; }
-        #risk { color: #C47800; font-size: 12px; }
-        QPushButton#chip { background: #F2F3F5; border: 1px solid #E5E6EB; border-radius: 6px; padding: 0 12px; text-align: left; }
-        QPushButton#chip:checked { background: #E8F3FF; border-color: #3491FA; color: #165DFF; }
-        QPushButton#dangerBtn { background: #F53F3F; color: white; border: none; border-radius: 6px; font-weight: 600; }
-        QPushButton#dangerBtn:hover { background: #E33939; }
-        QPushButton#dangerBtn:disabled { background: #E5E6EB; color: #A9AEB8; }
-        QPushButton#secondaryBtn { background: #F8F8FA; color: #202022; border: 1px solid #D8DCE1; border-radius: 6px; }
-        QPushButton#secondaryBtn:hover { background: #F2F3F5; }
-        QPushButton#secondaryBtn:disabled { background: #F3F4F6; color: #A8ADB5; }
-        QLineEdit { border: 1px solid #E5E6EB; border-radius: 6px; padding: 0 8px; background: #FFF; }
-        QComboBox { border: 1px solid #E5E6EB; border-radius: 6px; padding: 0 8px; background: #FFF; }
+        QMainWindow, QWidget { background: #F4F6FA; color: #111827; font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; font-size: 13px; }
+        #nav { background: #EEF1F6; border: none; outline: none; padding: 10px 0; color: #111827; }
+        #nav::item { height: 36px; padding-left: 12px; margin: 2px 10px; border-radius: 8px; color: #111827; }
+        #nav::item:selected { background: #EFF6FF; color: #111827; }
+        #nav::item:selected:!active { background: #EFF6FF; color: #111827; }
+        #card { background: #FFFFFF; border: 1px solid #E6E8EF; border-radius: 10px; }
+        #sectionTitle { color: #6B7280; font-size: 13px; font-weight: 500; }
+        #notice { color: #6B7280; background: #F0F4FF; border-radius: 8px; padding: 10px; }
+        #risk { color: #D97706; font-size: 12px; }
+        QPushButton#chip { background: #FFFFFF; border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 12px; text-align: left; color: #111827; }
+        QPushButton#chip:checked { background: #EFF6FF; border-color: #3B82F6; color: #1D4ED8; }
+        QPushButton#dangerBtn { background: #EF4444; color: white; border: none; border-radius: 6px; font-weight: 600; }
+        QPushButton#dangerBtn:hover { background: #DC2626; }
+        QPushButton#dangerBtn:disabled { background: #E6E8EF; color: #9CA3AF; }
+        QPushButton#secondaryBtn { background: #3B82F6; color: white; border: none; border-radius: 6px; }
+        QPushButton#secondaryBtn:hover { background: #2563EB; }
+        QPushButton#secondaryBtn:disabled { background: #E6E8EF; color: #9CA3AF; }
+        QLineEdit { border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 8px; background: #FFF; color: #111827; }
+        QLineEdit:focus { border: 1px solid #3B82F6; }
+        QComboBox { border: 1px solid #E6E8EF; border-radius: 6px; padding: 0 8px; background: #FFF; color: #111827; }
+        QComboBox:focus { border: 1px solid #3B82F6; }
         QComboBox::drop-down { border: none; width: 24px; }
-        QCheckBox { spacing: 8px; }
+        QCheckBox { spacing: 8px; color: #111827; }
+        QCheckBox::indicator { width: 16px; height: 16px; border-radius: 4px; border: 1px solid #E6E8EF; background: #FFFFFF; }
+        QCheckBox::indicator:checked { background: #3B82F6; border-color: #3B82F6; }
     )"));
 }
 
