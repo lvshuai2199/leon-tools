@@ -410,14 +410,18 @@ QWidget* SettingsWindow::buildClearPage() {
 
 void SettingsWindow::applyStyle() {
     setStyleSheet(QStringLiteral(R"(
-        QMainWindow, QWidget { background: #F4F6FA; color: #111827; font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; font-size: 13px; }
+        QMainWindow { background: #F4F6FA; color: #111827; font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; font-size: 13px; }
+        QWidget { color: #111827; font-family: "Microsoft YaHei UI", "Segoe UI", sans-serif; font-size: 13px; }
+        QStackedWidget, QScrollArea { background: #F4F6FA; border: none; }
+        QScrollArea > QWidget > QWidget { background: #F4F6FA; }
         #nav { background: #EEF1F6; border: none; outline: none; padding: 10px 0; color: #111827; }
         #nav::item { height: %1px; padding-left: 12px; padding-right: 12px; margin: 2px 10px; border-radius: 8px; color: #111827; }
         #nav::item:selected { background: #EFF6FF; color: #111827; }
         #nav::item:selected:!active { background: #EFF6FF; color: #111827; }
         #card { background: #FFFFFF; border: 1px solid #E6E8EF; border-radius: 10px; }
-        #sectionTitle { color: #6B7280; font-size: 13px; font-weight: 500; }
-        #notice { color: #6B7280; background: #F0F4FF; border-radius: 8px; padding: 10px; }
+        #card QWidget { background: transparent; }
+        #sectionTitle { color: #6B7280; font-size: 13px; font-weight: 500; background: transparent; }
+        #card #notice, #notice { color: #6B7280; background: #F0F4FF; border-radius: 8px; padding: 10px; }
         #risk { color: #D97706; font-size: 12px; }
         #scEmpty { color: #6B7280; }
         #scList { background: transparent; border: none; outline: none; }
