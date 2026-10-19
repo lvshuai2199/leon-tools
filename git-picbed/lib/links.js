@@ -128,6 +128,19 @@ function createDecider({ fileDir, bedPrefix, bedPrefixes, knownUrls, urlByPath, 
         if (next) return { type: "keep" };
         return { type: "clear" };
       }
+      // Cross-provider: map GitHub raw paths onto current bed when file is known
+      const gh = clean.match(/^https:\/\/raw\.githubusercontent\.com\/[^/]+\/[^/]+\/[^/]+\/(.+)$/i);
+      if (gh) {
+        let decoded = gh[1];
+        try {
+          decoded = decodeURIComponent(gh[1]);
+        } catch {
+          decoded = gh[1];
+        }
+        const next = urlByPath && urlByPath.get(decoded);
+        if (next && next !== clean) return { type: "replace", url: next };
+        if (next) return { type: "keep" };
+      }
       return { type: "keep" };
     }
     const found = classifyFile(localAbs(fileDir, url));
