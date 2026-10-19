@@ -94,7 +94,7 @@ sealed class TrayApp : ApplicationContext
         string node = @"D:\Softs\nvm4w\nodejs\node.exe";
         if (!File.Exists(node)) node = "node";
 
-        Icon icon = LoadNodeIcon(node);
+        Icon icon = LoadTrayIcon(dir, node);
 
         var open = new ToolStripMenuItem("\u6253\u5f00\u9875\u9762");
         open.Click += (s, e) => Program.OpenPage(dir);
@@ -129,6 +129,17 @@ sealed class TrayApp : ApplicationContext
             try { pump.BeginInvoke((Action)HandleChildExit); }
             catch { Environment.Exit(0); }
         };
+    }
+
+    static Icon LoadTrayIcon(string dir, string node)
+    {
+        string ico = Path.Combine(dir, "git-picbed.ico");
+        if (File.Exists(ico))
+        {
+            try { return new Icon(ico); }
+            catch { }
+        }
+        return LoadNodeIcon(node);
     }
 
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]

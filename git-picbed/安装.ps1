@@ -98,7 +98,7 @@ if (-not $same) { Stop-Picbed $dest }
 
 if (-not $same) {
   foreach ($name in @(
-    "server.js", "package.json", "启动.bat", "开机启动.vbs", "隐藏启动.ps1", "launch.cs",
+    "server.js", "package.json", "启动.bat", "开机启动.vbs", "隐藏启动.ps1", "launch.cs", "git-picbed.ico",
     "config.example.json", "README.md", "安装.bat", "安装.ps1", "卸载.bat", "卸载.ps1"
   )) {
     $src = Join-Path $here $name

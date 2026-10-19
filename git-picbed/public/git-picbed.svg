@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="none">
+  <!-- Git图床 tray: white line picture glyph, transparent bg -->
+  <rect x="4" y="4" width="24" height="24" rx="1" stroke="#FFFFFF" stroke-width="2"/>
+  <circle cx="22" cy="11" r="2.2" stroke="#FFFFFF" stroke-width="2"/>
+  <path d="M6.5 24 L12 14 L15.5 18.5 L20 12 L25.5 24" stroke="#FFFFFF" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>
+  <path d="M6.5 24 L25.5 24" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round"/>
+</svg>
