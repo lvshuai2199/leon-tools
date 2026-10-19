@@ -129,7 +129,10 @@ function renderImages(state) {
   for (const image of images) {
     const row = document.createElement("tr");
     const name = document.createElement("td");
-    name.textContent = image.name || image.path;
+    name.className = "cell-name";
+    const nameText = image.name || image.path;
+    name.textContent = nameText;
+    name.title = nameText;
     const info = document.createElement("td");
     info.textContent = `${formatSize(image.size)} ${image.width || 0}x${image.height || 0}`;
     const status = document.createElement("td");
@@ -143,6 +146,7 @@ function renderImages(state) {
       const wrap = document.createElement("div");
       wrap.className = "link";
       const code = document.createElement("code");
+      code.title = shown;
       code.textContent = image.status === "pushed" ? shown : "未推送 · " + shown;
       const copy = document.createElement("button");
       copy.type = "button";
