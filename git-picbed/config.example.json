@@ -1,14 +1,24 @@
 {
   "port": 3791,
   "provider": "gitee",
-  "repoPath": "",
+  "repoPath": "D:\\GitFiles\\personal\\your-picbed-repo",
   "remote": "origin",
   "branch": "master",
   "imageDir": "imgs",
   "owner": "",
   "repo": "",
-  "watchFolders": [],
-  "docFolders": [],
+  "watchFolders": [
+    {
+      "id": "imgs",
+      "path": "D:\\GitFiles\\tempFiles\\imgs"
+    }
+  ],
+  "docFolders": [
+    {
+      "id": "notes",
+      "path": "D:\\GitFiles\\personal\\leon-notes"
+    }
+  ],
   "clearMissingLinks": true,
   "schedule": {
     "enabled": false,
