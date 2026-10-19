@@ -255,6 +255,7 @@ async function workspace(repo, id) {
     changes,
     branches: branchList,
     branchTree: branchTree(branchList, { detached, current: branch }),
+    remotes: await listRemotes(repo),
     stashes: await listStashes(repo),
   };
 }
@@ -647,15 +648,22 @@ async function pull(repo, id, tokens) {
   return done(repo, id, "已拉取");
 }
 
-async function push(repo, id, tokens) {
+async function push(repo, id, tokens, target = {}) {
   const branch = await assertBranch(repo);
-  await requireOrigin(repo);
+  const remotes = await listRemotes(repo);
+  const remoteName = String(target.remote || "origin").trim();
+  if (!remoteName || remoteName.startsWith("-") || !remotes.includes(remoteName)) {
+    throw new Error(remoteName === "origin" ? "还没有 origin 远程" : "没有这个远程");
+  }
+  const dest = branchName(target.branch || branch);
   try {
-    await withAuth(repo, tokens, (auth) => git(repo, ["push", "-u", "origin", "HEAD"], { ...auth, timeout: 120000 }));
+    await withAuth(repo, tokens, (auth) =>
+      git(repo, ["push", "-u", remoteName, `HEAD:refs/heads/${dest}`], { ...auth, timeout: 120000 })
+    );
   } catch (error) {
     throw new Error(scrub(error.message, tokens.githubToken || tokens.giteeToken) || "推送被拒绝");
   }
-  return done(repo, id, `已推送 ${branch}`);
+  return done(repo, id, `已推送到 ${remoteName}/${dest}`);
 }
 
 async function createBranch(repo, id, name) {
@@ -730,6 +738,25 @@ async function deleteBranch(repo, id, name, options = {}) {
     throw error;
   }
   return done(repo, id, `已删除 ${branch}`);
+}
+
+async function renameBranch(repo, id, from, to) {
+  const oldName = branchName(from);
+  const newName = branchName(to);
+  if (oldName === newName) throw new Error("名字没有变");
+  if (await isRemoteBranch(repo, oldName)) throw new Error("这里只改本地分支的名字");
+  const current = await currentBranch(repo);
+  const head = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  try {
+    if (oldName === current) await git(repo, ["branch", "-m", newName]);
+    else await git(repo, ["branch", "-m", oldName, newName]);
+  } catch (error) {
+    if (/already exists/i.test(error.message)) throw new Error("已经有这个分支");
+    throw error;
+  }
+  const headNow = (await git(repo, ["rev-parse", "HEAD"])).stdout.trim();
+  if (headNow !== head) throw new Error("改名失败，提交没有动");
+  return done(repo, id, `已把 ${oldName} 改成 ${newName}`);
 }
 
 async function merge(repo, id, branch) {
@@ -1546,6 +1573,7 @@ module.exports = {
   createBranchAt,
   checkout,
   deleteBranch,
+  renameBranch,
   merge,
   rebase,
   rebaseFrom,

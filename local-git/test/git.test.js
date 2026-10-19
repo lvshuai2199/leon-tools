@@ -606,17 +606,38 @@ test("空 shas 不能合成也不能接到后面", async () => {
   assert.equal(subjectOf(dir), "third");
 });
 
-test("push 的参数仍是 push -u origin HEAD", async () => {
+test("推送可以改远程分支名，不能强制覆盖", async () => {
   const source = fs.readFileSync(path.join(__dirname, "../lib/git.js"), "utf8");
-  assert.match(source, /\["push", "-u", "origin", "HEAD"\]/);
   assert.doesNotMatch(source, /push",\s*"--force/);
+  assert.doesNotMatch(source, /--force-with-lease/);
   const dir = initRepo(path.join(os.tmpdir(), `local-git-push-${Date.now()}`));
   const bare = path.join(os.tmpdir(), `local-git-bare-${Date.now()}`);
   execFileSync("git", ["init", "--bare", "-b", "main", bare], { windowsHide: true, stdio: "pipe" });
   gitCmd(dir, ["remote", "add", "origin", bare]);
   const op = await git.push(dir, "repo", {});
-  assert.match(op.notice, /已推送/);
+  assert.match(op.notice, /origin\/main/);
   assert.equal(execFileSync("git", ["rev-parse", "--abbrev-ref", "@{upstream}"], { cwd: dir, encoding: "utf8" }).trim(), "origin/main");
+  gitCmd(dir, ["switch", "-c", "topic"]);
+  commitFile(dir, "c.txt", "topic\n", "topic");
+  const head = rev(dir);
+  const renamed = await git.push(dir, "repo", {}, { remote: "origin", branch: "published" });
+  assert.match(renamed.notice, /origin\/published/);
+  assert.equal(branchOf(dir), "topic");
+  assert.equal(rev(dir), head);
+  assert.equal(execFileSync("git", ["rev-parse", "--abbrev-ref", "@{upstream}"], { cwd: dir, encoding: "utf8" }).trim(), "origin/published");
+  assert.equal(rev(bare, "published"), head);
+  await assert.rejects(git.push(dir, "repo", {}, { remote: "nope", branch: "published" }), /没有这个远程/);
+  assert.equal(branchOf(dir), "topic");
+  assert.equal(rev(dir), head);
+  const other = initRepo(path.join(os.tmpdir(), `local-git-push-other-${Date.now()}`));
+  gitCmd(other, ["remote", "add", "origin", bare]);
+  gitCmd(other, ["fetch", "origin"]);
+  gitCmd(other, ["switch", "-c", "published", "--track", "origin/published"]);
+  commitFile(other, "z.txt", "z\n", "diverge");
+  gitCmd(other, ["push", "origin", "HEAD:refs/heads/published"]);
+  await assert.rejects(git.push(dir, "repo", {}, { remote: "origin", branch: "published" }), /non-fast-forward|rejected|拒绝/);
+  assert.equal(rev(dir), head);
+  assert.equal(branchOf(dir), "topic");
 });
 
 test("新建分支可以带着未提交改动", async () => {
@@ -802,4 +823,31 @@ test("从某次提交新建分支，当前分支和 HEAD 不动", async () => {
   assert.equal(rev(dir, "from-old"), first);
   await assert.rejects(git.createBranchAt(dir, "repo", "from-old", first), /已经有这个分支/);
   assert.equal(rev(dir), head);
+});
+
+test("可以改本地分支的名字，当前分支和提交不动", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-rename-${Date.now()}`));
+  gitCmd(dir, ["branch", "topic"]);
+  const head = rev(dir);
+  const op = await git.renameBranch(dir, "repo", "topic", "topic-2");
+  assert.match(op.notice, /topic-2/);
+  assert.equal(branchOf(dir), "main");
+  assert.equal(rev(dir), head);
+  assert.equal(rev(dir, "topic-2"), head);
+  await assert.rejects(git.renameBranch(dir, "repo", "topic-2", "main"), /已经有这个分支/);
+  assert.equal(branchOf(dir), "main");
+  const renamed = await git.renameBranch(dir, "repo", "main", "trunk");
+  assert.match(renamed.notice, /trunk/);
+  assert.equal(branchOf(dir), "trunk");
+  assert.equal(rev(dir), head);
+});
+
+test("远程分支不能改名", async () => {
+  const dir = initRepo(path.join(os.tmpdir(), `local-git-rename-remote-${Date.now()}`));
+  const head = rev(dir);
+  gitCmd(dir, ["remote", "add", "origin", "https://example.com/example.git"]);
+  gitCmd(dir, ["update-ref", "refs/remotes/origin/topic", head]);
+  await assert.rejects(git.renameBranch(dir, "repo", "origin/topic", "topic-2"), /只改本地分支/);
+  assert.equal(rev(dir), head);
+  assert.equal(branchOf(dir), "main");
 });
