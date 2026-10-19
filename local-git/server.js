@@ -93,11 +93,12 @@ async function route(req, res) {
   else if (req.method === "POST" && url.pathname === "/api/unstage") data = await service.unstage(repo, body.files);
   else if (req.method === "POST" && url.pathname === "/api/fetch") data = await service.fetch(repo);
   else if (req.method === "POST" && url.pathname === "/api/pull") data = await service.pull(repo);
-  else if (req.method === "POST" && url.pathname === "/api/push") data = await service.push(repo);
+  else if (req.method === "POST" && url.pathname === "/api/push") data = await service.push(repo, body.remote, body.branch);
   else if (req.method === "POST" && url.pathname === "/api/branch") data = await service.branch(repo, body.name);
   else if (req.method === "POST" && url.pathname === "/api/branch-at") data = await service.branchAt(repo, body.name, body.sha);
   else if (req.method === "POST" && url.pathname === "/api/checkout") data = await service.checkout(repo, body.name, body.stash === true);
   else if (req.method === "POST" && url.pathname === "/api/delete-branch") data = await service.deleteBranch(repo, body.name, body.force === true);
+  else if (req.method === "POST" && url.pathname === "/api/rename-branch") data = await service.renameBranch(repo, body.from, body.to);
   else if (req.method === "POST" && url.pathname === "/api/merge") data = await service.merge(repo, body.branch);
   else if (req.method === "POST" && url.pathname === "/api/rebase") data = await service.rebase(repo, body.onto);
   else if (req.method === "POST" && url.pathname === "/api/rebase-from") data = await service.rebaseFrom(repo, body.sha, body.onto);
