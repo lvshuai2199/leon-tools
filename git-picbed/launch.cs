@@ -11,9 +11,14 @@ static class Program
 {
     static Mutex mutex;
 
+    [DllImport("user32.dll")]
+    static extern bool SetProcessDPIAware();
+
+
     [STAThread]
     static int Main(string[] args)
     {
+        try { SetProcessDPIAware(); } catch { }
         bool silent = false;
         foreach (string arg in args)
         {
@@ -136,12 +141,35 @@ sealed class TrayApp : ApplicationContext
         string ico = Path.Combine(dir, "git-picbed.ico");
         if (File.Exists(ico))
         {
-            try { return new Icon(ico); }
+            try
+            {
+                int px = TrayIconPixels();
+                return new Icon(ico, new Size(px, px));
+            }
             catch { }
         }
         return LoadNodeIcon(node);
     }
 
+    static int TrayIconPixels()
+    {
+        try
+        {
+            using (var g = Graphics.FromHwnd(IntPtr.Zero))
+            {
+                float scale = g.DpiX / 96f;
+                if (scale >= 2f) return 32;
+                if (scale >= 1.25f) return 24;
+                return 16;
+            }
+        }
+        catch
+        {
+            return 16;
+        }
+    }
+
+
     [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
     static extern int SHDefExtractIcon(string pszIconFile, int iIndex, uint uFlags, out IntPtr phiconLarge, out IntPtr phiconSmall, uint nIconSize);
 
