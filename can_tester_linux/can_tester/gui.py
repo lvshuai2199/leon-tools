@@ -25,7 +25,11 @@ def _sharpen_fonts_before_tk() -> None:
     A previous fonts.conf used a DOCTYPE that fontconfig rejects, so Tk only
     saw a Latin face and every Chinese character became an empty box.
     WenQuanYi is drawn with hinting off, matching its own fontconfig snippet.
+    System .run launches set CAN_TESTER_SYSTEM_FONTS=1 and keep the desktop
+    fontconfig, which has the complete CJK faces.
     """
+    if os.environ.get("CAN_TESTER_SYSTEM_FONTS") == "1":
+        return
     if os.name != "posix" or os.environ.get("FONTCONFIG_FILE"):
         return
     font_dir = _bundled_cjk_dir()
@@ -300,7 +304,7 @@ def _font_families(root: tk.Misc) -> set[str]:
 def _choose_ui_family(root: tk.Misc) -> str:
     """WenQuanYi stays sharp at UI sizes. Noto CJK at 9–10px goes muddy in Tk."""
     families = _font_families(root)
-    for name in (
+    names = [
         "WenQuanYi Micro Hei",
         "WenQuanYi Zen Hei",
         "Noto Sans CJK SC",
@@ -312,7 +316,17 @@ def _choose_ui_family(root: tk.Misc) -> str:
         "AR PL UMing CN",
         "Microsoft YaHei",
         "PingFang SC",
-    ):
+    ]
+    if os.environ.get("CAN_TESTER_SYSTEM_FONTS") == "1":
+        names = [
+            "Noto Sans CJK SC",
+            "Noto Sans CJK JP",
+            "Noto Sans CJK TC",
+            "Source Han Sans SC",
+            "Source Han Sans CN",
+            "Droid Sans Fallback",
+        ] + names
+    for name in names:
         if name in families:
             return name
     return "Sans"

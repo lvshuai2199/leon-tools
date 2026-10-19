@@ -1,0 +1,27 @@
+#!/bin/bash
+# 用系统 Python 直接打开，不创建 venv，不安装到系统，不用离线包自带的字体配置。
+set -euo pipefail
+cd "$(dirname "$0")"
+ROOT="$(pwd)"
+export CAN_TESTER_SYSTEM_FONTS=1
+unset FONTCONFIG_FILE || true
+if [[ -d "$ROOT/vendor" ]]; then
+  export PYTHONPATH="$ROOT/vendor:$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+else
+  export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+fi
+
+PY="${PYTHON:-python3}"
+if ! command -v "$PY" >/dev/null 2>&1; then
+  echo "找不到 python3" >&2
+  exit 1
+fi
+if ! "$PY" -c "import tkinter" >/dev/null 2>&1; then
+  echo "系统没有 tkinter。安装一次即可: sudo apt install python3-tk" >&2
+  exit 1
+fi
+if ! "$PY" -c "import can" >/dev/null 2>&1; then
+  echo "找不到 python-can。请用带 vendor 目录的 .run 包，或安装: sudo apt install python3-can" >&2
+  exit 1
+fi
+exec "$PY" -m can_tester "$@"
