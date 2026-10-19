@@ -151,6 +151,7 @@ describe("links", () => {
     const next = rewriteContent(content, decide(map, { missing }));
     assert.match(next, new RegExp(`see !\\[a\\]\\(${url}\\) please`));
     assert.equal(next.includes("gone.png"), false);
+    assert.match(next, /<span style="color:red">图片已丢失<\/span>/);
     assert.match(next, /```\n!\[a\]\(\.\.\/pics\/a\.png\)\n```/);
     assert.match(next, /`!\[a\]\(\.\.\/pics\/a\.png\)`/);
     assert.match(next, new RegExp(`src="${url}"`));
@@ -163,6 +164,7 @@ describe("links", () => {
     const prefix = "https://gitee.com/demo/pics/raw/master/";
     const next = rewriteContent("![old](https://gitee.com/demo/pics/raw/master/imgs/old.png)\n", decide(new Map(), { bedPrefix: prefix }));
     assert.equal(next.includes("old.png"), false);
+    assert.match(next, /<span style="color:red">图片已丢失<\/span>/);
   });
 
   it("rewrites a gitee.com raw link to the direct image host", () => {
@@ -249,7 +251,10 @@ describe("git sync", () => {
 
     await service.updateLinks({ log() {} });
     const linked = fs.readFileSync(path.join(docs, "note.md"), "utf8");
-    assert.equal(linked.split("https://raw.giteeusercontent.com/demo/pics/raw/master/imgs/").length - 1, 2);
+    // origin/<branch> 不存在时不得写成 raw（否则 404）
+    assert.equal(linked.includes("https://raw.giteeusercontent.com/"), false);
+    assert.equal(linked.includes("../pics/a.png"), true);
+    assert.equal(linked.includes("../pics/b.png"), true);
 
     fs.rmSync(path.join(pics, "b.png"));
     const removed = await service.sync({ log() {} });
@@ -257,6 +262,7 @@ describe("git sync", () => {
     await service.updateLinks({ log() {} });
     const cleared = fs.readFileSync(path.join(docs, "note.md"), "utf8");
     assert.equal(cleared.split("![").length - 1, 1);
+    assert.match(cleared, /<span style="color:red">图片已丢失<\/span>/);
     const left = JSON.parse(fs.readFileSync(path.join(repo, "imgs", "picbed.json"), "utf8"));
     assert.equal(left.images.length, 1);
     assert.equal(left.images[0].name === "b.png", false);

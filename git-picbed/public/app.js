@@ -60,20 +60,42 @@ function renderStatus(state) {
     $("identity").textContent = state.hostError;
     $("identity").className = "status bad";
   } else if (state.identity) {
+    const host = state.identity.provider === "github" ? "GitHub" : "Gitee";
     $("identity").textContent = state.imageNote
-      ? `${state.identity.owner}/${state.identity.repo} · ${state.imageNote}`
-      : `${state.identity.owner}/${state.identity.repo}`;
+      ? `${host} ${state.identity.owner}/${state.identity.repo} · ${state.imageNote}`
+      : `${host} ${state.identity.owner}/${state.identity.repo}`;
     $("identity").className = "status ok";
   } else {
     $("identity").textContent = "还没有识别到 origin";
     $("identity").className = "status";
   }
+
+  const warn = $("originWarn");
+  const mismatch = state.originProvider && state.config?.provider && state.originProvider !== state.config.provider;
+  if (state.hostWarning) {
+    warn.textContent = state.hostWarning;
+    warn.className = mismatch || /实际是/.test(state.hostWarning) ? "status bad" : "status";
+  } else {
+    warn.textContent = "";
+    warn.className = "status";
+  }
+
+  const push = state.pushStatus || {};
+  $("pushInfo").textContent = push.label ? `图片推送：${push.label}` : "";
+  $("pushInfo").className =
+    push.ahead > 0 || push.label?.includes("未见")
+      ? "status warn"
+      : push.ahead === 0
+        ? "status ok"
+        : "status";
+
   const run = state.run || {};
   const next = run.nextRunAt ? new Date(run.nextRunAt).toLocaleString() : "未排程";
   const last = run.lastRunAt ? new Date(run.lastRunAt).toLocaleString() : "还没有";
   $("runInfo").textContent = run.lastError
     ? `上次 ${last} 失败：${run.lastError}`
     : `上次 ${last}，下次 ${next}`;
+  $("runInfo").className = run.lastError ? "status bad" : "status";
 }
 
 function formatSize(size) {
@@ -81,6 +103,12 @@ function formatSize(size) {
   if (value < 1024) return `${value} B`;
   if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
+function statusClass(status) {
+  if (status === "pushed") return "tag ok";
+  if (status === "local") return "tag warn";
+  return "tag";
 }
 
 function renderImages(state) {
@@ -91,7 +119,7 @@ function renderImages(state) {
   if (!images.length) {
     const row = document.createElement("tr");
     const cell = document.createElement("td");
-    cell.colSpan = 3;
+    cell.colSpan = 4;
     cell.className = "empty";
     cell.textContent = "还没有图片";
     row.append(cell);
@@ -104,21 +132,40 @@ function renderImages(state) {
     name.textContent = image.name || image.path;
     const info = document.createElement("td");
     info.textContent = `${formatSize(image.size)} ${image.width || 0}x${image.height || 0}`;
+    const status = document.createElement("td");
+    const tag = document.createElement("span");
+    tag.className = statusClass(image.status);
+    tag.textContent = image.statusLabel || "未知";
+    status.append(tag);
     const link = document.createElement("td");
-    if (image.url) {
+    const shown = image.status === "pushed" ? image.url : image.pendingUrl || image.url || "";
+    if (shown) {
       const wrap = document.createElement("div");
       wrap.className = "link";
       const code = document.createElement("code");
-      code.textContent = image.url;
+      code.textContent = image.status === "pushed" ? shown : "未推送 · " + shown;
       const copy = document.createElement("button");
       copy.type = "button";
       copy.className = "copy";
-      copy.textContent = "复制";
-      copy.addEventListener("click", () => navigator.clipboard.writeText(image.url));
+      copy.textContent = image.status === "pushed" ? "复制" : "复制(未推送)";
+      copy.addEventListener("click", () => navigator.clipboard.writeText(shown));
       wrap.append(code, copy);
+      if (image.status === "pushed" && image.url) {
+        const open = document.createElement("a");
+        open.className = "copy";
+        open.href = image.url;
+        open.target = "_blank";
+        open.rel = "noopener noreferrer";
+        open.textContent = "打开";
+        open.title = "浏览器打开自检";
+        wrap.append(open);
+      }
       link.append(wrap);
+    } else {
+      link.textContent = "—";
+      link.className = "empty";
     }
-    row.append(name, info, link);
+    row.append(name, info, status, link);
     body.append(row);
   }
 }

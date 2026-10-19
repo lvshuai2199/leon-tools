@@ -1,10 +1,9 @@
 @echo off
 cd /d "%~dp0"
-where node >nul 2>nul
+powershell -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "%~dp0隐藏启动.ps1"
 if errorlevel 1 (
-  echo 需要先安装 Node.js
+  echo 启动失败
   pause
   exit /b 1
 )
-node server.js
-if errorlevel 1 pause
+exit /b 0

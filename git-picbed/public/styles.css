@@ -6,6 +6,7 @@
   --muted: #6b7280;
   --ok: #067647;
   --bad: #b42318;
+  --warn: #b54708;
 }
 
 * { box-sizing: border-box; }
@@ -18,7 +19,7 @@ html, body {
   font: 13px/1.45 "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
 }
 
-.app { max-width: 640px; margin: 0 auto; padding: 12px; }
+.app { max-width: 720px; margin: 0 auto; padding: 12px; }
 
 .top, .card {
   background: var(--panel);
@@ -36,11 +37,20 @@ html, body {
 .card { padding: 10px 12px; }
 
 h1, h2 { margin: 0; font-weight: 650; }
-h1 { font-size: 15px; }
+h1 { font-size: 15px; display: flex; align-items: center; gap: 8px; }
 h2 { font-size: 13px; margin-bottom: 6px; }
+.brand {
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: linear-gradient(135deg, #c71d23, #1d2129);
+  box-shadow: inset 0 0 0 2px rgba(255,255,255,0.35);
+  flex: none;
+}
 .status { color: var(--muted); margin: 6px 0 0; min-height: 1.2em; }
 .bad { color: var(--bad); }
 .ok { color: var(--ok); }
+.warn { color: var(--warn); }
 
 .actions, .row { display: flex; gap: 8px; align-items: center; }
 .row label { flex: 1; min-width: 0; }
@@ -78,6 +88,9 @@ textarea { resize: vertical; }
   border-radius: 6px;
   padding: 5px 12px;
   cursor: pointer;
+  text-decoration: none;
+  display: inline-flex;
+  align-items: center;
 }
 
 .btn.primary { background: #1d2129; border-color: #1d2129; color: #fff; }
@@ -95,7 +108,7 @@ textarea { resize: vertical; }
   color: var(--muted);
 }
 
-.table-wrap { overflow: auto; max-height: 240px; }
+.table-wrap { overflow: auto; max-height: 280px; }
 table { width: 100%; border-collapse: collapse; }
 th, td { text-align: left; padding: 5px 4px; border-bottom: 1px solid var(--line); vertical-align: top; }
 th { color: var(--muted); font-weight: 600; font-size: 12px; }
@@ -104,3 +117,14 @@ th { color: var(--muted); font-weight: 600; font-size: 12px; }
 .link code { flex: 1; word-break: break-all; font-size: 11px; color: var(--muted); }
 .empty { color: var(--muted); }
 .copy { padding: 3px 8px; font-size: 12px; }
+.tag {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: #eef0f3;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.tag.ok { background: #e8f8ef; color: var(--ok); }
+.tag.warn { background: #fff4e5; color: var(--warn); }

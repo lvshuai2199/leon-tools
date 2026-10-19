@@ -2,7 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { bedPrefixes, hostLabel, rawUrl, resolveHost } = require("./host");
+const { bedPrefixes, hostLabel, parseGitRemote, rawUrl, redact, resolveHost } = require("./host");
 const { MAX_BYTES, inspectFile } = require("./image-info");
 const { createDecider, rewriteContent } = require("./links");
 const { normKey, toPosix } = require("./paths");
@@ -197,12 +197,13 @@ function createService(appRoot) {
     let waiting = 0;
     for (const img of manifest) {
       const url = rawUrl({ ...identity, branch, filePath: img.path });
-      knownUrls.add(url);
-      urlByPath.set(img.path, url);
-      if (onRemote && !onRemote.has(img.path)) {
+      if (!onRemote || !onRemote.has(img.path)) {
         waiting += 1;
+        knownUrls.add(url);
         continue;
       }
+      knownUrls.add(url);
+      urlByPath.set(img.path, url);
       urlBySha.set(img.sha256, url);
     }
     if (waiting) log(`有 ${waiting} 张图片还没推送，文档里先留着本地路径`);
@@ -329,19 +330,39 @@ function createService(appRoot) {
     const payload = {
       config,
       remoteUrl: "",
+      originProvider: "",
       hostError: "",
+      hostWarning: "",
+      pushStatus: { ahead: null, label: "未知" },
       identity: null,
       images: [],
       pending,
       run,
     };
     if (!config.repoPath) return payload;
+    let top = "";
+    let url = "";
     try {
-      const top = await assertRepo(config.repoPath);
-      const url = await remoteUrl(top, config.remote);
+      top = await assertRepo(config.repoPath);
+      url = await remoteUrl(top, config.remote);
+      payload.remoteUrl = redact(url);
+      const parsed = parseGitRemote(url);
+      payload.originProvider = parsed?.provider || "";
+      if (parsed?.provider && parsed.provider !== config.provider) {
+        payload.hostWarning = `当前 origin 实际是 ${hostLabel(parsed.provider)}（${payload.remoteUrl}）。选 Gitee 时 origin 必须是 gitee.com，否则图片会推到另一家。`;
+      } else if (payload.remoteUrl) {
+        payload.hostWarning = `当前 origin：${payload.remoteUrl}`;
+      }
+    } catch (err) {
+      payload.hostError = err.message;
+    }
+    try {
+      if (!top) throw new Error(payload.hostError || "仓库不可用");
       const identity = resolveHost(config.provider, url, config.owner, config.repo);
       payload.remoteUrl = identity.remoteUrl;
       payload.identity = { provider: identity.provider, owner: identity.owner, repo: identity.repo };
+      payload.hostError = "";
+      if (!payload.hostWarning) payload.hostWarning = `当前 origin：${identity.remoteUrl}`;
       const image = await peekImageRepo(top, config.branch);
       payload.imageRoot = image.separate ? image.root : "";
       payload.imageNote = image.missing
@@ -352,16 +373,51 @@ function createService(appRoot) {
       const sources = store.loadSources();
       const manifestRoot = image.missing ? top : image.root;
       const urlBranch = image.missing ? await currentBranch(top) : image.branch;
-      payload.images = readManifest(manifestRoot, config.imageDir).map((img) => ({
-        ...img,
-        url: rawUrl({ ...identity, branch: urlBranch, filePath: img.path }),
-        sources: (sources.items?.[img.sha256] || []).map((item) => item.rel || item.name),
-      }));
+      const onRemote = image.missing ? null : await remotePaths(image.root, config.remote, image.branch);
+      const ahead = image.missing ? null : await unpushedCommits(image.root, config.remote, image.branch);
+      if (ahead == null && !onRemote) {
+        payload.pushStatus = { ahead: null, label: "远程分支未见（需先推送）" };
+      } else if (ahead > 0) {
+        payload.pushStatus = { ahead, label: `已提交未推送（${ahead} 个提交）` };
+      } else if (ahead === 0) {
+        payload.pushStatus = { ahead: 0, label: "已推送" };
+      } else {
+        payload.pushStatus = { ahead: null, label: "推送状态未知" };
+      }
+      payload.images = readManifest(manifestRoot, config.imageDir).map((img) => {
+        const remoteUrlForImg = rawUrl({ ...identity, branch: urlBranch, filePath: img.path });
+        let status = "unknown";
+        let statusLabel = "未知";
+        if (!onRemote) {
+          status = "local";
+          statusLabel = "已提交未推送";
+        } else if (onRemote.has(img.path)) {
+          status = "pushed";
+          statusLabel = "已推送";
+        } else {
+          status = "local";
+          statusLabel = "已提交未推送";
+        }
+        return {
+          ...img,
+          url: status === "pushed" ? remoteUrlForImg : "",
+          pendingUrl: status === "pushed" ? "" : remoteUrlForImg,
+          status,
+          statusLabel,
+          sources: (sources.items?.[img.sha256] || []).map((item) => item.rel || item.name),
+        };
+      });
     } catch (err) {
-      payload.hostError = err.message;
+      if (!payload.hostError) payload.hostError = err.message;
       try {
         if (fs.existsSync(config.repoPath)) {
-          payload.images = readManifest(config.repoPath, config.imageDir).map((img) => ({ ...img, url: "", sources: [] }));
+          payload.images = readManifest(config.repoPath, config.imageDir).map((img) => ({
+            ...img,
+            url: "",
+            status: "unknown",
+            statusLabel: "不可用",
+            sources: [],
+          }));
         }
       } catch {
         payload.images = [];

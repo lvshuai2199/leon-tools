@@ -47,6 +47,7 @@ function replaceMatches(text, regex, replacer) {
 
 const MD_IMG = /!\[([^\]]*)\]\(\s*(<[^>\n]+>|[^)\n]+)\)/g;
 const HTML_IMG = /<img\b[^>]*?\bsrc\s*=\s*(["'])([\s\S]*?)\1[^>]*>/gi;
+const LOST_MARK = '<span style="color:red">图片已丢失</span>';
 
 function rawUrlOf(token) {
   let value = token.trim();
@@ -68,13 +69,13 @@ function rewriteSegment(text, decide) {
   const markdown = replaceMatches(text, MD_IMG, (match) => {
     const decision = decide(rawUrlOf(match[2]));
     if (!decision || decision.type === "keep") return null;
-    if (decision.type === "clear") return "";
+    if (decision.type === "clear") return LOST_MARK;
     return `![${match[1]}](${decision.url})`;
   });
   return replaceMatches(markdown, HTML_IMG, (match) => {
     const decision = decide(match[2]);
     if (!decision || decision.type === "keep") return null;
-    if (decision.type === "clear") return "";
+    if (decision.type === "clear") return LOST_MARK;
     return replaceHtmlSrc(match[0], match[2], match[1], decision.url);
   });
 }
