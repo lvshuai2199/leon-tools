@@ -5135,6 +5135,11 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         HMENU menu = CreatePopupMenu();
         AppendMenuW(menu, MF_STRING, 10, L"\u7acb\u5373\u5237\u65b0");
         AppendMenuW(menu, MF_STRING, 11, L"\u6253\u5f00\u7528\u91cf\u9875");
+        {
+            UINT wpFlags = MF_STRING;
+            if (!g_wp.enabled || g_wp.busy || !WpUrlOk()) wpFlags |= MF_GRAYED;
+            AppendMenuW(menu, wpFlags, 12, L"\u66f4\u6362\u58c1\u7eb8");
+        }
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
         AppendMenuW(menu, MF_STRING, IDM_SETTINGS, L"\u8bbe\u7f6e");
         AppendMenuW(menu, MF_SEPARATOR, 0, nullptr);
@@ -5151,7 +5156,7 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
             flags |= TPM_LEFTALIGN;
             y = wr.bottom + 2;
         }
-        if (g.dockEdge != 2 && y + 180 > wa.bottom)
+        if (g.dockEdge != 2 && y + 220 > wa.bottom)
             flags |= TPM_BOTTOMALIGN;
         TPMPARAMS tp{ sizeof(tp), wr };
         SetForegroundWindow(h);
@@ -5163,6 +5168,11 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         DestroyMenu(menu);
         if (cmd == 10) Refresh();
         if (cmd == 11) ShellExecuteW(nullptr, L"open", L"https://cursor.com/dashboard/spending", nullptr, nullptr, SW_SHOWNORMAL);
+        if (cmd == 12 && g_wp.enabled && WpUrlOk() && !g_wp.busy) {
+            KillTimer(h, 11);
+            SaveConfig();
+            WpStart();
+        }
         if (cmd == IDM_SETTINGS) OpenSettings();
         if (cmd == 14) DestroyWindow(h);
         return 0;
