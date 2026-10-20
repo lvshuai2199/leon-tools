@@ -19,6 +19,29 @@ def _bundled_cjk_dir() -> Path | None:
     return None
 
 
+def _register_bundled_font_dir(font_dir: Path) -> None:
+    """Add the shipped face to this process. Tk will not fall back per glyph."""
+    try:
+        import ctypes
+    except ImportError:
+        return
+
+    try:
+        fc = ctypes.CDLL("libfontconfig.so.1")
+    except OSError:
+        return
+    fc.FcInit.restype = ctypes.c_int
+    fc.FcConfigGetCurrent.restype = ctypes.c_void_p
+    fc.FcConfigAppFontAddFile.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+    fc.FcConfigAppFontAddFile.restype = ctypes.c_int
+    if not fc.FcInit():
+        return
+    ttc = font_dir / "wqy-microhei.ttc"
+    if not ttc.is_file():
+        return
+    fc.FcConfigAppFontAddFile(fc.FcConfigGetCurrent(), os.fsencode(ttc))
+
+
 def _sharpen_fonts_before_tk() -> None:
     """Register the bundled CJK face before Tk starts.
 
@@ -26,8 +49,12 @@ def _sharpen_fonts_before_tk() -> None:
     saw a Latin face and every Chinese character became an empty box.
     WenQuanYi is drawn with hinting off, matching its own fontconfig snippet.
     System .run launches set CAN_TESTER_SYSTEM_FONTS=1 and keep the desktop
-    fontconfig, which has the complete CJK faces.
+    fontconfig, which has the complete CJK faces. The offline bundle still
+    loads WenQuanYi, because that desktop often has no CJK face Tk can see.
     """
+    font_dir = _bundled_cjk_dir()
+    if font_dir is not None and os.name == "posix":
+        _register_bundled_font_dir(font_dir)
     if os.environ.get("CAN_TESTER_SYSTEM_FONTS") == "1":
         return
     if os.name != "posix" or os.environ.get("FONTCONFIG_FILE"):
@@ -301,12 +328,28 @@ def _font_families(root: tk.Misc) -> set[str]:
         return set()
 
 
+def _match_family(families: set[str], names: list[str]) -> str | None:
+    folded = {name.casefold(): name for name in families}
+    for name in names:
+        if name in families:
+            return name
+        hit = folded.get(name.casefold())
+        if hit:
+            return hit
+    return None
+
+
 def _choose_ui_family(root: tk.Misc) -> str:
-    """WenQuanYi stays sharp at UI sizes. Noto CJK at 9–10px goes muddy in Tk."""
+    """Prefer an outline gothic face. The bundled Tk has no Xft, so it can
+    only draw WenQuanYi Bitmap Song. start.sh switches to the desktop Tk
+    when Noto or WenQuanYi Micro Hei is actually listed.
+    """
     families = _font_families(root)
     names = [
         "WenQuanYi Micro Hei",
         "WenQuanYi Zen Hei",
+        "WenQuanYi Bitmap Song",
+        "wenquanyi bitmap song",
         "Noto Sans CJK SC",
         "Noto Sans CJK JP",
         "Noto Sans CJK TC",
@@ -326,10 +369,7 @@ def _choose_ui_family(root: tk.Misc) -> str:
             "Source Han Sans CN",
             "Droid Sans Fallback",
         ] + names
-    for name in names:
-        if name in families:
-            return name
-    return "Sans"
+    return _match_family(families, names) or "Sans"
 
 
 def _desktop_text_scale() -> float:
@@ -359,18 +399,21 @@ def _choose_mono_family(root: tk.Misc, ui_family: str) -> str:
 
 def _apply_cjk_fonts(root: tk.Misc) -> None:
     global FONT_UI, FONT_UI_SM, FONT_MONO
-    scale = _desktop_text_scale()
+    ui = _choose_ui_family(root)
+    mono = _choose_mono_family(root, ui)
+    # Core X11 bitmap faces only exist at fixed pixel sizes. 16px matches the
+    # bundled wenquanyi_12pt face. Negative Tk sizes are pixels.
+    bitmap = "bitmap song" in ui.casefold()
+    scale = 1.0 if bitmap else _desktop_text_scale()
     if scale > 1.05:
         try:
             root.tk.call("tk", "scaling", round(96.0 * scale / 72.0, 2))
         except tk.TclError:
             pass
-    ui = _choose_ui_family(root)
-    mono = _choose_mono_family(root, ui)
-    # CJK below 11px smears. Keep labels and headings on the same size.
-    FONT_UI = (ui, 12)
-    FONT_UI_SM = (ui, 12)
-    FONT_MONO = (ui, 12)
+    size = -16 if bitmap else 12
+    FONT_UI = (ui, size)
+    FONT_UI_SM = (ui, size)
+    FONT_MONO = (ui, size)
     named = {
         "TkDefaultFont": FONT_UI,
         "TkTextFont": FONT_UI,

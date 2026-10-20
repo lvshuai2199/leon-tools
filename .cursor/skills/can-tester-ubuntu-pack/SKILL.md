@@ -4,7 +4,7 @@ description: >-
   Build the offline Ubuntu double-click package for can_tester_linux and place
   a desktop shortcut. Use when the user says 打包ubuntu、离线包、双击打开、
   发送快捷方式到桌面、CAN测试工具.desktop, or asks to ship can_tester to
-  \\192.168.249.134\pc-dir as a no-network Ubuntu app.
+  \\192.168.249.137\pc-dir as a no-network Ubuntu app.
 ---
 
 # can_tester Ubuntu 离线包与桌面快捷方式
@@ -25,7 +25,7 @@ python scripts/pack_ubuntu.py
 - 复用 `%TEMP%\cpython-linux.tar.gz`（没有则从 GitHub API 下载带 Tk 的 CPython 3.12 x86_64）
 - 复用 `%TEMP%\can_tester_wheels` 里的 python-can 轮子（没有则 pip download）
 - 打出 `%TEMP%\can_tester_linux-<version>-ubuntu.zip`
-- 复制到 `\\192.168.249.134\pc-dir\can_tester_linux-<version>-ubuntu.zip`
+- 复制到 `\\192.168.249.137\pc-dir\can_tester_linux-<version>-ubuntu.zip`
 
 这是 64 位 Ubuntu（x86_64）离线包。解压后双击 `CAN测试工具.desktop`，不联网、不装依赖。顶层目录名是 `can_tester_linux`。
 
@@ -33,7 +33,7 @@ python scripts/pack_ubuntu.py
 
 ```powershell
 tar -a -c -f "$env:TEMP\can_tester_linux-<version>.zip" --exclude=__pycache__ --exclude=*.pyc -C D:\GitFiles\personal\leon-tools can_tester_linux
-Copy-Item -Force "$env:TEMP\can_tester_linux-<version>.zip" "\\192.168.249.134\pc-dir\"
+Copy-Item -Force "$env:TEMP\can_tester_linux-<version>.zip" "\\192.168.249.137\pc-dir\"
 ```
 
 ## 发送快捷方式到桌面（在 Ubuntu 上执行）
