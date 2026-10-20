@@ -1,0 +1,4 @@
+__pycache__/
+build/
+*.spec
+Elite脚本下发.exe

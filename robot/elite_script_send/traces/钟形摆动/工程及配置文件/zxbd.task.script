@@ -1,0 +1,1431 @@
+def zxbd():
+  # Preamble Script.
+  # Test Preamble Script To Be Added In The Future.
+  set_safety_mode_transition_hardness(1)
+  # Configuration Preamble Script.
+  # Configuration variables.
+  # 
+  global cleaner_gun_count_value
+  cleaner_gun_count_value = ""
+  # 
+  global bbc
+  bbc = []
+  set_tool_analog_io_work_mode(0)
+  set_tool_digital_io_work_mode(0)
+  set_tool_analog_input_domain(1)
+  set_tool_analog_output_domain(1)
+  set_tool_digital_io_config(0,0,False,False)
+  set_tool_digital_io_config(1,0,False,False)
+  set_tool_digital_io_config(2,0,False,False)
+  set_tool_digital_io_config(3,0,False,False)
+  tool_serial_config(True,115200,0,1,modbus_rtu = True,usage = 1)
+  set_tool_voltage(24)
+  set_tcp([-0.00406939495608404, 0.030599138910661624, 0.5461636024071419, 0.3221619274106555, -0.436134949703086, 0.8379972954587884])
+  set_payload(3.0, [0.0, 0.05, 0.3], [0.009606, 0.009606, 0.009606, 0.0, 0.0, 0.0])
+  set_standard_analog_input_domain(0, 1)
+  set_standard_analog_input_domain(1, 1)
+  set_standard_analog_output_domain(0, 1)
+  set_standard_analog_output_domain(1, 1)
+  set_input_actions_to_default()
+  set_gravity([0.0, 0.0, 9.82])
+  # Frame variables.
+  # Temporary frame variables.
+  # Conveyor Config
+  global _hide_rpc_port
+  global _hide_rpc_host
+  global _hide_rpc_path
+  global _hide_rpc_client
+  
+  _hide_rpc_port = 19781
+  _hide_rpc_host = "127.0.0.1"
+  _hide_rpc_path = "/RPC2"
+  
+  _hide_cia402_not_ready = 0x0000
+  _hide_cia402_switch_on_disabled = 0x0040
+  _hide_cia402_switch_on_disabled_quick_stop = 0x0060
+  _hide_cia402_ready_to_switch_on = 0x0021
+  _hide_cia402_switch_on = 0x0023
+  _hide_cia402_operation_enabled = 0x0027
+  _hide_cia402_quick_stop_active = 0x0007
+  _hide_cia402_fault_reaction_active = 0x000f
+  _hide_cia402_fault = 0x0008
+  
+  
+  ###
+  # 获取RPC URL
+  #
+  # @return RPC URL字符串
+  ###
+  def _hide_get_rpc_url():
+      global _hide_rpc_port
+      global _hide_rpc_host
+      global _hide_rpc_path
+      return "http://" + _hide_rpc_host + ":" + str(_hide_rpc_port) + _hide_rpc_path
+  
+  # 创建XML-RPC客户端实例，连接到隐藏的RPC URL
+  _hide_rpc_client = rpc_factory("xmlrpc", _hide_get_rpc_url())
+  
+  ###
+  # 调用RPC方法
+  #
+  # @param method_name RPC方法名
+  # @param args 参数列表
+  # @return RPC方法调用结果
+  ###
+  def _hide_call_rpc_method(method_name, *args):
+      method = getattr(_hide_rpc_client, method_name, None)
+      if method is None:
+          popup("RPC method " + method_name + " not found in RPC client", title = "Error", error = True, blocking = True)
+          return None
+      result = method(*args)
+      return result
+  
+  ###
+  # 通过状态字，检查轴是否使能
+  #
+  # @param status_word 轴状态字
+  # @return True如果轴使能，否则False
+  ###
+  def _hide_is_axis_enable(status_word):
+      status = status_word & 0x006f
+      return status == _hide_cia402_operation_enabled
+  
+  ###
+  # 通过状态字，检查轴是否处于未准备好使能状态
+  #
+  # @param status_word 轴状态字
+  # @return True如果轴处于未准备好使能状态，否则False
+  ###
+  def _hide_is_axis_disable(status_word):
+      status = status_word & 0x006f
+      return status == _hide_cia402_switch_on_disabled or status == _hide_cia402_switch_on_disabled_quick_stop
+  
+  ###
+  # 通过状态字，检查轴是否处于故障状态
+  #
+  # @param status_word 轴状态字
+  # @return True如果轴处于故障状态，否则False
+  ###
+  def _hide_is_axis_fault(status_word):
+      return (status_word & 0x0008) > 0
+  
+  ###
+  # 选择EtherCAT网络接口
+  #
+  # @param ifname 网络接口名称，例如"eth0"
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #   }
+  ###
+  def ethercat_select_network_interface(ifname):
+      result = _hide_call_rpc_method("selectNetworkInterface", ifname)
+      return result
+  
+  ###
+  # 添加轴配置
+  #
+  # @param name 轴名称，必须是已经在轴组中定义的轴，否则会导致RPC调用失败
+  # @param station_address EtherCAT站地址，范围 1-65535
+  # @param counts_per_rev 编码器每转的计数值，例如2048
+  # @param gear_ratio 齿轮比，例如10表示电机转10圈轴转1圈
+  # @param feed_constant 进给常数，单位mm/rev，例如5表示轴转1圈移动5mm
+  # @param zero_offset_count 零点偏移的计数值，例如-100表示编码器零点相对于物理零点逆时针偏移100计数
+  # @param axis_index 轴索引，默认为-1表示自动获取，如果提供则必须与轴组中定义的轴索引一致，否则会导致RPC调用失败
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #   }
+  ###
+  def ethercat_add_axis_configure(name, station_address, counts_per_rev, gear_ratio, feed_constant, zero_offset_count, axis_index = -1):
+      # 计算轴的最大最小位置，单位是转，范围是 int32_t 的范围，考虑到零点偏移和齿轮比的影响
+      max_pos = (2147483647.0 - zero_offset_count) * feed_constant / (counts_per_rev * float(gear_ratio))
+      min_pos = (-2147483648.0 - zero_offset_count) * feed_constant / (counts_per_rev * float(gear_ratio))
+      # 获取轴的软件限制位置
+      lim_pos = axis_group_get_axis_limits(name)
+  
+      # 如果软件限制位置超出计算的最大最小位置，弹窗警告用户可能会导致位置溢出
+      if lim_pos[2] < min_pos:
+          popup("ethercat_add_axis_configure() - lower position limit of " + name +
+              " may cause overflow (position limit: " + str(lim_pos[2]) +
+              ", overflow threshold: " + str(min_pos) + ")",
+              title = "Warning",
+              warning = True,
+              blocking = True)
+      if lim_pos[3] > max_pos:
+          popup("ethercat_add_axis_configure() - upper position limit of " + name +
+              " may cause overflow (position limit: " + str(lim_pos[3]) +
+              ", overflow threshold: " + str(max_pos) + ")",
+              title = "Warning",
+              warning = True,
+              blocking = True)
+  
+      if axis_index < 0:
+          axis_index = axis_group_get_axis_index(name)
+  
+      result = _hide_call_rpc_method("addAxisConfigure",
+          name,               # name
+          axis_index,         # axis_index
+          station_address,    # station_address
+          counts_per_rev,     # counts_per_rev
+          gear_ratio,         # gear_ratio
+          feed_constant,      # feed_constant
+          zero_offset_count   # zero_offset_count
+      )
+      return result
+  
+  ###
+  # 启动EtherCAT主站
+  #
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #   }
+  ###
+  def ethercat_start_master():
+      result = _hide_call_rpc_method("startEtherCATMaster")
+      return result
+  
+  ###
+  # 停止EtherCAT主站
+  #
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #   }
+  ###
+  def ethercat_stop_master():
+      result = _hide_call_rpc_method("stopEtherCATMaster")
+      return result
+  
+  ###
+  # 获取轴位置
+  #
+  # @param name 轴名称
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #     "timestamp": 时间戳，字典，{""sec": 秒, "nsec": 纳秒}
+  #     "actual_positions": 轴位置，单位取决于轴配置中的feed_constant和gear_ratio，例如如果feed_constant是5mm/rev，gear_ratio是10，那么位置单位就是mm
+  #     "target_positions": 轴目标位置，单位同actual_positions
+  #     "actual_encoder_counts": 轴编码器计数值
+  #     "target_encoder_counts": 轴目标编码器计数值
+  #   }
+  ###
+  def ethercat_get_axis_positions(name):
+      result = _hide_call_rpc_method("getAxisPositions", name)
+      return result
+  
+  ###
+  # 清除轴配置
+  #
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #   }
+  ###
+  def ethercat_clear_axis_configure():
+      result = _hide_call_rpc_method("clearAxisConfigure")
+      return result
+  
+  ###
+  # 写SDO
+  #
+  # @param name 轴名称
+  # @param index SDO索引，例如0x6060
+  # @param sub_index SDO子索引，例如0x00
+  # @param value_type SDO值类型，"U8", "U16", "U32", ""
+  # @param value SDO值
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #   }
+  ###
+  def ethercat_write_sdo(name, index, sub_index, value_type, value):
+      result = _hide_call_rpc_method("writeSDO", name, index, sub_index, value_type, value)
+      return result
+  
+  ###
+  # 读SDO
+  #
+  # @param name 轴名称
+  # @param index SDO索引，例如0x6060
+  # @param sub_index SDO子索引，例如0x00
+  # @param value_type SDO值类型，例如"int16", "uint32", "float"等
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #     "value": 读取到的SDO值，类型取决于value_type
+  #   }
+  ###
+  def ethercat_read_sdo(name, index, sub_index, value_type):
+      result = _hide_call_rpc_method("readSDO", name, index, sub_index, value_type)
+      return result
+  
+  ###
+  # 刷新日志到磁盘（建议在导出日志前调用）
+  #
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #   }
+  ###
+  def ethercat_flush_log():
+      result = _hide_call_rpc_method("flushLog")
+      return result
+  
+  ###
+  # 查看轴是否使能
+  #
+  # @param name 轴名称
+  # @return True如果轴使能，否则False
+  ###
+  def ethercat_is_axis_enable(name):
+      status_word = axis_group_get_axis_status_word(name)
+      return _hide_is_axis_enable(status_word)
+  
+  ###
+  # 查看轴是否处于故障状态
+  #
+  # @param name 轴名称
+  # @return True如果轴处于故障状态，否则False
+  ###
+  def ethercat_is_axis_fault(name):
+      status_word = axis_group_get_axis_status_word(name)
+      return _hide_is_axis_fault(status_word)
+  
+  ###
+  # 使能轴
+  #
+  # @param name 轴名称
+  # @param timeout 超时时间，单位秒，默认10秒，如果使能过程超过该时间仍未完成则认为使能失败
+  # @param delay_after_enable 使能后等待时间，单位秒，默认1秒，某些伺服在使能后状态更新可能有延迟，适当的等待可以避免过快检查状态导致误判
+  # @return True如果使能成功，否则False
+  ###
+  def ethercat_enable_axis(name, timeout = 10, delay_after_enable = 1):
+      start_time = controller_timestamp()
+  
+      while axis_group_await_position(10) is False:  # 等待轴位置更新，确保轴状态字是最新的
+          if controller_timestamp() - start_time > timeout:
+              return False
+          sleep(get_steptime())
+  
+      while True:
+          axis_group_set_axis_command_word(name, 15)  # 使能轴
+          status_word = axis_group_get_axis_status_word(name)
+          if _hide_is_axis_fault(status_word):
+              popup("ethercat_axis_enable() - Axis " + name + " is in fault state, cannot be enabled, status word: " + hex(status_word), title = "Halt", error = True, blocking = True)
+              return False
+          if _hide_is_axis_enable(status_word):
+              return True
+          if controller_timestamp() - start_time > timeout:
+              return False
+          sleep(get_steptime()) # 等待一个控制周期再检查状态
+      sleep(delay_after_enable) # 使能后等待一段时间让状态稳定，避免过快检查状态导致误判
+      status_word = axis_group_get_axis_status_word(name)
+      if not _hide_is_axis_enable(status_word):
+          popup("ethercat_axis_enable() - Failed to enable axis " + name + " after enabling command, status word: " + hex(status_word), title = "Halt", error = True, blocking = True)
+          return False
+      return True
+  
+  ###
+  # 关闭轴使能
+  #
+  # @param name 轴名称
+  # @param timeout 超时时间，单位秒，默认10秒，如果关闭轴使能过程超过该时间仍未完成则认为关闭失败
+  # @return True如果成功关闭轴使能，否则False
+  ###
+  def ethercat_disable_axis(name, timeout = 10):
+      start_time = controller_timestamp()
+      while True:
+          if ethercat_is_axis_disable(name):
+              return True
+          # 关闭轴使能
+          axis_group_set_axis_command_word(name, 0)
+          status_word = axis_group_get_axis_status_word(name)
+          if controller_timestamp() - start_time > timeout:
+              return False
+          sleep(get_steptime()) # 等待一个控制周期再检查状态
+  
+  ###
+  # 查看轴是否处于未准备好使能状态
+  #
+  # @param name 轴名称
+  # @return True如果轴处于未准备好使能状态，否则False
+  ###
+  def ethercat_is_axis_disable(name):
+      status_word = axis_group_get_axis_status_word(name)
+      return _hide_is_axis_disable(status_word)
+  
+  ###
+  # 复位轴故障
+  #
+  # @param name 轴名称
+  # @param timeout 超时时间，单位秒，默认10秒
+  # @return True如果成功复位轴故障，否则False
+  ###
+  def ethercat_reset_axis_fault(name, timeout = 10):
+      start_time = controller_timestamp()
+      while True:
+          axis_group_set_axis_command_word(name, 128)  # 复位轴故障
+          status_word = axis_group_get_axis_status_word(name)
+          if not _hide_is_axis_fault(status_word):
+              return True
+          if controller_timestamp() - start_time > timeout:
+              return False
+          sleep(get_steptime()) # 等待一个控制周期再检查状态
+  
+  ### 轴回零
+  #
+  # @param name 轴名称
+  # @param method 将使用的 EtherCAT CoE CiA402 回零模式。有效值范围为 -128 ～ 127（包含边界值）。
+  #               不同伺服厂商支持的回零模式有所差异。有关支持的模式，请参见伺服厂商手册（参考 EtherCAT CoE CiA402 对象字典：0x6098）。
+  #               常用支持模式包括：
+  #                   1：轴朝负方向（-）移动，直至触发负限位开关；随后朝正方向（+）移动，并以下一个索引脉冲作为回零位置。
+  #                   2：轴朝正方向（+）移动，直至触发正限位开关；随后朝负方向（-）移动，并以下一个索引脉冲作为回零位置。
+  #                   35：轴不移动，直接以当前位置作为零点（通常与模式 37 行为一致）。
+  #                   37：轴不移动，直接以当前位置作为零点（通常与模式 35 行为一致）。
+  # @param offset 根据给定的偏移量（单位：编码器脉冲数）移动已设定的零点位置。
+  # @param vel_sw 限位搜寻速度
+  # @param vel_zero 零位搜寻速度
+  # @param acc 回零加速度
+  # @param timeout 超时时间，单位秒，默认30秒，如果回零过程超过该时间仍未完成则认为回零失败
+  # @return True如果回零成功，否则False
+  def ethercat_home_axis(name, method, offset, vel_sw, vel_zero, acc, timeout = 30):
+      start_time = controller_timestamp()
+      if not ethercat_is_axis_enable(name):
+          popup("ethercat_home_axis() - Failed to enable axis " + name + " for homing, cannot start homing procedure", title = "Halt", error = True, blocking = True)
+          halt()
+          return False
+      # 设置回零参数
+      param_result = _hide_call_rpc_method("setHomingParameters", name, method, offset, float(vel_sw), float(vel_zero), float(acc))
+      if param_result["error_code"] != 0:
+          popup("ethercat_home_axis() - Failed to set homing parameters for axis " + name + ", error: " + param_result["error_message"], title = "Halt", error = True, blocking = True)
+          halt()
+          return False
+  
+      # 启动轴回零
+      axis_group_set_axis_command_word(name, 31)
+      # TODO：这里sleep的原因是为了防止过快导致状态更新还未到位就检查状态导致的误判，后续可以优化和daemon的交互机制来避免这种情况，目前先简单的sleep一下
+      sleep(0.1)
+      # 启动回零过程
+      while True:
+          # 启动轴回零
+          axis_group_set_axis_command_word(name, 31)
+          # 等待一个控制周期再检查状态
+          sleep(get_steptime())
+  
+          # 等待轴位置更新，确保轴状态字是最新的
+          if axis_group_await_position(10) is False:
+              if controller_timestamp() - start_time > timeout:
+                  popup("ethercat_home_axis() - Homing procedure timed out for axis " + name + " while waiting for position update", title = "Halt", error = True, blocking = True)
+                  halt()
+                  return False
+              sleep(get_steptime())
+              continue
+  
+          status_word = axis_group_get_axis_status_word(name)
+          status_word_bits = integer_to_bit_list(status_word)
+          # 检查轴是否处于故障状态，如果是则弹窗提示并停止程序
+          if _hide_is_axis_fault(status_word):
+              popup("ethercat_home_axis() - Axis " + name + " is in fault state during homing procedure, status word: " + hex(status_word), title = "Halt", error = True, blocking = True)
+              halt()
+              return False
+          # 回零完成
+          if status_word_bits[10] == True and status_word_bits[12] == True and status_word_bits[15] == True:
+              break
+          # 检查超时
+          if controller_timestamp() - start_time > timeout:
+              popup("ethercat_home_axis() - Homing procedure timed out for axis " + name, title = "Halt", error = True, blocking = True)
+              halt()
+              return False
+      ethercat_enable_axis(name) # 回零完成后再次使能轴，确保轴处于使能状态
+      return True
+  
+  ### 获取EtherCAT主站状态
+  #
+  # @return 主站状态字符串： NULL, INIT, PRE_OP, BOOT, SAFE_OP, OPERATIONAL, ERROR, UNKNOWN
+  def ethercat_get_master_state():
+      result = _hide_call_rpc_method("getMasterState")
+      return result
+  
+  ### 获取轴的CiA402错误码
+  #
+  # @param name 轴名称
+  # @return 字典
+  #   {
+  #     "error_code": 0表示成功，非0表示失败的错误码。
+  #     "error_message": 结果消息字符串
+  #     "value": 16位的CiA402错误码，单位是十六进制，例如0x1234
+  #   }
+  def ethercat_get_axis_error_code(name):
+      result = _hide_call_rpc_method("getAxisErrorCode", name)
+      return result
+  #--------------- Start WeldingTools -----------------
+  global referenceCurrent
+  referenceCurrent = 0
+  global tracking_thread_id
+  tracking_thread_id = 0
+  global firstArc
+  firstArc = 0
+  global recordCurrent
+  recordCurrent = float('-inf')
+  global recordVoltage
+  recordVoltage = float('-inf')
+  def weldingIndicator(b):
+      set_standard_digital_out(-1,b)
+  end
+  def repeatable(i):
+     global firstArc
+     if firstArc>>i & 1 == 1:
+         halt()
+  end
+  def setRepeatable(i):
+     global firstArc
+     firstArc |= (1<<i)
+  end
+  def touchSenseOffset(org,dir1,dir2,length):
+     pose = elicopy.deepcopy(org)
+     pose_diff = [0,0,0]
+     pose_diff[0] = dir2[0] - dir1[0]
+     pose_diff[1] = dir2[1] - dir1[1]
+     pose_diff[2] = dir2[2] - dir1[2]
+     pose_diff = normalize(pose_diff)
+     pose[0] = pose[0] + pose_diff[0] * length
+     pose[1] = pose[1] + pose_diff[1] * length
+     pose[2] = pose[2] + pose_diff[2] * length
+     return pose
+  end
+  global touchSenseOffsetValue
+  touchSenseOffsetValue = [0,0,0,0,0,0]
+  global touchReferencePoint
+  touchReferencePoint = [0,0,0,0,0,0]
+  def pose_trans_local(world_pnt,frame):
+    return pose_trans(pose_inv(frame),world_pnt)
+  end
+  def pose_trans_world(local_pnt,frame):
+    return pose_trans(frame,local_pnt)
+  end
+  def two_point_get_vec(vec1,vec2):
+    result=[0,0,0]
+    result[0]=vec2[0]-vec1[0]
+    result[1]=vec2[1]-vec1[1]
+    result[2]=vec2[2]-vec1[2]
+    return result
+  end
+  def vector_o_product(vec1,vec2):
+    return vec1[0]*vec2[0]+vec1[1]*vec2[1]+vec1[2]*vec2[2]
+  end
+  def vector_v_product(vec1,vec2):
+    res_vec=[0,0,0]
+    res_vec[0]=vec1[1]*vec2[2]-vec1[2]*vec2[1]
+    res_vec[1]=vec1[2]*vec2[0]-vec1[0]*vec2[2]
+    res_vec[2]=vec1[0]*vec2[1]-vec1[1]*vec2[0]
+    return res_vec
+  end
+  def get_vertical_vec_by_three_point(pnt1,pnt2,vec_pnt):
+    vec1=[0,0,0]
+    vec1[0]=pnt2[0]-pnt1[0]
+    vec1[1]=pnt2[1]-pnt1[1]
+    vec1[2]=pnt2[2]-pnt1[2]
+    vec1=normalize(vec1)
+    vec2=[0,0,0]
+    vec2[0]=vec_pnt[0]-((pnt1[0]+pnt2[0])/2.0)
+    vec2[1]=vec_pnt[1]-((pnt1[1]+pnt2[1])/2.0)
+    vec2[2]=vec_pnt[2]-((pnt1[2]+pnt2[2])/2.0)
+    vec2=normalize(vec2)
+    ver_vec=vector_v_product(vec1,vec2)
+    return ver_vec
+  end
+  def two_point_touch_offset(pnt1,pnt2,vec_pnt,touch1,touch2,frame):
+    final_change=[0,0,0,0,0,0]
+    pnt1_local=pose_trans_local(pnt1,frame)
+    pnt2_local=pose_trans_local(pnt2,frame)
+    vec_pnt_local=pose_trans_local(vec_pnt,frame)
+    touch1_local=pose_trans_local(touch1,frame)
+    touch2_local=pose_trans_local(touch2,frame)
+    ver_vec=get_vertical_vec_by_three_point(pnt1_local,pnt2_local,vec_pnt_local)
+    if abs(norm(ver_vec))<0.0001:
+      return final_change
+    end
+    if (abs(ver_vec[0])>abs(ver_vec[1]))&(abs(ver_vec[0])>abs(ver_vec[2])):
+      pnt1_local[0]=0
+      pnt2_local[0]=0
+      touch1_local[0]=0
+      touch2_local[0]=0
+    elif (abs(ver_vec[1])>abs(ver_vec[0]))&(abs(ver_vec[1])>abs(ver_vec[2])):
+      pnt1_local[1]=0
+      pnt2_local[1]=0
+      touch1_local[1]=0
+      touch2_local[1]=0
+    elif (abs(ver_vec[2])>abs(ver_vec[0]))&(abs(ver_vec[2])>abs(ver_vec[1])):
+      pnt1_local[2]=0
+      pnt2_local[2]=0
+      touch1_local[2]=0
+      touch2_local[2]=0
+    else:
+      return final_change
+    end
+    final_change[0]=touch1_local[0]-pnt1_local[0]
+    final_change[1]=touch1_local[1]-pnt1_local[1]
+    final_change[2]=touch1_local[2]-pnt1_local[2]
+    new_vec1=two_point_get_vec(pnt1_local,pnt2_local)
+    new_vec1=normalize(new_vec1)
+    if abs(norm(new_vec1))<0.0001:
+      return final_change
+    end
+    new_vec2=two_point_get_vec(touch1_local,touch2_local)
+    new_vec2=normalize(new_vec2)
+    if abs(norm(new_vec2))<0.0001:
+      return final_change
+    end
+    angle=vector_o_product(new_vec1,new_vec2)/(norm(new_vec1)*norm(new_vec2))
+    if angle>1.0:
+      angle=1.0
+    end
+    if angle<-1.0:
+      angle=-1.0
+    end
+    angle=acos(angle)
+    if abs(angle)<0.0001:
+      return final_change
+    end
+    judge_vec=vector_v_product(new_vec1,new_vec2)
+    if abs(norm(judge_vec))<0.0001:
+      return final_change
+    end
+    judge_vec=normalize(judge_vec)
+    if abs(judge_vec[0])>0.9999:
+      if judge_vec[0]>0:
+        final_change[3]=angle
+      else:
+        final_change[3]=-angle
+      end
+      return final_change
+    end
+    if abs(judge_vec[1])>0.9999:
+      if judge_vec[1]>0:
+        final_change[4]=angle
+      else:
+        final_change[4]=-angle
+      end
+      return final_change
+    end
+    if abs(judge_vec[2])>0.9999:
+      if judge_vec[2]>0:
+        final_change[5]=angle
+      else:
+        final_change[5]=-angle
+      end
+      return final_change
+    end
+    return final_change
+  end
+  def last_point_touch_offset(pnt1,pnt2,vec_pnt,touch1,touch2,pnt3,touch3,frame):
+    final_change=[0,0,0,0,0,0]
+    pnt3_local=pose_trans_local(pnt3,frame)
+    touch3_local=pose_trans_local(touch3,frame)
+    touch1_local=pose_trans_local(touch1,frame)
+    touch2_local=pose_trans_local(touch2,frame)
+    pnt1_local=pose_trans_local(pnt1,frame)
+    pnt2_local=pose_trans_local(pnt2,frame)
+    vec_pnt_local=pose_trans_local(vec_pnt,frame)
+    ver_vec=get_vertical_vec_by_three_point(pnt1_local,pnt2_local,vec_pnt_local)
+    if abs(norm(ver_vec))<0.0001:
+      return final_change
+    end
+    if (abs(ver_vec[0])>abs(ver_vec[1]))&(abs(ver_vec[0])>abs(ver_vec[2])):
+      pnt3_local[0]=0
+      touch3_local[0]=0
+      touch1_local[0]=0
+      touch2_local[0]=0
+    elif (abs(ver_vec[1])>abs(ver_vec[0]))&(abs(ver_vec[1])>abs(ver_vec[2])):
+      pnt3_local[1]=0
+      touch3_local[1]=0
+      touch1_local[1]=0
+      touch2_local[1]=0
+    elif (abs(ver_vec[2])>abs(ver_vec[0]))&(abs(ver_vec[2])>abs(ver_vec[1])):
+      pnt3_local[2]=0
+      touch3_local[2]=0
+      touch1_local[2]=0
+      touch2_local[2]=0
+    else:
+      return final_change
+    end
+    new_vec3=two_point_get_vec(pnt3_local,touch3_local)
+    if abs(norm(new_vec3))<0.0001:
+      return final_change
+    end
+    new_vec2=two_point_get_vec(touch1_local,touch2_local)
+    if abs(norm(new_vec2))<0.0001:
+      return final_change
+    end
+    new_vec2=normalize(new_vec2)
+    value=vector_o_product(new_vec2,new_vec3)
+    final_change[0]=new_vec2[0]*value
+    final_change[1]=new_vec2[1]*value
+    final_change[2]=new_vec2[2]*value
+    return final_change
+  end
+  def cal_new_orientation_point(pnt1,pnt2,pnt3,inner_pnt,vec_pnt):
+    new_vec_pnt=elicopy.deepcopy(vec_pnt)
+    first_vec=two_point_get_vec(pnt1,pnt2)
+    first_vec=normalize(first_vec)
+    if abs(norm(first_vec))<0.0001:
+        return new_vec_pnt
+    end
+    second_vec=two_point_get_vec(pnt1,pnt3)
+    second_vec=normalize(second_vec)
+    if abs(norm(second_vec))<0.0001:
+        return new_vec_pnt
+    end
+    vec_dir=vector_v_product(first_vec,second_vec)
+    vec_dir=normalize(vec_dir)
+    if abs(norm(vec_dir))<0.0001:
+     return new_vec_pnt
+    end
+    len=vector_o_product(vec_dir,two_point_get_vec(inner_pnt,vec_pnt))
+    new_vec_pnt[0]=inner_pnt[0]+vec_dir[0]*len
+    new_vec_pnt[1]=inner_pnt[1]+vec_dir[1]*len
+    new_vec_pnt[2]=inner_pnt[2]+vec_dir[2]*len
+    return new_vec_pnt
+  end
+  global trackingFrame
+  trackingFrame = [0,0,0,0,0,0]
+  class KalmanFilter:
+      def __init__(self, process_variance, measurement_variance, initial_estimate=0.0, initial_error=1.0):
+          self.Q = process_variance
+          self.R = measurement_variance
+          self.x = initial_estimate
+          self.P = initial_error
+      def update(self, measurement):
+          self.P = self.P + self.Q
+          K = self.P / (self.P + self.R)
+          self.x = self.x + K * (measurement - self.x)
+          self.P = (1 - K) * self.P
+          return self.x
+  class PIDController:
+      def __init__(self, kp, ki, kd, setpoint):
+          self.kp = kp
+          self.ki = ki
+          self.kd = kd
+          self.setpoint = setpoint
+          self.previous_error = 0
+          self.integral = 0
+      def update(self, measured_value, dt):
+          error = self.setpoint - measured_value
+          self.integral += error * dt
+          derivative = (error - self.previous_error) / dt
+          output = self.kp * error + self.ki * self.integral + self.kd * derivative
+          self.previous_error = error
+          return output
+  def collect_current(duration_sec=5, interval_sec=0.1):
+      data = []
+      total_time = 0
+      while total_time < duration_sec:
+          current = 0
+          data.append(current)
+          total_time = total_time + interval_sec
+          sleep(interval_sec)
+      return data
+  def calculate_median(values):
+      if not values:
+          return 0.0
+      sorted_values = sorted(values)
+      n = len(sorted_values)
+      mid = n // 2
+      return (sorted_values[mid] if n % 2 == 1
+              else (sorted_values[mid - 1] + sorted_values[mid]) / 2)
+  def calculate_std(values):
+      if len(values) < 2:
+          return 0.0
+      mean = sum(values) / len(values)
+      variance = sum((x - mean) ** 2 for x in values) / (len(values) - 1)
+      if variance < 0:
+          variance = variance * -1
+      return variance
+  def median_filter(signal, kernel_size=5):
+      filtered = []
+      half = kernel_size // 2
+      for i in range(len(signal)):
+          start = max(0, i - half)
+          end = min(len(signal), i + half + 1)
+          window = signal[start:end]
+          sorted_window = sorted(window)
+          n = len(sorted_window)
+          if n % 2 == 1:
+              median = sorted_window[n // 2]
+          else:
+              median = (sorted_window[(n // 2) - 1] + sorted_window[n // 2]) / 2
+          filtered.append(median)
+      return filtered
+  def trapezoidal_integrate(y, x):
+      area = 0.0
+      for i in range(1, len(y)):
+          delta_x = x[i] - x[i - 1]
+          avg_y = (y[i - 1] + y[i]) / 2
+          area += avg_y * delta_x
+      return area
+  def calculate_areas(I):
+      t = [0.0] * len(I)
+      t[0] = 0.01
+      for i in range(1, len(I)):
+          t[i] = t[i - 1] + 0.01
+      net_area = trapezoidal_integrate(I, t)
+      return net_area
+  def calculate_baseline(data, window_size=200, threshold=3):
+      filtered = []
+      data_len = len(data)
+      for i in range(data_len):
+          start = max(0, i - window_size)
+          window = data[start:i + 1]
+          window_median = calculate_median(window)
+          window_std = calculate_std(window)
+          if window_std == 0:
+              filtered.append(data[i])
+          else:
+              if abs(data[i] - window_median) < threshold * window_std:
+                  filtered.append(data[i])
+      if not filtered:
+          return 0.0
+      return calculate_median(filtered)
+  def getReferenceCurrent(startTime, rcTime,sampled):
+      global referenceCurrent
+      sampled[0] = True
+      sleep(startTime)
+      current_data = collect_current(rcTime,0.01)
+      current = calculate_baseline(current_data)
+      referenceCurrent = current
+      return current
+  def cal_forward_frame(pnt_start,pnt_end):
+      forward_frame=[0,0,0,0,0,0]
+      forward_vec=two_point_get_vec(pnt_start,pnt_end)
+      if abs(norm(forward_vec))<0.0001:
+          return forward_frame
+      end
+      forward_vec=normalize(forward_vec)
+      cur_tool_pose=get_actual_tcp_pose()
+      cos0 = cos(cur_tool_pose[3])
+      cos1 = cos(cur_tool_pose[4])
+      cos2 = cos(cur_tool_pose[5])
+      sin0 = sin(cur_tool_pose[3])
+      sin1 = sin(cur_tool_pose[4])
+      sin2 = sin(cur_tool_pose[5])
+      z_dir = [0.0, 0.0, 1.0]
+      z_dir[0] = cos2 * sin1 * cos0 + sin2 * sin0
+      z_dir[1] = sin2 * sin1 * cos0 - cos2 * sin0
+      z_dir[2] = cos1 * cos0
+      if abs(norm(z_dir))<0.0001:
+          return forward_frame
+      end
+      z_dir=normalize(z_dir)
+      y_dir=vector_v_product(z_dir,forward_vec)
+      if abs(norm(y_dir))<0.0001:
+          return forward_frame
+      end
+      origin_pnt=[cur_tool_pose[0],cur_tool_pose[1],cur_tool_pose[2]]
+      forward_frame=cal_rpy_frame(origin_pnt,forward_vec,y_dir)
+      return forward_frame
+  end
+  def cal_current_direction(track_frame):
+    accuracy = 0.001
+    cos0 = cos(track_frame[3])
+    cos1 = cos(track_frame[4])
+    cos2 = cos(track_frame[5])
+    sin0 = sin(track_frame[3])
+    sin1 = sin(track_frame[4])
+    sin2 = sin(track_frame[5])
+    frame_y_dir = [0.0, 1.0, 0.0]
+    frame_y_dir[0] = cos2 * sin1 * sin0 - sin2 * cos0
+    frame_y_dir[1] = sin2 * sin1 * sin0 + cos2 * cos0
+    frame_y_dir[2] = cos1 * sin0
+    if abs(norm(frame_y_dir))<accuracy:
+      return 0
+    end
+    cur_tool_pose=get_target_tcp_pose_along_path()
+    ori_to_tool=two_point_get_vec(track_frame,cur_tool_pose)
+    if abs(norm(ori_to_tool))<accuracy:
+      return 0
+    end
+  
+    result=vector_o_product(frame_y_dir,ori_to_tool)
+    if result > accuracy:
+      return 1
+    end
+    if result < (-1 * accuracy):
+      return -1
+    end
+    return 0
+  end
+  def calculate_y_axis_z_axis_offset_in_base_frame(y_offset,z_offset,local_offset_frame):
+    cos0 = cos(local_offset_frame[3])
+    cos1 = cos(local_offset_frame[4])
+    cos2 = cos(local_offset_frame[5])
+    sin0 = sin(local_offset_frame[3])
+    sin1 = sin(local_offset_frame[4])
+    sin2 = sin(local_offset_frame[5])
+    ## calculate local offset frame z axis direction
+    local_z_dir = [0.0, 0.0, 1.0]
+    local_z_dir[0] = cos2 * sin1 * cos0 + sin2 * sin0
+    local_z_dir[1] = sin2 * sin1 * cos0 - cos2 * sin0
+    local_z_dir[2] = cos1 * cos0
+    ## calculate y offset in base frame
+    base_z_offset = [0.0, 0.0, 1.0]
+    base_z_offset[0] = z_offset * local_z_dir[0]
+    base_z_offset[1] = z_offset * local_z_dir[1]
+    base_z_offset[2] = z_offset * local_z_dir[2]
+    ## calculate local offset frame y axis direction
+    local_y_dir = [0.0, 1.0, 0.0]
+    local_y_dir[0] = cos2 * sin1 * sin0 - sin2 * cos0
+    local_y_dir[1] = sin2 * sin1 * sin0 + cos2 * cos0
+    local_y_dir[2] = cos1 * sin0
+    ## calculate y offset in base frame
+    base_y_offset = [0.0, 1.0, 0.0]
+    base_y_offset[0] = y_offset * local_y_dir[0]
+    base_y_offset[1] = y_offset * local_y_dir[1]
+    base_y_offset[2] = y_offset * local_y_dir[2]
+    result_offset = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+    result_offset[0] = base_z_offset[0] + base_y_offset[0]
+    result_offset[1] = base_z_offset[1] + base_y_offset[1]
+    result_offset[2] = base_z_offset[2] + base_y_offset[2]
+    return result_offset
+  end
+  def stepwiseZero(value):
+      step = 0.002
+      if value > 0:
+          value = max(value - step, 0.0)
+      else:
+          value = min(value + step, 0.0)
+      if -1e-10 < value < 1e-10:
+          return 0.0
+      return value
+  end
+  def pathOffsetClear():
+      offset = path_offset_get(1)
+      while offset != [0] * len(offset):
+          x = stepwiseZero(offset[0])
+          y = stepwiseZero(offset[1])
+          z = stepwiseZero(offset[2])
+          rx = stepwiseZero(offset[3])
+          ry = stepwiseZero(offset[4])
+          rz = stepwiseZero(offset[5])
+          path_offset_set([x,y,z,rx,ry,rz], 1)
+          sync()
+          offset = path_offset_get(1)
+      end
+  end
+  global arc_alarm_thread_id
+  arc_alarm_thread_id = 0
+  def arcTracking(maxOffset, type, rcTime=0.1, isConstant = False,current = 160.0, lrOffset = 0.5, upOffset = 0.5,startTime = 2.0,startCyc = 3,udMax = 5,lrMax = 5):
+      import time
+      global arc_alarm_thread_id
+      global referenceCurrent
+      global trackingFrame
+      referenceCurrent = current
+      kf = KalmanFilter(process_variance=1e-3, measurement_variance=0.01, initial_estimate=referenceCurrent)
+      controller = PIDController(kp=0.5, ki=0.1, kd=0.01, setpoint=0)
+      lrkf = KalmanFilter(process_variance=1e-3, measurement_variance=0.01, initial_estimate=0)
+      lrController = PIDController(kp=0.5, ki=0.01, kd=0.01, setpoint=0)
+      sampled = [False]
+      path_offset_enable()
+      path_offset_set_alpha_filter(0.1)
+      path_offset_set_max_offset(maxOffset, 1.0)
+      path_offset_set([0,0,0,0,0,0], 1)
+      zOffset = 0.0
+      yOffset = 0
+      lCurrent = []
+      rCurrent = []
+      udCurrent = []
+      cycleIndex = 0
+      prev_state = 0
+      lastDir = 0
+      lastTimestamp = int(time.time() * 1000)
+      while True:
+          if arc_alarm_thread_id == 0:
+              sampled[0] = False
+              cycleIndex = 0
+              lastDir = 0
+              reference_current = 0 if not isConstant else current
+              kf = None
+              pathOffsetClear()
+              sleep(0.1)
+          elif not sampled[0] and not isConstant:
+              start_thread(getReferenceCurrent,(startTime,rcTime,sampled))
+              cycleIndex = 0
+          else:
+              current = 0
+              ret = 0
+              if trackingFrame != [0] * len(trackingFrame):
+                  ret = cal_current_direction(trackingFrame)
+                  lastDir = lastDir | (ret if ret >= 0 else 2)
+              if type >> 1 & 1 == 1:
+                  if ret == 0 and lastDir == 3:
+                      cycleIndex += 1
+                      lastDir = 0
+                      if len(lCurrent) > 0 and len(rCurrent) > 0 :
+                          la = calculate_areas(lCurrent)
+                          ra = calculate_areas(rCurrent)
+                          y = (la - ra) * lrOffset / 5200
+                          y = lrkf.update(y)
+                          y = lrController.update(y, 1)
+                          if cycleIndex >= startCyc :
+                            y = min(lrMax,y)
+                            yOffset = yOffset + y
+                          lCurrent.clear()
+                          rCurrent.clear()
+                  elif ret > 0:
+                      lCurrent.append(current)
+                  elif ret < 0:
+                      rCurrent.append(current)
+              end
+              if sampled[0] == True and kf == None and referenceCurrent > 0 :
+                  kf = KalmanFilter(process_variance=1e-3, measurement_variance=0.01, initial_estimate=referenceCurrent)
+              if type & 1 == 1 and referenceCurrent > 0:
+                  filtered = 0
+                  timestamp_ms = int(time.time() * 1000)
+                  if trackingFrame != [0] * len(trackingFrame) and ret == 0:
+                          if lastDir == 3:
+                             filtered = calculate_baseline(udCurrent)
+                             udCurrent.clear()
+                          else:
+                             udCurrent.append(current)
+                  elif timestamp_ms - lastTimestamp >= 100:
+                      filtered = calculate_baseline(udCurrent)
+                      lastTimestamp = timestamp_ms
+                      udCurrent.clear()
+                  else:
+                      udCurrent.append(current)
+                  if filtered != 0:
+                      z = kf.update(filtered)
+                      z = (z - referenceCurrent) / 1.0
+                      z = controller.update(z, 1)
+                      z = z / 5000.0 * upOffset
+                      z = min(udMax,z)
+                      zOffset = z
+              end
+              if abs(zOffset) > 0.0001 or abs(yOffset) > 0.0001:
+                  if trackingFrame == [0] * len(trackingFrame):
+                      path_offset_set([0,0,zOffset * -1,0,0,0], 3)
+                  else:
+                      offset_frame = calculate_y_axis_z_axis_offset_in_base_frame(yOffset, zOffset,trackingFrame)
+                      path_offset_set(offset_frame, 1)
+                  end
+                  sleep(0.002)
+              end
+          end
+      end
+  end
+  #--------------- End WeldingTools -----------------
+  # Set Node Preamble Script.
+  # Loop Node Preamble Script.
+  # Waypoint Node Preamble Script.
+  global u21021u22987u28857_p
+  u21021u22987u28857_p = [0.7021516252025861, 0.2933078852124039, 0.23456843420209506, 3.1253377821817554, 0.093983681684957, 1.476698652767066]
+  global u21021u22987u28857_q
+  u21021u22987u28857_q = [0.4799294837767052,-1.589322420041572,-1.1308513118483432,-1.5357483379697898,1.6918920109038043,-3.4693469025898853]
+  # Initial Variables value.
+  # Timer Node Preamble Script.
+  # SubTask Node Preamble Script.
+  # Before Start Preamble Script.
+  # Thread Node Preamble Script.
+  # Event Node Preamble Script.
+  # Main Task Script.
+  while (True):
+    $ LINE: (2, "机器人主任务")
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 焊接工具
+    $ LINE: (3, "焊接工具")
+    repeatable(0)
+    $ LINE: (4, "MoveJ")
+    $ LINE: (5, "初始点", "after")
+    movej(get_inverse_kin(u21021u22987u28857_p, qnear=u21021u22987u28857_q), a=1.3962634015954636, v=1.0471975511965976)
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 焊接
+    $ LINE: (6, "焊接")
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 接近点
+    $ LINE: (7, "接近点")
+    movep([0.7021516252025861, 0.2933078852124039, 0.23456843420209506, 3.1253377821817554, 0.093983681684957, 1.476698652767066],0.2, 0.1, 0.001)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 开始点
+    $ LINE: (8, "开始点")
+    movep([0.6812771839522306, 0.36124811074619056, 0.1327003804381609, -3.0958657871283375, 0.07335013534210481, 1.4358783222227303],0.2, 0.1, 0.0)
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 直线形
+    $ LINE: (9, "直线形")
+    trackingFrame = [0.6820433350890622, 0.360182477334672, 0.13271008187036912, 3.058250437814113, -0.007391634705090939, -0.9474564773637731]
+    movep([0.68181899491661, 0.3600214184687628, 0.1327357244169299, -3.082842825760573, 0.08607853984298841, 1.4358473588769725],0.2, 0.00613250329373014, 5.541856088859545E-4)
+    trackingFrame = [0.6825905859010849, 0.35942131061215876, 0.13271701146480352, 3.0584599399066117, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6818561067397225, 0.3588941850946005, 0.13282003551954438, -3.0523651994131513, 0.11508044485978451, 1.437938081551286],0.2, 0.007238342646673691, 5.541856088859545E-4)
+    trackingFrame = [0.683247286875512, 0.35850791054514286, 0.13272532697812484, 3.058711196862297, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6821410470138806, 0.3577141685360046, 0.13290147855009107, -3.030116441233107, 0.13630713155416452, 1.4397206018464639],0.2, 0.006488856511481532, 2.784177471218064E-4)
+    trackingFrame = [0.6837945376875346, 0.3577467438226296, 0.13273225657255927, 3.058920456259875, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6830998783852841, 0.35724817982564366, 0.13282786731761298, -3.0555339015721303, 0.11288393101341569, 1.4361650125660124],0.2, 0.006839087106012752, 5.236176065541013E-4)
+    trackingFrame = [0.6852173897987934, 0.35576771034409516, 0.1327502735180888, 3.0594640135418896, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6871429899357346, 0.3571520814425411, 0.13274319852601202, -3.2124142329874794, -0.03621778175591057, 1.4299524153789962],0.2, 0.009957266807916572, 8.150545267595248E-4)
+    trackingFrame = [0.6859470575481569, 0.35475282138074415, 0.1327595129773347, 3.059742470727235, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6887574031630984, 0.356774424640144, 0.1328768657814858, -3.2657090660452517, -0.08691565345508319, 1.432844825752456],0.2, 0.007984207609072891, 5.596342792066796E-4)
+    trackingFrame = [0.6868226588473931, 0.35353495462472295, 0.13277060032842977, 3.0600763593224554, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6899896416850562, 0.3558136431871207, 0.1329622385416773, -3.2876541763167437, -0.10759739239747057, 1.4340751806986114],0.2, 0.006259458486038943, 6.080240066613541E-4)
+    trackingFrame = [0.6880266106338429, 0.3518603878351938, 0.13278584543618552, 3.060534992344436, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6910139759918156, 0.3540096030034056, 0.13294068099184161, -3.277180569649116, -0.09753545720768134, 1.4313508103769976],0.2, 0.006035425283065943, 4.910637479459457E-4)
+    trackingFrame = [0.6887562783832063, 0.3508454988718428, 0.13279508489543143, 3.0608126900378334, -0.007391634705090939, -0.9474564773637731]
+    movep([0.691053101864629, 0.3524971827151384, 0.132833797456572, -3.2360156597929564, -0.0579962807542795, 1.4267964101018333],0.2, 0.007280146015516154, 7.431815724172746E-4)
+    trackingFrame = [0.6896683630699106, 0.34957688766765405, 0.13280663421948882, 3.0611595340157605, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6904069608491441, 0.35010749734225866, 0.13276106048584257, -3.144336075113018, 0.031118597097570068, 1.4234623717237047],0.2, 0.009510018020123237, 0.0012135179244428082)
+    trackingFrame = [0.6909452816312968, 0.34780083198178985, 0.13282280327316914, 3.0616445956727163, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6892155786810721, 0.3465602037499436, 0.13314842391343712, -2.996952942659759, 0.17294843581612107, 1.4354803782236012],0.2, 0.010318661280610573, 9.373172596403462E-4)
+    trackingFrame = [0.6917661578493307, 0.34665908189801997, 0.1328331976648208, 3.0619561002639886, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6890191421714766, 0.34469014751459826, 0.13349979206878132, -2.93313954213317, 0.23225845862995048, 1.446767547328702],0.2, 0.008161674097548593, 5.599696805371186E-4)
+    trackingFrame = [0.6925870340673647, 0.3455173318142501, 0.13284359205647245, 3.062267353479946, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6894879928585474, 0.34329662032332087, 0.13365476951740968, -2.9107428123298145, 0.2530838420801855, 1.451033460663538],0.2, 0.006307970516946363, 6.49331310893567E-4)
+    trackingFrame = [0.6936815356914099, 0.3439949983692236, 0.1328574512453413, 3.0626819662357128, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6906656747211763, 0.34183374996116644, 0.13363123355836692, -2.917114720713565, 0.24843283602511132, 1.4483261544055903],0.2, 0.006010106225667411, 5.144799511617723E-4)
+    trackingFrame = [0.6945024119094438, 0.3428532482854537, 0.13286784563699294, 3.0629926317759577, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6921237180685654, 0.3411478461259592, 0.1333941049583611, -2.958878349380174, 0.21122284647938586, 1.4383116332055035],0.2, 0.006949016203668622, 7.21701142254011E-4)
+    trackingFrame = [0.6953232881274777, 0.34171149820168384, 0.1328782400286446, 3.0633030449703105, -0.007391634705090939, -0.9474564773637731]
+    movep([0.6942364844894482, 0.34093163488466216, 0.13304393059046615, -3.0392163956735403, 0.13617416369527938, 1.424269550094491],0.2, 0.00918389602159072, 0.001054713058729559)
+    trackingFrame = [0.6967826236262047, 0.33968172027498184, 0.1328967189471364, 3.063854266670079, -0.007391634705090939, -0.9474564773637731]
+    movep([0.698530996112571, 0.3409386202441499, 0.13288404391627456, -3.2070535542969867, -0.027616501691713043, 1.4150399177940245],0.2, 0.010313982233832605, 9.373540473846413E-4)
+    trackingFrame = [0.6976034998442386, 0.33853997019121196, 0.13290711333878805, 3.0641639773808595, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7003978721166626, 0.34055020194634367, 0.1330368498445328, -3.2691258764424225, -0.08845243582907872, 1.418237641888373],0.2, 0.0081619944262064, 5.599708510090083E-4)
+    trackingFrame = [0.6984243760622726, 0.3373982201074421, 0.13291750773043967, 3.064473434650398, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7015837357580841, 0.33967157010405796, 0.13312476474364782, -3.291265962599372, -0.1099379113749126, 1.4196050481907574],0.2, 0.006308314671621023, 6.493831511482705E-4)
+    trackingFrame = [0.6995188776863178, 0.3358758866624156, 0.13293136691930854, 3.064885649601515, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7025914534955677, 0.33808667948841703, 0.13312074638771598, -3.286444119955375, -0.10512332457552244, 1.4176326017360934],0.2, 0.006010030612193535, 5.144526330004958E-4)
+    trackingFrame = [0.7003397539043517, 0.3347341365786457, 0.1329417613109602, 3.065194514384385, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7027532779790022, 0.33646999152660123, 0.13300987666886527, -3.2476229366887774, -0.06680599992059987, 1.4128443831315687],0.2, 0.006948459199627622, 7.21976566405923E-4)
+    trackingFrame = [0.7011606301223856, 0.3335923864948758, 0.13295215570261182, 3.0655031247636084, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7022546323795025, 0.33437855178563625, 0.13291019569431503, -3.1709487706101993, 0.009826699683229528, 1.4088142759126125],0.2, 0.009183452572507562, 0.0010546621313739155)
+    trackingFrame = [0.7026199656211126, 0.3315626085681738, 0.13297063462110364, 3.0660511363854384, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7008892709144176, 0.3303211816874879, 0.13328685133643198, -3.005131066017255, 0.17442247244290787, 1.4206455619059073],0.2, 0.010313951767126482, 9.372875804416759E-4)
+    trackingFrame = [0.7034408418391465, 0.33042085848440395, 0.1329810290127553, 3.0663590385779433, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7006917208717014, 0.32845027454314113, 0.13363269222583005, -2.9421993869043925, 0.23465491004836986, 1.431874598414153],0.2, 0.008161415666430919, 5.599854164445528E-4)
+    trackingFrame = [0.7042617180571804, 0.32927910840063407, 0.13299142340440692, 3.066666685280688, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7011600955471274, 0.3270563877865995, 0.13378576604867487, -2.920110789704825, 0.2558019531971299, 1.4361212840755506],0.2, 0.0063079268130864325, 6.49372553883997E-4)
+    trackingFrame = [0.7053562196812256, 0.32775677495560757, 0.1330052825932758, 3.0670764829603803, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7023379092864194, 0.32559361651428415, 0.133762699709772, -2.9264147355880854, 0.25105942204016696, 1.4334145280289545],0.2, 0.006010105244419548, 5.145094100968934E-4)
+    trackingFrame = [0.7061770958992596, 0.3266150248718377, 0.13301567698492742, 3.0673835324060654, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7037967737796762, 0.3249083346646754, 0.1335290434625601, -2.967627097842227, 0.21324787262096132, 1.4234322768554146],0.2, 0.006948895195332086, 7.21715672999123E-4)
+    trackingFrame = [0.7069979721172935, 0.32547327478806787, 0.13302607137657907, 3.06769032540771, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7059106925421472, 0.3246930157439304, 0.1331858803044311, -3.0468460994959976, 0.13703353901084486, 1.409471075638593],0.2, 0.0091835237414803, 0.0010546703046856282)
+    trackingFrame = [0.7084573076160204, 0.32344349686136586, 0.1330445502950709, 3.0682351011056177, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7102055384114503, 0.32470038083922487, 0.1330413084898315, -3.2122530880450215, -0.02920056621256798, 1.4004339267072796],0.2, 0.01031348342029905, 9.373207611488339E-4)
+    trackingFrame = [0.7092781838340544, 0.322301746777596, 0.13305494468672252, 3.068541180265538, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7120717938584777, 0.32431156756541746, 0.1331997363587825, -3.2734384964420666, -0.09093272684592583, 1.4037044047451472],0.2, 0.0081617045868742, 5.599884313362474E-4)
+    trackingFrame = [0.7100990600520883, 0.3211599966938261, 0.13306533907837417, 3.068847001904481, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7132573402559359, 0.3234327253740634, 0.13328959961227085, -3.2952685671948685, -0.11273581298394161, 1.4050984341631696],0.2, 0.006308262355495735, 6.494282164247936E-4)
+    trackingFrame = [0.7111935616761336, 0.3196376632487996, 0.13307919826724304, 3.0692543630102898, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7142651277316849, 0.32184788048273955, 0.1332850963082135, -3.290516056443821, -0.10785217741966237, 1.4031203734472832],0.2, 0.006010030404676287, 5.144854437753768E-4)
+    trackingFrame = [0.7120144378941675, 0.31849591316502973, 0.13308959265889467, 3.0695595826620896, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7144274527234032, 0.32023152005872185, 0.13317067765261312, -3.2522497354659317, -0.06897676660204508, 1.398286385413183],0.2, 0.0069483319069509044, 7.219889588012778E-4)
+    trackingFrame = [0.7128353141122014, 0.31735416308125985, 0.13309998705054632, 3.069864543846703, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7139293424897268, 0.3181404006708027, 0.1330639057430575, -3.1766993700633877, 0.008766659709075909, 1.3941661721611367],0.2, 0.009183046605814963, 0.0010546155086365622)
+    trackingFrame = [0.7142946496109284, 0.31532438515455785, 0.13311846596903812, 3.07040605799309, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7125630335448935, 0.31408221115584606, 0.13342537958115627, -3.0133325435799234, 0.17577679257474565, 1.4057952871693162],0.2, 0.010313402246598982, 9.372518205491805E-4)
+    trackingFrame = [0.7151155258289623, 0.314182635070788, 0.13312886036068977, 3.070710299728801, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7123644178086012, 0.31221048799391266, 0.1337657477466793, -2.9513000143442363, 0.23691969920883377, 1.4169515856074042],0.2, 0.008161104287775178, 5.600047432901664E-4)
+    trackingFrame = [0.7159364020469963, 0.3130408849870181, 0.13313925475234142, 3.0710142819295045, -0.007391634705090939, -0.9474564773637731]
+    movep([0.712832334233331, 0.3108162546070968, 0.13391693612524838, -2.9295261764364153, 0.25838440283871994, 1.4211730323909755],0.2, 0.0063078744634822125, 6.494223257981111E-4)
+    trackingFrame = [0.7170309036710415, 0.3115185515419916, 0.13315311394121027, 3.071419187322219, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7140102756459918, 0.3093535793677629, 0.13389433557911248, -2.9357603111698136, 0.2535511885446268, 1.4184684733982156],0.2, 0.006010104014738807, 5.14544669095666E-4)
+    trackingFrame = [0.7178517798890753, 0.3103768014582217, 0.13316350833286192, 3.0717225628457347, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7154699299117001, 0.3086688966481468, 0.13366411881131138, -2.976409450994172, 0.21514532102994058, 1.4085290074654941],0.2, 0.00694874940039513, 7.217323118621062E-4)
+    trackingFrame = [0.7186726561071093, 0.30923505137445184, 0.13317390272451357, 3.0720256778960504, -0.007391634705090939, -0.9474564773637731]
+    movep([0.717584943302373, 0.3084544279009885, 0.1333278951170624, -3.054488653878277, 0.1377809379819024, 1.3946647687760454],0.2, 0.009183076855868274, 0.001054618982666122)
+    trackingFrame = [0.7201319916058363, 0.30720527344774984, 0.13319238164300537, 3.0725639050802442, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7218800228355782, 0.30846209879175734, 0.1331984596253543, -3.2174291736175418, -0.03086035292969921, 1.3858356612445428],0.2, 0.010312887014472145, 9.372812410916098E-4)
+    trackingFrame = [0.7209528678238702, 0.30606352336397996, 0.13320277603465702, 3.072866295121977, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7237456295074286, 0.3080728695886945, 0.1333624363377076, -3.277715459193855, -0.09347516219491507, 1.3891786703321387],0.2, 0.00816136046664803, 5.600096918685648E-4)
+    trackingFrame = [0.7217737440419041, 0.3049217732802101, 0.13321317042630865, 3.073168423631741, -0.007391634705090939, -0.9474564773637731]
+    movep([0.724930849985356, 0.30719381056829465, 0.1334542213015858, -3.299231188809168, -0.11559110976635863, 1.3905985073880442],0.2, 0.006308201118434895, 6.494820079513067E-4)
+    trackingFrame = [0.7228682456659493, 0.3033994398351836, 0.13322702961517752, 3.0735708543342812, -0.007391634705090939, -0.9474564773637731]
+    movep([0.725938709232421, 0.305609012916945, 0.133449238977481, -3.2945489522186593, -0.11063948517229674, 1.3886150540750537],0.2, 0.006010029957928263, 5.145241989817098E-4)
+    trackingFrame = [0.7236891218839833, 0.3022576897514137, 0.13323742400682917, 3.0738723715165697, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7261015511157257, 0.303992992237167, 0.13333131833757664, -3.256845078949384, -0.07121448444539143, 1.3837363589640577],0.2, 0.0069481793464904245, 7.220034526930355E-4)
+    trackingFrame = [0.7245099981020172, 0.30111593966764383, 0.1332478183984808, 3.0741736262366532, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7256040148290561, 0.3019022217599583, 0.13321754547810555, -3.1824337733201946, 0.007622523064951015, 1.3795245385734982],0.2, 0.00918256434372708, 0.0010545601238499069)
+    trackingFrame = [0.7259693336007442, 0.2990861617409419, 0.13326629731697262, 3.074708541263386, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7242368668002491, 0.29784329233969653, 0.1335640109472267, -3.021555438976535, 0.17701097776049757, 1.3909308026814509],0.2, 0.010312752830042616, 9.372096946398811E-4)
+    trackingFrame = [0.7267902098187781, 0.297944411657172, 0.13327669170862427, 3.0750090654623654, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7240372334733516, 0.29597078825330136, 0.13389896228373802, -2.9604392673857642, 0.23905206243124819, 1.4020000171763554],0.2, 0.00816073747713638, 5.600278380572386E-4)
+    trackingFrame = [0.727611086036812, 0.29680266157340207, 0.1332870861002759, 3.075309326149357, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7245047095216077, 0.294576221256884, 0.13404828386559847, -2.9389867517622292, 0.26083029273544917, 1.4061902942773343],0.2, 0.006307813070648259, 6.494810341479425E-4)
+    trackingFrame = [0.7287055876608572, 0.2952803281283756, 0.13330094528914477, 3.0757092633456056, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7256827743727842, 0.29311363896993603, 0.13402614516971828, -2.945149235819472, 0.255907274524032, 1.4034895664316454],0.2, 0.006010102523421041, 5.145860006903721E-4)
+    trackingFrame = [0.7295264638788912, 0.29413857804460575, 0.13331133968079642, 3.0760089080942987, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7271431868423056, 0.2924295323766087, 0.13379933415774636, -2.9852233175895284, 0.21691457121190333, 1.3936032529223645],0.2, 0.006948577649952784, 7.217511509908469E-4)
+    trackingFrame = [0.7303473400969251, 0.29299682796083587, 0.13332173407244804, 3.0763082884086663, -0.007391634705090939, -0.9474564773637731]
+    movep([0.729259236877215, 0.29221587144591915, 0.13346997646613837, -3.062142277278708, 0.13841614154317153, 1.3798517048674586],0.2, 0.009182551877841944, 0.0010545586922209107)
+    trackingFrame = [0.731806675595652, 0.29096705003413387, 0.13334021299093987, 3.076839866296483, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7335544494342848, 0.292223774116241, 0.1333554950191022, -3.222580744640795, -0.032595467445035, 1.371245400099251],0.2, 0.010312188494132053, 9.372352022818538E-4)
+    trackingFrame = [0.732627551813686, 0.289825299950364, 0.1333506073825915, 3.0771385106240268, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7354193792732145, 0.2918341081334813, 0.13352494610595914, -3.2819559165789114, -0.0960791734856786, 1.3746604387593198],0.2, 0.008160959584495054, 5.600348098758143E-4)
+    trackingFrame = [0.73344842803172, 0.2886835498665941, 0.13336100177424315, 3.077436889476377, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7366042652366077, 0.29095482585765575, 0.1336186256612198, -3.303153045193705, -0.11850317527419664, 1.3761051707282845],0.2, 0.006308130564593389, 6.495449337219207E-4)
+    trackingFrame = [0.7345429296557652, 0.2871612164215676, 0.13337486096311202, 3.077834314509963, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7376121982702982, 0.28937007695026007, 0.13361317036355372, -3.298542010946739, -0.11348463383454334, 1.374116567930247],0.2, 0.006010029258508689, 5.14569171255296E-4)
+    trackingFrame = [0.7353638058737991, 0.28601946633779773, 0.13338525535476364, 3.078132072852352, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7377755733007227, 0.2877544081371828, 0.13349179555743976, -3.2614080467929427, -0.07351864296430553, 1.369194400943996],0.2, 0.006948000348826455, 7.220201412696058E-4)
+    trackingFrame = [0.736184682091833, 0.28487771625402786, 0.1333956497464153, 3.0784295648050457, -0.007391634705090939, -0.9474564773637731]
+    movep([0.73727864940037, 0.28566401504210254, 0.13337111346369498, -3.188150762636913, 0.006394573419689127, 1.3648898281038433],0.2, 0.009182002301304568, 0.0010544955767904465)
+    trackingFrame = [0.73764401759056, 0.28284793832732585, 0.1334141286649071, 3.0789577807846573, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7359107708907758, 0.28160442541093467, 0.13370274770876941, -3.029797797651073, 0.1781246454272086, 1.3760533779290889],0.2, 0.0103119989997521, 9.371609179534908E-4)
+    trackingFrame = [0.7384648938085939, 0.281706188243556, 0.13342452305655875, 3.0792545313312387, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7357101683277808, 0.2797311756862377, 0.13403233945010817, -2.969614950068901, 0.24105127632979056, 1.3870214443290956],0.2, 0.008160312754969172, 5.600548783165481E-4)
+    trackingFrame = [0.7392857700266279, 0.2805644381597861, 0.1334349174482104, 3.079551014456102, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7361772219826417, 0.27833628818335615, 0.13417981334427714, -2.9484902469468324, 0.26313876604427316, 1.391174710806103],0.2, 0.006307742238312159, 6.495490871278334E-4)
+    trackingFrame = [0.7403802716506731, 0.2790421047147596, 0.13344877663707924, 3.0799459088291434, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7373554060069677, 0.2768737957452214, 0.13415813244197744, -2.9545792523682763, 0.2581268602802822, 1.3884794328919017],0.2, 0.0060101007572436835, 5.146336778184492E-4)
+    trackingFrame = [0.7412011478687069, 0.2779003546309897, 0.1334591710287309, 3.0802417669112256, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7388165449242445, 0.27619024213206755, 0.1339346926203907, -2.994066576369977, 0.21855504176063117, 1.3786564746340515],0.2, 0.006948378777449246, 7.217722829732533E-4)
+    trackingFrame = [0.7420220240867409, 0.2767586045472199, 0.13346956542038255, 3.0805373566648577, -0.007391634705090939, -0.9474564773637731]
+    movep([0.740933573363179, 0.2759773464610461, 0.13361212577299053, -3.0698051798319557, 0.138938963211612, 1.3650329690702367],0.2, 0.009181945327086764, 0.0010544890336576206)
+    trackingFrame = [0.7434813595854679, 0.2747288266205179, 0.13348804433887435, 3.0810621861774288, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7452288182711944, 0.2759854068377065, 0.13351241239594439, -3.2277067436562183, -0.03440549850594869, 1.3566634091401655],0.2, 0.010311383346142169, 9.371823605235885E-4)
+    trackingFrame = [0.7443022358035019, 0.27358707653674796, 0.133498438730526, 3.081357029151711, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7470930433867651, 0.2755952833327752, 0.13368726203520603, -3.286159029585322, -0.09874418021437806, 1.360149695161292],0.2, 0.008160499465783627, 5.600639631564809E-4)
+    trackingFrame = [0.7451231120215357, 0.27244532645297814, 0.13350883312217765, 3.081651602774289, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7482775863233081, 0.2747157714303302, 0.13378280859452119, -3.3070333628000776, -0.12147137236577617, 1.361618311796797],0.2, 0.006308050299601672, 6.496174022506147E-4)
+    trackingFrame = [0.7462176136455809, 0.27092299300795164, 0.1335226923110465, 3.0820439481460857, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7492855951406943, 0.2731310727588195, 0.13377688648669336, -3.3024944451082834, -0.11638699841240345, 1.3596248241063773],0.2, 0.006010028292961612, 5.14620633532454E-4)
+    trackingFrame = [0.7470384898636149, 0.26978124292418176, 0.13353308670269814, 3.082337892231581, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7494495194419843, 0.2715157678479265, 0.1336521061862933, -3.2659377279664716, -0.07588871800340304, 1.3546605939896188],0.2, 0.006947793747591921, 7.220391181499603E-4)
+    trackingFrame = [0.7478593660816488, 0.2686394928404119, 0.1335434810943498, 3.082631566066345, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7489532462158844, 0.26942578051310845, 0.13352460828179713, -3.1938491279733445, 0.005083114603736903, 1.350262483272472],0.2, 0.009181357002255837, 0.0010544214682278188)
+    trackingFrame = [0.7493187015803758, 0.2666097149137099, 0.1335619600128416, 3.0831529847617216, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7475847460092556, 0.2653656105286297, 0.13384159211385815, -3.038057648404576, 0.17911744933967635, 1.3611643014235955],0.2, 0.010311136249744356, 9.371052066337397E-4)
+    trackingFrame = [0.7501395777984097, 0.26546796482994, 0.13357235440449325, 3.083445906489552, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7473832228042538, 0.2634916506361039, 0.13416588281869177, -2.978824829306425, 0.24291665881538957, 1.3720174591817365],0.2, 0.00815982764959991, 5.600860421078206E-4)
+    trackingFrame = [0.7509604540164436, 0.26432621474617013, 0.13358274879614487, 3.0837385569520905, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7478498721532085, 0.2620964558091208, 0.13431152859091278, -2.958034347055854, 0.26530900858820244, 1.376127973409648],0.2, 0.006307661571915374, 6.496268932896542E-4)
+    trackingFrame = [0.7520549556404889, 0.2628038813011436, 0.13359660798501374, 3.084128335137773, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7490281710558601, 0.26063405009401736, 0.13429030131235728, -2.9640480599102084, 0.2602091686075892, 1.3734397463257495],0.2, 0.006010098702981264, 5.146879736146859E-4)
+    trackingFrame = [0.7528758318585228, 0.26166213121737375, 0.1336070023766654, 3.0844203516071054, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7504900044852658, 0.25995102617823146, 0.13407019728239356, -3.002937077803228, 0.2200661911278737, 1.3636901655307212],0.2, 0.006948151620123756, 7.217958008196157E-4)
+    trackingFrame = [0.7536967080765568, 0.2605203811336039, 0.13361739676831702, 3.0847120959197545, -0.007391634705090939, -0.9474564773637731]
+    movep([0.752607952846164, 0.2597388530209143, 0.13375434444215184, -3.077475564668912, 0.1393492492880883, 1.350209654777373],0.2, 0.00918125373399643, 0.0010544096085136525)
+    trackingFrame = [0.7551560435752837, 0.25849060320690187, 0.13363587568680885, 3.0852300796546364, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7569031294242088, 0.2597469969917155, 0.13366920950992253, -3.2328061223914513, -0.03629001823114759, 1.342089940954483],0.2, 0.010310467071717837, 9.371224326966011E-4)
+    trackingFrame = [0.7559769197933176, 0.257348853123132, 0.13364627007846047, 3.0855210665780137, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7587666221001812, 0.2593563953352321, 0.13384938054503182, -3.2903239683273315, -0.10146958998028244, 1.345646409521101],0.2, 0.008159977645249316, 5.600973299226866E-4)
+    trackingFrame = [0.7567977960113516, 0.25620710303936217, 0.13365666447011212, 3.0858117803387595, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7599508135823506, 0.2584766474917347, 0.13394676605957231, -3.3108713767333273, -0.12449505340648744, 1.347137802860076],0.2, 0.006307959931072268, 6.496998222504104E-4)
+    trackingFrame = [0.7578922976353968, 0.2546847695943356, 0.133670523658981, 3.086198973307896, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7609589001617699, 0.2568920005356221, 0.13394038342037234, -3.3064054759634995, -0.11934594312163745, 1.345139716366458],0.2, 0.006010027047834595, 5.146788588440499E-4)
+    trackingFrame = [0.7587131738534306, 0.25354301951056574, 0.13368091805063262, 3.0864890486571452, -0.007391634705090939, -0.9474564773637731]
+    movep([0.761123389721898, 0.2552770714724448, 0.1338122471394072, -3.2704332208519884, -0.07832417196539763, 1.3401350059492978],0.2, 0.006947558380910524, 7.220604773652362E-4)
+    trackingFrame = [0.7595340500714646, 0.2524012694267959, 0.13369131244228427, 3.0867788499599347, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7606278052971475, 0.25318751817572355, 0.13367802853246935, -3.1995276674606217, 0.003688470407205523, 1.3356429354978416],0.2, 0.009180624983048318, 0.0010543374003969554)
+    trackingFrame = [0.7609933855701916, 0.2503714915000939, 0.13370979136077607, 3.0872933747959905, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7592587923309128, 0.24912684783898584, 0.13398054638395837, -3.0463330049848367, 0.17998908001913022, 1.3462648788600795],0.2, 0.01031016009102168, 9.370422780696644E-4)
+    trackingFrame = [0.7618142617882255, 0.249229741416324, 0.13372018575242772, 3.0875824134719974, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7590563973055675, 0.2472522134246491, 0.1342995959213075, -2.9880666367646334, 0.24464757005215837, 1.3569896926144824],0.2, 0.00815927970019844, 5.601215078270109E-4)
+    trackingFrame = [0.7626351380062594, 0.24808799133255416, 0.13373058014407938, 3.0878711771041294, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7595226605360444, 0.24585672453189386, 0.13444343358921418, -2.967616692875582, 0.2673402500503612, 1.3610518216960639],0.2, 0.006307570679108869, 6.497148612281346E-4)
+    trackingFrame = [0.7637296396303046, 0.24656565788752766, 0.13374443933294822, 3.0882557669792936, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7607010699938008, 0.24439440239260277, 0.13442265565243613, -2.973553315731639, 0.2621534659221911, 1.3583722258696533],0.2, 0.0060100963474237715, 5.147491612072868E-4)
+    trackingFrame = [0.7645505158483386, 0.24542390780375778, 0.13375483372459987, 3.0885438878191107, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7621635658280335, 0.24371188476044445, 0.13420585119076514, -3.011832645906437, 0.22144751834731136, 1.3487058479822167],0.2, 0.006947895020439163, 7.218217979477427E-4)
+    trackingFrame = [0.7653713920663725, 0.2442821577199879, 0.13376522811625152, 3.088831732738717, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7642823754014403, 0.24350039119227107, 0.1338966338610099, -3.085151629255611, 0.13964687902415104, 1.3353828620379329],0.2, 0.009180473643781434, 0.001054320020028024)
+    trackingFrame = [0.7668307275650995, 0.2422523797932859, 0.13378370703474332, 3.0893427749406435, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7685773829854889, 0.24350854462435198, 0.13382588414480573, -3.2378778420145067, -0.03824858234280474, 1.32752523440712],0.2, 0.01030943519168332, 9.370551370977405E-4)
+    trackingFrame = [0.7676516037831334, 0.24111062970951605, 0.13379410142639497, 3.0896298520403485, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7704401156866743, 0.24311744430512913, 0.13401129810381984, -3.2944499120517605, -0.10425479870202148, 1.3311505365073277],0.2, 0.00815939166996672, 5.601350886875136E-4)
+    trackingFrame = [0.7684724800011673, 0.23996887962574615, 0.13380449581804663, 3.089916652230876, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7716239473738217, 0.24223745426446833, 0.13411049407018866, -3.31466633069474, -0.12757356046756485, 1.33266350075358],0.2, 0.006307859069091454, 6.49792602321257E-4)
+    trackingFrame = [0.7695669816252125, 0.23844654618071964, 0.13381835500691547, 3.0902986212861694, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7726321136743897, 0.24065286049048382, 0.1341036572922439, -3.3102743335081644, -0.12236082159096835, 1.3306611230419565],0.2, 0.006010025509693373, 5.147441201150889E-4)
+    trackingFrame = [0.7703878578432465, 0.2373047960969498, 0.13382874939856712, 3.090584774340669, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7727971843416032, 0.23903831912764845, 0.13397221537399337, -3.2748936333250116, -0.08082445403990794, 1.325617689632743],0.2, 0.006947293092833567, 7.220843133462566E-4)
+    trackingFrame = [0.7712087340612804, 0.23616304601317992, 0.13383914379021877, 3.0908706496170715, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7723023266750353, 0.23694922803956942, 0.1338313728342014, -3.2051851878522077, 0.0022109843664252496, 1.3210316044445662],0.2, 0.009179802797008946, 0.001054242977468996)
+    trackingFrame = [0.7726680695600073, 0.2341332680864779, 0.13385762270871057, 3.0913781856506, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7709329100133715, 0.2328881374753055, 0.13411961271337833, -3.054621867719627, 0.18073926511971874, 1.3313564312344057],0.2, 0.010309066056820993, 9.369718512358566E-4)
+    trackingFrame = [0.7734889457780413, 0.23299151800270804, 0.13386801710036222, 3.0916632879579327, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7707296922048491, 0.23101286435190968, 0.13443348224781795, -2.997338070854257, 0.2462434133644971, 1.341939812020139],0.2, 0.008158666459740792, 5.601614541133846E-4)
+    trackingFrame = [0.7743098219960752, 0.23184976791893813, 0.13387841149201385, 3.0919481115065635, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7711955875997211, 0.22961709472440126, 0.13457553227598573, -2.9772348829741233, 0.2692317651183165, 1.3459480411255544],0.2, 0.006307469170254643, 6.498133992719415E-4)
+    trackingFrame = [0.7754043236201205, 0.23032743447391166, 0.13389227068088272, 3.092327442166101, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7723741032620337, 0.22815485299304464, 0.1345551992879465, -2.9830926373741806, 0.26395906334183533, 1.3432786339251426],0.2, 0.006010093677392187, 5.14817513519075E-4)
+    trackingFrame = [0.7762251998381544, 0.22918568439014178, 0.13390266507253437, 3.09261161427172, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7738372292300528, 0.22747281810562628, 0.13434165735562392, -3.0207510801504993, 0.22269856371023392, 1.3337050716369134],0.2, 0.0069476078275236865, 7.218503681732395E-4)
+    trackingFrame = [0.7770460760561883, 0.2280439343063719, 0.133913059464186, 3.0928955067570567, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7759568410936315, 0.22726196103404972, 0.13403899539946365, -3.0928315667476065, 0.13983176475338546, 1.3205536959626731],0.2, 0.009179601620561006, 0.001054219873611303)
+    trackingFrame = [0.7785054115549153, 0.2260141563796699, 0.13393153838267782, 3.093399513286908, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7802515790614316, 0.22727004979221052, 0.13398243411463853, -3.2429208733707657, -0.04028073040447356, 1.3129695142164626],0.2, 0.010308283251711648, 9.36980193780522E-4)
+    trackingFrame = [0.7793262877729492, 0.22487240629590002, 0.13394193277432945, 3.0936826276975014, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7821135244404979, 0.2268784304223244, 0.13417301122962608, -3.2985360491318496, -0.10709919083318248, 1.3166620153243216],0.2, 0.008158739102306587, 5.60177418156688E-4)
+    trackingFrame = [0.7801471639909832, 0.22373065621213017, 0.1339523271659811, 3.0939654615154826, -0.007391634705090939, -0.9474564773637731]
+    movep([0.783296988080912, 0.22599819198825755, 0.13427398869690405, -3.3184174769144925, -0.1307062255225767, 1.3181952468087048],0.2, 0.006307747326719711, 6.498961506437617E-4)
+    trackingFrame = [0.7812416656150284, 0.22220832276710367, 0.13396618635484997, 3.094342136351843, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7843052360420384, 0.2244136528499849, 0.13426670428509965, -3.314100256418491, -0.1254309770633364, 1.3161889069436963],0.2, 0.006010023665141796, 5.148166899671483E-4)
+    trackingFrame = [0.7820625418330622, 0.2210665726833338, 0.1339765807465016, 3.0946243144561683, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7844709035209414, 0.2227995109442827, 0.13413200788995752, -3.2793180828212347, -0.08338900043353949, 1.3111086825752143],0.2, 0.006946996734774538, 7.221107209152909E-4)
+    trackingFrame = [0.7828834180510962, 0.21992482259956392, 0.13398697513815325, 3.094906211113563, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7839768103897434, 0.220710910121139, 0.1339846398242565, -3.210820504957258, 6.510195394693593E-4, 1.3064288973881721],0.2, 0.009178887018411191, 0.0010541378060206603)
+    trackingFrame = [0.7843427535498232, 0.21789504467286192, 0.13400545405664507, 3.095406665001355, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7826070991966163, 0.21664947955795705, 0.13425879326872642, -3.0629222251890016, 0.18136776976153599, 1.3164402929223926],0.2, 0.0103078497078425, 9.368936470320294E-4)
+    trackingFrame = [0.785163629767857, 0.21675329458909207, 0.1340158484482967, 3.095687778521362, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7824031078454654, 0.2147736036961352, 0.13456754524526665, -3.006636798826662, 0.24770363609164847, 1.3268695189498387],0.2, 0.00815798549796597, 5.602060597450769E-4)
+    trackingFrame = [0.785984505985891, 0.2156115445053222, 0.13402624283994835, 3.0959686096302916, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7828686537785294, 0.21337756673428698, 0.13470782854015445, -2.986886475899519, 0.27098287457454706, 1.3308184605527826],0.2, 0.006307356658918347, 6.499229151800609E-4)
+    trackingFrame = [0.7870790076099362, 0.2140892110602957, 0.1340401020288172, 3.0963426113629238, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7840472712685972, 0.21191540222311103, 0.13468793599782922, -2.992663604825935, 0.2656253177111885, 1.328160773708563],0.2, 0.006010090679756185, 5.148933030736947E-4)
+    trackingFrame = [0.7878998838279702, 0.2129474609765258, 0.13405049642046885, 3.0966227825235, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7855109949436005, 0.2112338264222162, 0.13447761874945224, -3.0296901574400463, 0.22381890939067234, 1.3186894111868357],0.2, 0.006947288898599464, 7.218816057010557E-4)
+    trackingFrame = [0.7887207600460041, 0.21180571089275596, 0.1340608908121205, 3.096902670425862, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7876313499766983, 0.21102356259735516, 0.1341814304095851, -3.100513567356079, 0.1399038519870012, 1.3057232651183361],0.2, 0.00917863425144737, 0.0010541087773146588)
+    trackingFrame = [0.790180095544731, 0.20977593296605393, 0.1340793697306123, 3.097399548727962, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7919257177726433, 0.2110315125623826, 0.13413885726428115, -3.247934197202541, -0.042385986064330215, 1.2984229905468527],0.2, 0.010307006827542636, 9.368973248936897E-4)
+    trackingFrame = [0.791000971762765, 0.20863418288228405, 0.13408976412226395, 3.097678648472845, -0.007391634705090939, -0.9474564773637731]
+    movep([0.793786848676875, 0.21063935388221264, 0.13433451649104003, -3.302581577048783, -0.11000213957693772, 1.3021807695754242],0.2, 0.008158017522883828, 5.602244971231354E-4)
+    trackingFrame = [0.7918218479807989, 0.20749243279851418, 0.1341001585139156, 3.0979574640034584, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7949699361098216, 0.20975886091989682, 0.13443724606794205, -3.32212407607449, -0.13389237064139115, 1.3037328667911507],0.2, 0.006307624320489221, 6.500108746799933E-4)
+    trackingFrame = [0.7929163496048441, 0.2059700993534877, 0.13411401770278444, 3.098328775497058, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7959782676507301, 0.20817437785741455, 0.13442952063781283, -3.317882491985599, -0.12855574259492858, 1.3017229152845071],0.2, 0.00601002150083485, 5.148968405289602E-4)
+    trackingFrame = [0.7937372258228781, 0.2048283492697178, 0.1341244120944361, 3.098606926880162, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7961445474984027, 0.2065606470668958, 0.1342916217306411, -3.28370569638862, -0.08601723460085395, 1.2966080068163013],0.2, 0.006946668166940288, 7.221397952767879E-4)
+    trackingFrame = [0.794558102040912, 0.20368659918594792, 0.13413480648608775, 3.0988847932089585, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7956512564907778, 0.20447256444379275, 0.13413782815900857, -3.2164324440555636, -9.910417288519495E-4, 1.291835208597333],0.2, 0.009177874246548288, 0.0010540214955020299)
+    trackingFrame = [0.7960174375396389, 0.20165682125924592, 0.13415328540457955, 3.0993780731742957, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7942813600029573, 0.20041087419434464, 0.13439809018837579, -3.0712320559319086, 0.18187439681918724, 1.3015178097257438],0.2, 0.010306506637455547, 9.368073886210344E-4)
+    trackingFrame = [0.7968383137576729, 0.20051507117547604, 0.1341636797962312, 3.0996551463675885, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7940766445409373, 0.19853443171371957, 0.13470178831702637, -3.015960458969756, 0.24902773038671852, 1.3117805466613366],0.2, 0.008157234404319211, 5.602555035345111E-4)
+    trackingFrame = [0.7976591899757068, 0.1993733210917062, 0.13417407418788282, 3.099931933558517, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7945418594723734, 0.19713814088402673, 0.13484032622180836, -2.9965689925094234, 0.27259294632909337, 1.3156649496403396],0.2, 0.006307232762368646, 6.500438158474834E-4)
+    trackingFrame = [0.7987536915997521, 0.19785098764667972, 0.1341879333767517, 3.1003005378213664, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7957205743882245, 0.19567605038618982, 0.13482086951329958, -3.0022637628356224, 0.26715163256942587, 1.3130204866805322],0.2, 0.006010087341450436, 5.149768018060978E-4)
+    trackingFrame = [0.7995745678177859, 0.19670923756290984, 0.13419832776840335, 3.100576656700758, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7971848631956641, 0.1949949099001213, 0.1346137383063618, -3.038647634163673, 0.22480818001777006, 1.3036604640643645],0.2, 0.006946937100414403, 7.219156051225812E-4)
+    trackingFrame = [0.8003954440358199, 0.19556748747913996, 0.13420872216005497, 3.1008524887447617, -0.007391634705090939, -0.9474564773637731]
+    movep([0.7993059020939246, 0.19478519592545088, 0.13432394022528477, -3.1081958197220474, 0.13986311947329286, 1.2908926799141778],0.2, 0.00917756815059942, 0.0010539863422954021)
+    trackingFrame = [0.8018547795345469, 0.19353770955243796, 0.1342272010785468, 3.10134214781259, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8035997992539107, 0.1947929330124398, 0.1342951514699423, -3.2529168043509755, -0.04456385730327273, 1.2838858586180135],0.2, 0.010305601530177417, 9.368062550187474E-4)
+    trackingFrame = [0.8026756557525808, 0.19239595946866808, 0.13423759547019845, 3.1016171817846367, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8054600887319208, 0.1944002148956765, 0.13449581050803272, -3.3065857023611303, -0.11296300709937479, 1.2877067071390207],0.2, 0.008157224533496576, 5.602765043659075E-4)
+    trackingFrame = [0.8034965319706147, 0.1912542093848982, 0.13424798986185008, 3.1018919279811414, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8066427918896593, 0.19351946133318526, 0.134600262370173, -3.3257853972217415, -0.1371313081813456, 1.2892761708504714],0.2, 0.006307489670892341, 6.501371808823942E-4)
+    trackingFrame = [0.8045910335946599, 0.1897318759398717, 0.13426184905071895, 3.1022578081634156, -0.007391634705090939, -0.9474564773637731]
+    movep([0.807651208908914, 0.19193503577271057, 0.1345921026462684, -3.3216202960399173, -0.13173444125172168, 1.2872629796134207],0.2, 0.006010019003499343, 5.14984843247041E-4)
+    trackingFrame = [0.8054119098126938, 0.18859012585610185, 0.13427224344237057, 3.1025318819190635, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8078181165310655, 0.1903217276538029, 0.13445105398355184, -3.288055610725047, -0.08870856747585976, 1.2821156686931914],0.2, 0.006946306259757133, 7.221716320175608E-4)
+    trackingFrame = [0.8062327860307278, 0.18744837577233195, 0.13428263783402222, 3.1028056670730764, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8073256650369415, 0.18823419103775293, 0.13429093651427407, -3.222019840293385, -0.002714798052030205, 1.2772509187342438],0.2, 0.00917676110978441, 0.0010538936587018031)
+    trackingFrame = [0.8076921215294548, 0.18541859784562995, 0.13430111675251405, 3.103291682870696, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8059556925370006, 0.18417232147888177, 0.13453750558193575, -3.0795493301823202, 0.18225898716487496, 1.2865903368894012],0.2, 0.010305032476876154, 9.367128017651745E-4)
+    trackingFrame = [0.8085129977474887, 0.18427684776186004, 0.13431151114416567, 3.1035646650573625, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8057503025748624, 0.18229534863913774, 0.13483621482195748, -3.02530666289755, 0.2502152339572419, 1.2966746575757604],0.2, 0.00815641079088043, 5.603099642295284E-4)
+    trackingFrame = [0.8093338739655226, 0.18313509767809016, 0.13432190553581733, 3.103837357710044, -0.007391634705090939, -0.9474564773637731]
+    movep([0.80621520504667, 0.18089881747084857, 0.1349730291112477, -3.0062799184262534, 0.27406139639055127, 1.3004894161492389],0.2, 0.0063070971020682785, 6.501765070149072E-4)
+    trackingFrame = [0.8104283755895678, 0.1816127642330637, 0.1343357647246862, 3.1042004971020862, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8073940129622503, 0.1794367977612138, 0.1349540035169247, -3.0118906233433704, 0.26853745905645426, 1.2978596498611012],0.2, 0.006010083649492072, 5.15068280878216E-4)
+    trackingFrame = [0.8112492518076018, 0.1804710141492938, 0.13434615911633782, 3.1044725132188717, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8088588341878841, 0.17875606871066982, 0.1347500189213681, -3.047621248308459, 0.2256660431934472, 1.2886198480762519],0.2, 0.006946551310662324, 7.219524614136345E-4)
+    trackingFrame = [0.8120701280256357, 0.17932926406552394, 0.13435655350798947, 3.1047442389824207, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8109804974779083, 0.17854686105374876, 0.13446652616198224, -3.115876512294847, 0.13970957922086116, 1.2760630509843642],0.2, 0.009176399963272993, 0.0010538521832821328)
+    trackingFrame = [0.8135294635243626, 0.17729948613882193, 0.13437503242648127, 3.1052265893228563, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8152738236541663, 0.17855431123041482, 0.1344513146397041, -3.257867695940098, -0.04681383668740725, 1.2693582983316014],0.2, 0.010304063011035975, 9.367067115052837E-4)
+    trackingFrame = [0.8143503397423966, 0.17615773605505208, 0.13438542681813292, 3.1054975072642215, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8171332449625585, 0.17816101368903473, 0.1346568899527922, -3.310547640662509, -0.11598114474123813, 1.2732397200572336],0.2, 0.008156357760046008, 5.603336185525123E-4)
+    trackingFrame = [0.8151712159604305, 0.1750159859712822, 0.13439582120978458, 3.1057681339277066, -0.007391634705090939, -0.9474564773637731]
+    movep([0.818315555872337, 0.17727999351885884, 0.13476303385005664, -3.32940071767266, -0.14042234097540562, 1.27482495348059],0.2, 0.006307343002880266, 6.502754744068823E-4)
+    trackingFrame = [0.8162657175844757, 0.1734936525262557, 0.13440968039865342, 3.106128515958272, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8193240602473728, 0.1756956268723952, 0.13475444666427822, -3.325312932865888, -0.13496638630328178, 1.2728089157611984],0.2, 0.006010016159948445, 5.150809687050513E-4)
+    trackingFrame = [0.8170865938025097, 0.17235190244248583, 0.13442007479030507, 3.1063984620246643, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8194916108945342, 0.17408275287704653, 0.13461030178108388, -3.292366972201668, -0.09146239770362659, 1.2676316586483196],0.2, 0.006945909895292208, 7.222063271049401E-4)
+    trackingFrame = [0.8179074700205435, 0.17121015235871598, 0.13443046918195672, 3.106668116000681, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8190000360963208, 0.1719957899400958, 0.1344439635856395, -3.227581539059491, -0.0045198292563682525, 1.262676394273739],0.2, 0.009175544269583146, 0.0010537539122099395)
+    trackingFrame = [0.8193668055192705, 0.16918037443201397, 0.13444894810044852, 3.1071467788803195, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8176300968856217, 0.16793382149296798, 0.1346770415297302, -3.0878720116298086, 0.18252141986527692, 1.2716592370951787],0.2, 0.010303422900312676, 9.366096151608597E-4)
+    trackingFrame = [0.8201876817373045, 0.1680386243482441, 0.13445934249210018, 3.1074156202193413, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8174240822008445, 0.16605635468488777, 0.13497082807357796, -3.0346729979267377, 0.25126573074463276, 1.2815536406492338],0.2, 0.008155512295278234, 5.603696204160599E-4)
+    trackingFrame = [0.8210085579553383, 0.16689687426447422, 0.1344697368837518, 3.1076841685509478, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8178886908322598, 0.16465959676665945, 0.13510594094804762, -3.016016706610974, 0.27538768977176603, 1.2852938031130445],0.2, 0.006306949304166157, 6.503213929887911E-4)
+    trackingFrame = [0.8221030595793836, 0.16537454081944772, 0.13448359607262067, 3.108041776785416, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8190675872985267, 0.1631976446025918, 0.1350873416417135, -3.0215416680213005, 0.26978229675438126, 1.2826801730372897],0.2, 0.006010079590997287, 5.151680104989868E-4)
+    trackingFrame = [0.8229239357974175, 0.16423279073567784, 0.13449399046427232, 3.1083096404921338, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8205329080965047, 0.1625173030065686, 0.1348864634496752, -3.0566087216325597, 0.22639220995353146, 1.2735691989809903],0.2, 0.006946130419397105, 7.219922699364679E-4)
+    trackingFrame = [0.8237448120154515, 0.16309104065190796, 0.13450438485592395, 3.1085772103856053, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8226551361505513, 0.16230855800979982, 0.13460918951628084, -3.123553834711124, 0.13944327648551555, 1.2612354875698601],0.2, 0.00917512636983, 0.001053705919035164)
+    trackingFrame = [0.8252041475141785, 0.16106126272520593, 0.13452286377441577, 3.1090521639817954, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8269477911364532, 0.1623156473147796, 0.13460734471403918, -3.2627858835428967, -0.049135401624441376, 1.2548404739150107],0.2, 0.010302386967090921, 9.365984248043972E-4)
+    trackingFrame = [0.8260250237322124, 0.15991951264143606, 0.13453325816606743, 3.1093189164629567, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8288063177464323, 0.16192175050398613, 0.13481775155054648, -3.3144666165277497, -0.11905589322776508, 1.2587796844370653],0.2, 0.00815541485543965, 5.603960181438713E-4)
+    trackingFrame = [0.8268458999502463, 0.1587777625576662, 0.13454365255771905, 3.109585374221335, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8299882285324574, 0.16104045778451867, 0.13492555681456977, -3.332969322908658, -0.1437647625170599, 1.2603789934910592],0.2, 0.006307183946344685, 6.504261588347298E-4)
+    trackingFrame = [0.8279404015742915, 0.15725542911263968, 0.13455751174658792, 3.109940192359897, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8309968221191157, 0.15945615144950662, 0.13491654910448272, -3.32895967510733, -0.1382508814135795, 1.2583605237969695],0.2, 0.006010012957099131, 5.151854864465458E-4)
+    trackingFrame = [0.8287612777923254, 0.1561136790288698, 0.13456790613823957, 3.1102059614985405, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8311650308828699, 0.1578437229223549, 0.1347693623012265, -3.2966389368721782, -0.09427811187169866, 1.2531559510512755],0.2, 0.006945477968662821, 7.222439768898469E-4)
+    trackingFrame = [0.8295821540103594, 0.15497192894509995, 0.1345783005298912, 3.1104714351151435, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8306743697462686, 0.15575736119474265, 0.13459690808878375, -3.233116396340852, -0.006405696644476861, 1.2481119869417086],0.2, 0.009174220424511373, 0.001053601876877478)
+    trackingFrame = [0.8310414895090864, 0.15294215101839795, 0.13459677944838302, 3.110942657783759, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8293045731179448, 0.15169537430496852, 0.13481670008228358, -3.0961980591994593, 0.18266161233154893, 1.2567258784366413],0.2, 0.01030167363007418, 9.364975607708743E-4)
+    trackingFrame = [0.8318623657271202, 0.15180040093462807, 0.13460717384003465, 3.1112073092516925, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8290979836424318, 0.14981745004143798, 0.13510563133924414, -3.044057029533204, 0.25217885154002245, 1.2664193086662663],0.2, 0.008154536583583123, 5.60434650426721E-4)
+    trackingFrame = [0.8326832419451542, 0.1506586508508582, 0.1346175682316863, 3.1114716642954465, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8295623171253246, 0.14842047901797756, 0.13523906542013406, -3.025776780048027, 0.27657134132679284, 1.2700800859029424],0.2, 0.006306788999983814, 6.504788763633402E-4)
+    trackingFrame = [0.8337777435691994, 0.1491363174058317, 0.13463142742055517, 3.111823676171262, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8307412976713467, 0.14695859114014578, 0.13522088747021854, -3.031214350916417, 0.27088569446103966, 1.2674839958702833],0.2, 0.006010075153197396, 5.152762597489879E-4)
+    trackingFrame = [0.8345986197872334, 0.14799456732206182, 0.1346418218122068, 3.11208733863293, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8322070850723313, 0.14627861292186536, 0.13502307470596953, -3.065607761889354, 0.2269864351706704, 1.2585101680159012],0.2, 0.00694567333044663, 7.220351264446144E-4)
+    trackingFrame = [0.8354194960052673, 0.14685281723829194, 0.13465221620385845, 3.1123507038776435, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8343298181230557, 0.1460702868132878, 0.13475193156564724, -3.1312259791706314, 0.13906428972081497, 1.2464110959034433],0.2, 0.009173744089727567, 0.00105354717280465)
+    trackingFrame = [0.8368788315039942, 0.14482303931158994, 0.13467069512235025, 3.112818174150609, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8386217018778832, 0.146076941374421, 0.13476323966631976, -3.2676703893293246, -0.051528014623523424, 1.2403325335825264],0.2, 0.010300569145952803, 9.364811287995812E-4)
+    trackingFrame = [0.8376997077220282, 0.14368128922782006, 0.1346810895140019, 3.113080712548702, -0.007391634705090939, -0.9474564773637731]
+    movep([0.840479307481813, 0.14568242559754993, 0.1349783920803725, -3.3183418634479045, -0.1221865828763432, 1.2443264603637803],0.2, 0.008154393502472544, 5.604638813041794E-4)
+    trackingFrame = [0.8385205839400621, 0.14253953914405018, 0.13469148390565355, 3.1133429528349934, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8416608103671976, 0.1448008544545548, 0.1350878276321194, -3.336490506463458, -0.14715785714175295, 1.24593805398884],0.2, 0.006307012136612338, 6.505896358995509E-4)
+    trackingFrame = [0.8396150855641074, 0.14101720569902368, 0.1347053430945224, 3.1136921424123236, -0.007391634705090939, -0.9474564773637731]
+    movep([0.842669494999268, 0.1432166098135267, 0.1350784064392374, -3.3325598036638593, -0.14158722082857825, 1.2439175879957554],0.2, 0.006010009381989255, 5.152986648008337E-4)
+    trackingFrame = [0.8404359617821413, 0.1398754556152538, 0.13471573748617405, 3.1139536861862096, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8428383768085191, 0.1416046379890954, 0.13492823276826166, -3.300870670468193, -0.09715508474089937, 1.2386885040348095],0.2, 0.006945009389442504, 7.222846781116523E-4)
+    trackingFrame = [0.8412568380001753, 0.13873370553148393, 0.1347261318778257, 3.1142149310619067, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8423486660733848, 0.1395189048524492, 0.13474976875979558, -3.2386232790574025, -0.008371943267131803, 1.2335580331732985],0.2, 0.009172786314210667, 0.0010534371782726312)
+    trackingFrame = [0.8427161734989022, 0.13670392760478198, 0.1347446107963175, 3.11467862764469, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8409791212853249, 0.13545697997019795, 0.1349564832598137, -3.1045254288459323, 0.1826795204219146, 1.2417916323802973],0.2, 0.010299780441641081, 9.363763741541785E-4)
+    trackingFrame = [0.8435370497169361, 0.1355621775210121, 0.13475500518796915, 3.114939041013671, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8407720070930611, 0.1335786348771805, 0.1352406278393432, -3.053456303880944, 0.25295427453416947, 1.2512734954622629],0.2, 0.008153481353179242, 5.605052322510211E-4)
+    trackingFrame = [0.8443579259349699, 0.13442042743724222, 0.1347653995796208, 3.1151991545968025, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8412360841873143, 0.13218146444587206, 0.135372406162872, -3.0355575345332295, 0.2776119165158887, 1.254850269191705],0.2, 0.006306615826500111, 5.95106607778782E-4)
+    trackingFrame = [0.845611688899063, 0.1326765786841266, 0.13478127542423757, 3.1155958592016098, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8426460329402367, 0.1305493904678504, 0.13533148784024135, -3.044769422217223, 0.2669086157506452, 1.2511177615758167],0.2, 0.006026029553126746, 4.6488946050763025E-4)
+    trackingFrame = [0.8463457992451514, 0.13165551054896932, 0.13479057113811638, 3.1158278147064724, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8440810057366438, 0.13003026022048741, 0.13512588957877958, -3.081046054712942, 0.2187317680859361, 1.2420197594542823],0.2, 0.007346202992834503, 7.544908215768826E-4)
+    trackingFrame = [0.8475497510316012, 0.12998094375944017, 0.13480581624587212, 3.116207704647293, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8474452346415547, 0.12990583512275353, 0.13480963818720615, -3.1857126176317725, 0.0716965589908487, 1.226728800526262],0.2, 0.009836656631659932, 5.041227172354587E-4)
+    trackingFrame = [0.8480970018436238, 0.1292197770369269, 0.13481274584030656, 3.1163801679434973, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8483490436856748, 0.12940094389418486, 0.13480813954489515, -3.2026827192713934, 0.04745241849889009, 1.2252666505455274],0.2, 0.006625741025219263, 4.2305165565624525E-4)
+    trackingFrame = [0.8494104037924781, 0.1273929769028951, 0.13482937686694918, 3.1167935337568653, -0.007391634705090939, -0.9474564773637731]
+    movep([0.8494104037924781, 0.1273929769028951, 0.13482937686694918, -3.1916510252592163, 0.06440127576982958, 1.2241231529015983],0.2, 0.006056837598480784, 0.0)
+    # End: ELITECO Plugin Task Node
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 离开点
+    $ LINE: (10, "离开点")
+    movep([0.850765001535397, 0.1275275565318454, 0.2548355857046263, 3.0020228805774227, 0.008183348279085968, 1.2206855322901042],0.2, 0.1, 0.001)
+    # End: ELITECO Plugin Task Node
+    # End: ELITECO Plugin Task Node
+    setRepeatable(0)
+    # End: ELITECO Plugin Task Node
+  end
+end

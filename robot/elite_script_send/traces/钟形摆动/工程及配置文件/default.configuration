@@ -1,0 +1,444 @@
+<ConfigurationSettings robotType="6206" toolType="1" robotTypeName="CS66" robotSN="05262216810044" savedTime="2026-09-22 13:57:35">
+  <versionInfo>
+    <lastSavedVersion project="RT ROBOT" major="2" minor="16" bugfix="1" commitHashInfo="983ff58" additionalInfo="develop" buildDate="2026-09-08 18:34:16"/>
+    <createdVersion project="RT ROBOT" major="2" minor="16" bugfix="0" commitHashInfo="658f07c" additionalInfo="" buildDate="2026-05-13 05:26:35"/>
+  </versionInfo>
+  <ToolIoConfig enabled="true" baudRate="BAUD_115200" parity="NONE" stopBits="ONE" usageMode="DAEMON" modbusRTUMode="true" rxIdleChars="0.0" txIdleChars="0.0" toolAnalogInputDomain="1" toolAnalogOutputDomain="1" toolAnalogWorkMode="0" toolDigitalWorkMode="0" toolOutputVoltage="TOOL_VOLTAGE_24V">
+    <digitalIO index="0" enabled="false" output="false" outputMode="0"/>
+    <digitalIO index="1" enabled="false" output="false" outputMode="0"/>
+    <digitalIO index="2" enabled="false" output="false" outputMode="0"/>
+    <digitalIO index="3" enabled="false" output="false" outputMode="0"/>
+  </ToolIoConfig>
+  <ControlConfig>
+    <Resource ResourceId="ToolIOInterfaceLocker" LockerId="cn.elibot.plugin.processes.FullFunctionWelding:cn.elibot.plugin.processes.welding.impl.WeldToolLocker" LockerDisplayName="" LockerBundleName="FullFunctionWelding" LockerVendorName="ELITE ROBOTS"/>
+  </ControlConfig>
+  <ToolsManager Active="d0381080-942c-42ec-b298-8b11d5660236">
+    <TcpTool name="TCP" uuid="73ce9084-c214-4771-8ef3-404ad25aaffd">
+      <ToolShape value="-14.998735184199981, -194.4597679902113, 289.86525507539665, -3.1112023360757353, -0.6596948173656878, -1.6632912178513488"/>
+    </TcpTool>
+    <TcpTool name="TCP_1" uuid="b42f8584-73c1-409b-8e05-3459d6483c7a">
+      <ToolShape value="-16.418099994935822, -101.34339832863205, 462.5496212455106, 0.0, 0.0, 0.0"/>
+    </TcpTool>
+    <TcpTool name="TCP_2" uuid="e8a80983-614f-4393-bc63-98da78020a72">
+      <ToolShape value="-4.0693949560840394, 30.599138910661623, 546.1636024071419, -3.132531657776719, -0.5404059676696207, 1.4512686565722184"/>
+    </TcpTool>
+    <TcpTool name="TCP_4" uuid="d0381080-942c-42ec-b298-8b11d5660236">
+      <ToolShape value="-4.0693949560840394, 30.599138910661623, 546.1636024071419, 0.3221619274106555, -0.436134949703086, 0.8379972954587884"/>
+    </TcpTool>
+  </ToolsManager>
+  <StartupConfigsManager>
+    <config taskName="" taskPath="" needAutoLoad="false" nameOfIoToAutoRunTask="" triggerValueToRunTask="false" nameOfIoToInit="" triggerValueToInit="false"/>
+  </StartupConfigsManager>
+  <PeriodicPulseConfigManger/>
+  <PayloadConfigManager Active="a3e03f16-f67d-42db-97ea-13ee90dbac07">
+    <PayloadConfig name="负载" uuid="857b3794-a940-417b-b00d-bc5c931c092e" Mass="2.0" InertiaBox="false" CoG="0.0, -180.0, 150.0" InertiaMatrix="0.004887, 0.0, 0.0, 0.0, 0.004887, 0.0, 0.0, 0.0, 0.004887"/>
+    <PayloadConfig name="负载_1" uuid="a3e03f16-f67d-42db-97ea-13ee90dbac07" Mass="3.0" InertiaBox="false" CoG="0.0, 50.0, 300.0" InertiaMatrix="0.009606, 0.0, 0.0, 0.0, 0.009606, 0.0, 0.0, 0.0, 0.009606"/>
+  </PayloadConfigManager>
+  <ModbusManager/>
+  <IOConfig>
+    <preserveSignalAtProgramStop value="true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true, true"/>
+    <setSignalLow value="false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false"/>
+    <ProgramStateMode value="false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false, false"/>
+    <DigitalInputNames value=", , , , , , , , , , , , , , , "/>
+    <DigitalOutputNames value=", , , , , , , , , , , , , , , "/>
+    <ToolDigitalInputNames value=", , , "/>
+    <ToolDigitalOutputNames value=", , , "/>
+    <ToolAnalogInputNames value=""/>
+    <ToolAnalogOutputNames value=""/>
+    <AnalogInputNames value=", "/>
+    <AnalogOutputNames value=", "/>
+    <ConfigurableInputNames value=", , , , , , , "/>
+    <ConfigurableOutputNames value=", , , , , , , "/>
+    <outputSignalOptions value="0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0"/>
+    <analogInputRange value="1, 1, 1"/>
+    <analogOutputDomain value="1, 1, 1"/>
+    <DigitalInputActions value="NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE"/>
+    <ToolDigitalInputActions value="NONE, NONE, NONE, NONE"/>
+    <ConfigurableInputActions value="NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE"/>
+    <GeneralPurposeBooleanRegisterInputNames value=", , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , "/>
+    <GeneralPurposeBooleanRegisterOutputNames value=", , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , "/>
+    <GeneralPurposeIntRegisterInputNames value=", , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , "/>
+    <GeneralPurposeIntRegisterOutputNames value=", , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , "/>
+    <GeneralPurposeFloatRegisterInputNames value=", , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , "/>
+    <GeneralPurposeFloatRegisterOutputNames value=", , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , , "/>
+    <GeneralPurposeBooleanRegisterInputActions value="NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE"/>
+    <GeneralPurposeBooleanRegisterOutputActions value="NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE, NONE"/>
+  </IOConfig>
+  <HomesManager Active="ff01cfeb-fdc6-4c06-9527-3016d63e6237">
+    <cn.elibot.robot.configuration.data.home.ZeroHomePosition name="零位" uuid="733a29ad-ac22-4c9f-8b8c-ab9b8efd5ee5">
+      <position value="0.0, -1.570796327, 0.0, -1.570796327, 1.570796327, 0.0"/>
+    </cn.elibot.robot.configuration.data.home.ZeroHomePosition>
+    <Home name="原点" uuid="ff01cfeb-fdc6-4c06-9527-3016d63e6237">
+      <position value="0.0, -1.5002891642024365, -1.4978398917390212, -1.570796327, 1.570796327, 0.0"/>
+    </Home>
+  </HomesManager>
+  <FramesManager>
+    <CameraFrame name="Ctrl_view_frame" isValid="true" isVariable="false" uuid="2bcba2ce-0b9b-4843-b285-fed3b858eda8">
+      <MountingAngle Base="0.0" Tilt="0.0"/>
+    </CameraFrame>
+    <RobotBaseFrame name="Ctrl_base_frame" isValid="true" isVariable="false" uuid="9f2b2bac-968d-4294-96a9-f4b99b83e4d7"/>
+    <ToolFrame name="Ctrl_tool_frame" isValid="true" isVariable="false" uuid="c43fffc4-a4e4-4c0e-9597-e73d1492e338"/>
+  </FramesManager>
+  <ConveyorConfig>
+    <Conveyor>
+      <id>0</id>
+      <enabled>false</enabled>
+      <encoderType>Undefined</encoderType>
+      <modeType>Undefined</modeType>
+      <aPin>8</aPin>
+      <bPin>8</bPin>
+      <modbusIO></modbusIO>
+      <conveyorType>Undefined</conveyorType>
+      <ticksPerMinute>0</ticksPerMinute>
+      <invertDirection>false</invertDirection>
+      <ticksPerRotation>0</ticksPerRotation>
+      <rotateTool>false</rotateTool>
+      <frame></frame>
+      <axis>X</axis>
+    </Conveyor>
+    <Conveyor>
+      <id>1</id>
+      <enabled>false</enabled>
+      <encoderType>Undefined</encoderType>
+      <modeType>Undefined</modeType>
+      <aPin>8</aPin>
+      <bPin>8</bPin>
+      <modbusIO></modbusIO>
+      <conveyorType>Undefined</conveyorType>
+      <ticksPerMinute>0</ticksPerMinute>
+      <invertDirection>false</invertDirection>
+      <ticksPerRotation>0</ticksPerRotation>
+      <rotateTool>false</rotateTool>
+      <frame></frame>
+      <axis>X</axis>
+    </Conveyor>
+  </ConveyorConfig>
+  <SafetyConfigurationSettings>
+[SafetyHome]
+sourceHomeId = 6020b286-6bc8-4ddd-bb33-be6273f8b959
+homePosition = [NaN,NaN,NaN,NaN,NaN,NaN]
+
+[NormalModeSafetyLimits]
+maxTcpSpeed = 1.5
+maxForce = 150.0
+maxElbowSpeed = 1.5
+maxElbowForce = 150.0
+maxStoppingDistance = 0.5
+maxStoppingTime = 0.4
+maxPower = 300.0
+maxMomentum = 25.0
+maxJointSpeed = [2.8545508489005673,2.8545508489005673,3.6651914291639,5.061454830800567,5.061454830800567,5.061454830800567]
+minJointPosition = [6.2308254295591725,6.2308254295591725,6.2308254295591725,6.2308254295591725,6.2308254295591725,6.230825429619756]
+maxJointPosition = [0.05235987762041372,0.05235987762041372,0.05235987762041372,0.05235987762041372,0.05235987762041372,0.05235987755983018]
+minJointRevolutions = [-2,-2,-2,-2,-2,-2]
+maxJointRevolutions = [1,1,1,1,1,1]
+
+[ReducedModeSafetyLimits]
+maxTcpSpeed = 0.75
+maxForce = 120.0
+maxElbowSpeed = 0.75
+maxElbowForce = 120.0
+maxStoppingDistance = 0.3
+maxStoppingTime = 0.3
+maxPower = 200.0
+maxMomentum = 10.0
+maxJointSpeed = [2.5054849985017014,2.5054849985017014,3.316125578765034,4.712388980401702,4.712388980401702,4.712388980401702]
+minJointPosition = [6.2308254295591725,6.2308254295591725,6.2308254295591725,6.2308254295591725,6.2308254295591725,6.230825429619756]
+maxJointPosition = [0.05235987762041372,0.05235987762041372,0.05235987762041372,0.05235987762041372,0.05235987762041372,0.05235987755983018]
+minJointRevolutions = [-2,-2,-2,-2,-2,-2]
+maxJointRevolutions = [1,1,1,1,1,1]
+
+[ToolOrientation]
+sourceFrameId = a18fa869-44e6-4446-904b-9265d7edf270
+planeNormal = [0.0,0.0,0.0]
+deviation = 181.0
+sourceTcpId = 9f2b2bac-968d-4294-96a9-f4b99b83e3c8
+inclination = 0.0
+azimuth = 0.0
+mode = DISABLED
+
+[ThreePositionEnabling]
+allowManualHighSpeed = 1
+
+[MiscConfiguration]
+teachPendant = 1
+
+[SafetyIOConfigurationInputs]
+emergencyStopInputA = 255
+emergencyStopInputB = 255
+reducedModeInputA = 255
+reducedModeInputB = 255
+safeguardStopResetInputA = 0
+safeguardStopResetInputB = 1
+threePositionEnablingInputA = 255
+threePositionEnablingInputB = 255
+operationalModeInputA = 255
+operationalModeInputB = 255
+automaticModeSafeguardStopInputA = 255
+automaticModeSafeguardStopInputB = 255
+automaticModeSafeguardStopResetInputA = 255
+automaticModeSafeguardStopResetInputB = 255
+
+[SafetyIOConfigurationOutputs]
+systemEmergencyStopOutputA = 255
+systemEmergencyStopOutputB = 255
+robotMovingOutputA = 255
+robotMovingOutputB = 255
+robotNotStoppingOutputA = 255
+robotNotStoppingOutputB = 255
+reducedModeOutputA = 255
+reducedModeOutputB = 255
+notReducedModeOutputA = 255
+notReducedModeOutputB = 255
+safetyHomeOutputA = 255
+safetyHomeOutputB = 255
+configOut0and1_OSSD = 0
+configOut2and3_OSSD = 0
+configOut4and5_OSSD = 0
+configOut6and7_OSSD = 0
+
+[Safety Tool 0]
+name = \u5b89\u5168\u5de5\u5177
+sourceToolId = 9f2b2bac-968d-4294-96a9-f4b99b83e3c8
+radius = 0.0
+toolPosition = [0.0,0.0,0.0]
+
+[Checksum]
+robotType = 6206
+
+</SafetyConfigurationSettings>
+  <Extensions>
+    <Contribution OwnerID="cn.elibot.plugin.fieldbus.ethernetip" ID="cn.elibot.plugin.fieldbus.ethernetip.EthernetIPSettingServiceImpl" ConfigurationTitle="EtherNet/IP" Vendor="ELITE ROBOTS" Name="ELITECO: Fieldbus Plugin EthernetIP" ApiVersion="1.2.16.0" Version="1.2.16.0">
+      <dataModel>
+        <Primitive key="actionPLCIO" value="ignore" type="java.lang.String"/>
+        <Primitive key="status" value="false" type="java.lang.Boolean"/>
+      </dataModel>
+    </Contribution>
+    <cn.elibot.plugin.fieldbus.ethernetip>
+      <dataModel>
+        <Primitive key="actionPLCIO" value="ignore" type="java.lang.String"/>
+        <Primitive key="status" value="false" type="java.lang.Boolean"/>
+      </dataModel>
+    </cn.elibot.plugin.fieldbus.ethernetip>
+    <Contribution OwnerID="cn.elibot.plugin.fieldbus.profinet" ID="cn.elibot.plugin.fieldbus.profinet.ProfinetSettingServiceImpl" ConfigurationTitle="Profinet" Vendor="ELITE ROBOTS" Name="ELITECO: Fieldbus Plugin Profinet" ApiVersion="1.2.16.0" Version="1.2.16.0">
+      <dataModel>
+        <Primitive key="actionPLCREG2" value="ignore" type="java.lang.String"/>
+        <Primitive key="actionPLCREG1" value="ignore" type="java.lang.String"/>
+        <Primitive key="actionPLCIO" value="ignore" type="java.lang.String"/>
+        <Primitive key="deviceName" value="elite-pnet" type="java.lang.String"/>
+        <Primitive key="status" value="false" type="java.lang.Boolean"/>
+      </dataModel>
+    </Contribution>
+    <cn.elibot.plugin.fieldbus.profinet>
+      <dataModel>
+        <Primitive key="actionPLCREG2" value="ignore" type="java.lang.String"/>
+        <Primitive key="actionPLCREG1" value="ignore" type="java.lang.String"/>
+        <Primitive key="actionPLCIO" value="ignore" type="java.lang.String"/>
+        <Primitive key="deviceName" value="elite-pnet" type="java.lang.String"/>
+        <Primitive key="status" value="false" type="java.lang.Boolean"/>
+      </dataModel>
+    </cn.elibot.plugin.fieldbus.profinet>
+    <Contribution OwnerID="cn.elibot.plugin.MotionLinkControl" ID="cn.elibot.plugin.motionlinkcontrol.installation.UnifiedInstallationNodeService" ConfigurationTitle="外部轴" Vendor="ELITE ROBOTS" Name="ELITECO: Unified MotionLinkControl" ApiVersion="1.2.14.0" Version="1.0.1">
+      <dataModel>
+        <Primitive key="mode" value="rotary" type="java.lang.String"/>
+        <Primitive key="axis" value="w_1" type="java.lang.String"/>
+        <Primitive key="device" value="56:18:14:36:34:01" type="java.lang.String"/>
+        <Primitive key="group" value="q_1" type="java.lang.String"/>
+        <MoveAndJogSettings key="MoveAndJogSettings" MoveSpeedPercent="30" MoveAcceleration="0.5" JogAcceleration="0.15"/>
+      </dataModel>
+    </Contribution>
+    <cn.elibot.plugin.MotionLinkControl>
+      <dataModel>
+        <Primitive key="mode" value="rotary" type="java.lang.String"/>
+        <Primitive key="axis" value="w_1" type="java.lang.String"/>
+        <Primitive key="device" value="56:18:14:36:34:01" type="java.lang.String"/>
+        <Primitive key="group" value="q_1" type="java.lang.String"/>
+        <MoveAndJogSettings key="MoveAndJogSettings" MoveSpeedPercent="30" MoveAcceleration="0.5" JogAcceleration="0.15"/>
+      </dataModel>
+    </cn.elibot.plugin.MotionLinkControl>
+    <Contribution OwnerID="cn.elibot.plugin.processes.WeldingTools" ID="cn.elibot.plugin.processes.weldingtools.impl.configure.WeldingToolsConfigurationNodeService" ConfigurationTitle="焊接设置" Vendor="ELITE ROBOTS" Name="ELITECO: Plugin WeldingTools" ApiVersion="1.2.14.3" Version="1.6.0">
+      <dataModel>
+        <Primitive key="boolean_is_tool_sel" value="false" type="java.lang.Boolean"/>
+        <Primitive key="double_arc_on_voltage" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_welding_current_y1" value="0.0" type="java.lang.Double"/>
+        <Primitive key="String_touch_sense" value="" type="java.lang.String"/>
+        <Primitive key="Long_Action_4" value="0" type="java.lang.Integer"/>
+        <Primitive key="Long_Action_5" value="0" type="java.lang.Integer"/>
+        <Primitive key="double_arc_on_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="Long_Action_2" value="10" type="java.lang.Integer"/>
+        <Primitive key="double_arc_on_timeout" value="3.0" type="java.lang.Double"/>
+        <Primitive key="Long_Action_3" value="0" type="java.lang.Integer"/>
+        <Primitive key="String_touch_sense_enable" value="" type="java.lang.String"/>
+        <Primitive key="String_main_current_feedback" value="" type="java.lang.String"/>
+        <Primitive key="Long_Action_0" value="8" type="java.lang.Integer"/>
+        <Primitive key="Long_Action_1" value="11" type="java.lang.Integer"/>
+        <Primitive key="String_job_bit0" value="" type="java.lang.String"/>
+        <Primitive key="double_arc_off_current" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_arc_on_feed_gas_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="String_feedback_voltage" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_kemppidcm" value="192.168.127.250" type="java.lang.String"/>
+        <Primitive key="String_job_bit3" value="" type="java.lang.String"/>
+        <Primitive key="String_job_bit2" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_AxMigOne" value="192.168.2.1" type="java.lang.String"/>
+        <Primitive key="String_job_bit1" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_megmeetmodbus" value="192.168.0.100" type="java.lang.String"/>
+        <Primitive key="String_welding_current" value="" type="java.lang.String"/>
+        <Primitive key="double_welding_current_y2" value="10.0" type="java.lang.Double"/>
+        <Primitive key="String_start_callback" value="" type="java.lang.String"/>
+        <Primitive key="String_welding_machine_normal" value="" type="java.lang.String"/>
+        <Primitive key="boolean_megmeetCanEnable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_feed_wire" value="" type="java.lang.String"/>
+        <Primitive key="String_welding_instruction" value="" type="java.lang.String"/>
+        <Primitive key="boolean_JOB" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_feed_gas" value="" type="java.lang.String"/>
+        <Primitive key="double_welding_voltage_y1" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_welding_voltage_y2" value="10.0" type="java.lang.Double"/>
+        <Primitive key="int_retry_arc_on_times" value="0" type="java.lang.Integer"/>
+        <Primitive key="String_megmeetCan" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_sam" value="192.168.1.1" type="java.lang.String"/>
+        <Primitive key="String_megmeetCanBaudRate" value="125000" type="java.lang.String"/>
+        <Primitive key="boolean_external_axis_enable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="0" value="3" type="java.lang.Integer"/>
+        <Primitive key="1" value="3" type="java.lang.Integer"/>
+        <Primitive key="2" value="1" type="java.lang.Integer"/>
+        <Primitive key="3" value="0" type="java.lang.Integer"/>
+        <Primitive key="4" value="5" type="java.lang.Integer"/>
+        <Primitive key="5" value="2" type="java.lang.Integer"/>
+        <Primitive key="String_withdrew_wire" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_lorch" value="192.168.0.2" type="java.lang.String"/>
+        <Primitive key="String_arc_on_success_feedback" value="" type="java.lang.String"/>
+        <Primitive key="double_welding_voltage_x2" value="10.0" type="java.lang.Double"/>
+        <Primitive key="double_arc_off_delay_close_gas_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_anti_sticking_voltage" value="0.0" type="java.lang.Double"/>
+        <Primitive key="String_arc_switch" value="" type="java.lang.String"/>
+        <Primitive key="double_welding_voltage_x1" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_wire_retraction_time" value="0.5" type="java.lang.Double"/>
+        <Primitive key="selected_welder_type_ids" value="GENERAL_IO,SCRIPT_CB,GYS_SAM_1N,AOTAI,MERKLE,KEMPPIDCM,AXMIGONE,MEGMEETCAN,MEGMEETMODBUS,KOLARC,LORCH" type="java.lang.String"/>
+        <Primitive key="String_welderType" value="UNKNOWN" type="java.lang.String"/>
+        <Primitive key="String_ip_address_merkle" value="192.168.1.2" type="java.lang.String"/>
+        <Primitive key="double_arc_off_voltage" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_arc_off_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="257" value="0" type="java.lang.Integer"/>
+        <Primitive key="String_ip_address_aotai" value="192.168.0.2" type="java.lang.String"/>
+        <Primitive key="258" value="2" type="java.lang.Integer"/>
+        <Primitive key="259" value="6" type="java.lang.Integer"/>
+        <Primitive key="boolean_easy_teach" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_end_callback" value="" type="java.lang.String"/>
+        <Primitive key="Short_Action_0" value="0" type="java.lang.Integer"/>
+        <Primitive key="double_anti_sticking_current" value="0.0" type="java.lang.Double"/>
+        <Primitive key="Short_Action_1" value="1" type="java.lang.Integer"/>
+        <Primitive key="Short_Action_2" value="2" type="java.lang.Integer"/>
+        <Primitive key="Short_Action_3" value="3" type="java.lang.Integer"/>
+        <Primitive key="Short_Action_4" value="12" type="java.lang.Integer"/>
+        <Primitive key="Short_Action_5" value="4" type="java.lang.Integer"/>
+        <Primitive key="double_arc_on_current" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_arc_miss_timeout" value="0.5" type="java.lang.Double"/>
+        <Primitive key="boolean_welding_tool_view_enable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="boolean_arc_switch_enable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_arc_on" value="" type="java.lang.String"/>
+        <Primitive key="double_arc_off_timeout" value="3.0" type="java.lang.Double"/>
+        <Primitive key="String_feedback_current" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_kolarc" value="192.168.0.2" type="java.lang.String"/>
+        <Primitive key="boolean_welding_tool_enable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_start_button" value="" type="java.lang.String"/>
+        <Primitive key="double_anti_sticking_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_welding_current_x1" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_welding_current_x2" value="10.0" type="java.lang.Double"/>
+        <Primitive key="String_welding_voltage" value="" type="java.lang.String"/>
+        <Primitive key="double_arc_on_wait_time" value="0.5" type="java.lang.Double"/>
+      </dataModel>
+    </Contribution>
+    <cn.elibot.plugin.processes.WeldingTools>
+      <dataModel>
+        <Primitive key="boolean_is_tool_sel" value="false" type="java.lang.Boolean"/>
+        <Primitive key="double_arc_on_voltage" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_welding_current_y1" value="0.0" type="java.lang.Double"/>
+        <Primitive key="String_touch_sense" value="" type="java.lang.String"/>
+        <Primitive key="Long_Action_4" value="0" type="java.lang.Integer"/>
+        <Primitive key="Long_Action_5" value="0" type="java.lang.Integer"/>
+        <Primitive key="double_arc_on_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="Long_Action_2" value="10" type="java.lang.Integer"/>
+        <Primitive key="double_arc_on_timeout" value="3.0" type="java.lang.Double"/>
+        <Primitive key="Long_Action_3" value="0" type="java.lang.Integer"/>
+        <Primitive key="String_touch_sense_enable" value="" type="java.lang.String"/>
+        <Primitive key="String_main_current_feedback" value="" type="java.lang.String"/>
+        <Primitive key="Long_Action_0" value="8" type="java.lang.Integer"/>
+        <Primitive key="Long_Action_1" value="11" type="java.lang.Integer"/>
+        <Primitive key="String_job_bit0" value="" type="java.lang.String"/>
+        <Primitive key="double_arc_off_current" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_arc_on_feed_gas_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="String_feedback_voltage" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_kemppidcm" value="192.168.127.250" type="java.lang.String"/>
+        <Primitive key="String_job_bit3" value="" type="java.lang.String"/>
+        <Primitive key="String_job_bit2" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_AxMigOne" value="192.168.2.1" type="java.lang.String"/>
+        <Primitive key="String_job_bit1" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_megmeetmodbus" value="192.168.0.100" type="java.lang.String"/>
+        <Primitive key="String_welding_current" value="" type="java.lang.String"/>
+        <Primitive key="double_welding_current_y2" value="10.0" type="java.lang.Double"/>
+        <Primitive key="String_start_callback" value="" type="java.lang.String"/>
+        <Primitive key="String_welding_machine_normal" value="" type="java.lang.String"/>
+        <Primitive key="boolean_megmeetCanEnable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_feed_wire" value="" type="java.lang.String"/>
+        <Primitive key="String_welding_instruction" value="" type="java.lang.String"/>
+        <Primitive key="boolean_JOB" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_feed_gas" value="" type="java.lang.String"/>
+        <Primitive key="double_welding_voltage_y1" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_welding_voltage_y2" value="10.0" type="java.lang.Double"/>
+        <Primitive key="int_retry_arc_on_times" value="0" type="java.lang.Integer"/>
+        <Primitive key="String_megmeetCan" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_sam" value="192.168.1.1" type="java.lang.String"/>
+        <Primitive key="String_megmeetCanBaudRate" value="125000" type="java.lang.String"/>
+        <Primitive key="boolean_external_axis_enable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="0" value="3" type="java.lang.Integer"/>
+        <Primitive key="1" value="3" type="java.lang.Integer"/>
+        <Primitive key="2" value="1" type="java.lang.Integer"/>
+        <Primitive key="3" value="0" type="java.lang.Integer"/>
+        <Primitive key="4" value="5" type="java.lang.Integer"/>
+        <Primitive key="5" value="2" type="java.lang.Integer"/>
+        <Primitive key="String_withdrew_wire" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_lorch" value="192.168.0.2" type="java.lang.String"/>
+        <Primitive key="String_arc_on_success_feedback" value="" type="java.lang.String"/>
+        <Primitive key="double_welding_voltage_x2" value="10.0" type="java.lang.Double"/>
+        <Primitive key="double_arc_off_delay_close_gas_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_anti_sticking_voltage" value="0.0" type="java.lang.Double"/>
+        <Primitive key="String_arc_switch" value="" type="java.lang.String"/>
+        <Primitive key="double_welding_voltage_x1" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_wire_retraction_time" value="0.5" type="java.lang.Double"/>
+        <Primitive key="selected_welder_type_ids" value="GENERAL_IO,SCRIPT_CB,GYS_SAM_1N,AOTAI,MERKLE,KEMPPIDCM,AXMIGONE,MEGMEETCAN,MEGMEETMODBUS,KOLARC,LORCH" type="java.lang.String"/>
+        <Primitive key="String_welderType" value="UNKNOWN" type="java.lang.String"/>
+        <Primitive key="String_ip_address_merkle" value="192.168.1.2" type="java.lang.String"/>
+        <Primitive key="double_arc_off_voltage" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_arc_off_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="257" value="0" type="java.lang.Integer"/>
+        <Primitive key="String_ip_address_aotai" value="192.168.0.2" type="java.lang.String"/>
+        <Primitive key="258" value="2" type="java.lang.Integer"/>
+        <Primitive key="259" value="6" type="java.lang.Integer"/>
+        <Primitive key="boolean_easy_teach" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_end_callback" value="" type="java.lang.String"/>
+        <Primitive key="Short_Action_0" value="0" type="java.lang.Integer"/>
+        <Primitive key="double_anti_sticking_current" value="0.0" type="java.lang.Double"/>
+        <Primitive key="Short_Action_1" value="1" type="java.lang.Integer"/>
+        <Primitive key="Short_Action_2" value="2" type="java.lang.Integer"/>
+        <Primitive key="Short_Action_3" value="3" type="java.lang.Integer"/>
+        <Primitive key="Short_Action_4" value="12" type="java.lang.Integer"/>
+        <Primitive key="Short_Action_5" value="4" type="java.lang.Integer"/>
+        <Primitive key="double_arc_on_current" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_arc_miss_timeout" value="0.5" type="java.lang.Double"/>
+        <Primitive key="boolean_welding_tool_view_enable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="boolean_arc_switch_enable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_arc_on" value="" type="java.lang.String"/>
+        <Primitive key="double_arc_off_timeout" value="3.0" type="java.lang.Double"/>
+        <Primitive key="String_feedback_current" value="" type="java.lang.String"/>
+        <Primitive key="String_ip_address_kolarc" value="192.168.0.2" type="java.lang.String"/>
+        <Primitive key="boolean_welding_tool_enable" value="false" type="java.lang.Boolean"/>
+        <Primitive key="String_start_button" value="" type="java.lang.String"/>
+        <Primitive key="double_anti_sticking_time" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_welding_current_x1" value="0.0" type="java.lang.Double"/>
+        <Primitive key="double_welding_current_x2" value="10.0" type="java.lang.Double"/>
+        <Primitive key="String_welding_voltage" value="" type="java.lang.String"/>
+        <Primitive key="double_arc_on_wait_time" value="0.5" type="java.lang.Double"/>
+      </dataModel>
+    </cn.elibot.plugin.processes.WeldingTools>
+  </Extensions>
+</ConfigurationSettings>

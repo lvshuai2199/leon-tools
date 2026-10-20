@@ -1,0 +1,98 @@
+def test():
+  #--------------- End WeldingTools -----------------
+  # Set Node Preamble Script.
+  # Loop Node Preamble Script.
+  # Waypoint Node Preamble Script.
+  global u21021u22987u28857_p
+  u21021u22987u28857_p = [0.9119913166984319, 0.01208248593231645, -0.04118109249277624, 0.3987096233972119, 0.3150044401796744, 0.38746277419886915]
+  global u21021u22987u28857_q
+  u21021u22987u28857_q = [-0.05437475921179648,-1.7893908842066946,-1.787472681917489,-0.8945190429189175,1.9287292276209411,-0.02082838776281599]
+  # Initial Variables value.
+  # Timer Node Preamble Script.
+  # SubTask Node Preamble Script.
+  # Before Start Preamble Script.
+  # Thread Node Preamble Script.
+  # Event Node Preamble Script.
+  # Main Task Script.
+  while (True):
+    $ LINE: (2, "机器人主任务")
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 焊接工具
+    $ LINE: (3, "焊接工具")
+    
+    $ LINE: (4, "MoveJ")
+    $ LINE: (5, "初始点", "after")
+    movej(get_inverse_kin(u21021u22987u28857_p, qnear=u21021u22987u28857_q), a=1.3962634015954636, v=1.0471975511965976)
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 焊接
+    $ LINE: (6, "焊接")
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 接近点
+    $ LINE: (7, "接近点")
+    movep([0.9119921130576495, 0.012084342494554506, -0.09787872450007573, 0.39871032241638305, 0.31499888051110403, 0.3874640273262217],0.2, 0.1, 0.1)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 开始点
+    $ LINE: (8, "开始点")
+    movep([0.9119892398160354, 0.01208223528430391, -0.20792241458726923, 0.3987103187570745, 0.3150057307848689, 0.38746094854477403],0.2, 0.1, 0.0)
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 直线形
+    $ LINE: (9, "直线形")
+    sleep(0.5)
+    movep([0.9667327305522506, -0.31509873898883123, -0.20790222525884006, -0.2327684002377821, 0.4766517700159561, 0.13605781128511796],1.2, 0.02, 0.0)
+    # End: ELITECO Plugin Task Node
+    sleep(0.5)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 离开点
+    $ LINE: (10, "离开点")
+    movep([0.9667324537586903, -0.31509930645285467, 0.06173171572759539, -0.2327726871935353, 0.4766574250529859, 0.13606189598845686],0.2, 0.1, 0.1)
+    # End: ELITECO Plugin Task Node
+    # End: ELITECO Plugin Task Node
+    $ LINE: (11, "等待")
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 焊接_1
+    $ LINE: (12, "焊接_1")
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 接近点_1
+    $ LINE: (13, "接近点_1")
+    movep([0.6676896287478421, -0.31510158286081974, 0.06173299488784534, -0.18391970375630845, 0.7422321262615835, 0.16427228013238288],0.2, 0.1, 0.1)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 接近点_2
+    $ LINE: (14, "接近点_2")
+    movep([0.66770987632623, -0.1899417197974183, 0.06175134292737805, -0.3556421947640673, 0.7555531276259441, 0.047225288285732796],0.2, 0.1, 0.1)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 开始点
+    $ LINE: (15, "开始点")
+    movep([0.8391961923329789, -0.31509477970358707, -0.23771994117591794, -0.23276759571009975, 0.47664554443315144, 0.1360634954552617],0.2, 0.1, 0.0)
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 直线形_1
+    $ LINE: (16, "直线形_1")
+    sleep(0.5)
+    movep([0.839200456306519, -0.17915750347524373, -0.23770783389971117, 0.1513007056754448, 0.3984523790039368, 0.3005876483359279],1.2, 0.02, 0.0)
+    # End: ELITECO Plugin Task Node
+    sleep(0.5)
+    # End: ELITECO Plugin Task Node
+    # Begin: ELITECO Plugin Task Node
+    #   Source: ELITECO: Plugin WeldingTools, 1.6.0, ELITE ROBOTS
+    #   Type: 离开点_1
+    $ LINE: (17, "离开点_1")
+    movep([0.839201853643488, -0.17916352271104544, -0.17022470154018454, 0.15129502069110257, 0.39845000396506897, 0.3005811837762944],0.2, 0.1, 0.1)
+    # End: ELITECO Plugin Task Node
+    # End: ELITECO Plugin Task Node
+    # End: ELITECO Plugin Task Node
+  end
+end
