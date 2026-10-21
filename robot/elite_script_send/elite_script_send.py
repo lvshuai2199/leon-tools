@@ -194,6 +194,8 @@ class EliteScriptTester(object):
         self._dir_full = ""
         self._dir_label = None
         self._host_menu = None
+        self._resize_busy = False
+        self._resize_job = None
 
         self._build_ui()
         self._refresh(log=False)
@@ -204,6 +206,7 @@ class EliteScriptTester(object):
             var.trace("w", lambda *_: self._schedule_save())
         self.txt.bind("<KeyRelease>", lambda *_: self._schedule_save())
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.root.bind("<Configure>", self._on_root_configure)
         self._loading = False
         self._start_listen()
         self._poll_pose()
@@ -409,7 +412,10 @@ class EliteScriptTester(object):
             tk.Label(joint_row, textvariable=var, font=num_font, fg="#111111", width=8, anchor="e").pack(side="left")
             ttk.Label(joint_row, text="°", foreground="#777777").pack(side="left")
 
-        body = ttk.Panedwindow(self.root, orient="horizontal")
+        body = tk.PanedWindow(
+            self.root, orient="horizontal", sashwidth=4, sashrelief="flat",
+            bd=0, opaqueresize=False, bg="#eceff1",
+        )
         body.pack(fill="both", expand=True, padx=6, pady=(0, 4))
 
         left = ttk.Frame(body, padding=0)
@@ -428,7 +434,7 @@ class EliteScriptTester(object):
         )
         self.lst.pack(fill="both", expand=True, pady=(2, 0))
         self.lst.bind("<<ListboxSelect>>", self._on_select)
-        body.add(left, weight=0)
+        body.add(left, stretch='never', minsize=140)
 
         editor = ttk.Frame(body)
         editor_top = ttk.Frame(editor)
@@ -450,7 +456,7 @@ class EliteScriptTester(object):
         sendbar.pack(fill="x", pady=(4, 0))
         ttk.Button(sendbar, text="下发脚本", command=self._send, style="Tool.TButton", width=8).pack(side="left")
         ttk.Button(sendbar, text="上电+松闸+下发", command=self._boot_send, style="Tool.TButton").pack(side="left", padx=6)
-        body.add(editor, weight=1)
+        body.add(editor, stretch='always', minsize=320)
 
         tabs = ttk.Notebook(self.root)
         tabs.pack(fill="x", padx=6, pady=(0, 6))
@@ -700,28 +706,51 @@ class EliteScriptTester(object):
                     except Exception:
                         pass
 
-    def _poll_pose(self):
-        parsed = self._latest_pose
-        if parsed:
-            shown = format_pose(parsed)
-            joints = shown.get("joints_deg")
-            xyz = shown.get("xyz_mm")
-            rpy = shown.get("rpy_deg")
-            if joints:
-                for i, val in enumerate(joints):
-                    self.var_j[i].set("%.3f" % val)
-            if xyz:
-                for i, val in enumerate(xyz):
-                    self.var_xyz[i].set("%.2f" % val)
-            if rpy:
-                for i, val in enumerate(rpy):
-                    self.var_rpy[i].set("%.3f" % val)
-        if self._recording:
-            with self._rec_lock:
-                n = len(self._rec_samples)
-            self.var_rec.set("记录中  %d 点" % n)
+    def _on_root_configure(self, event):
+        if event.widget is not self.root:
+            return
+        self._resize_busy = True
+        if self._resize_job is not None:
+            try:
+                self.root.after_cancel(self._resize_job)
+            except Exception:
+                pass
         try:
-            self.root.after(100, self._poll_pose)
+            self._resize_job = self.root.after(120, self._end_resize)
+        except tk.TclError:
+            self._resize_job = None
+
+    def _end_resize(self):
+        self._resize_busy = False
+        self._resize_job = None
+
+    def _set_var_if(self, var, text):
+        if var.get() != text:
+            var.set(text)
+
+    def _poll_pose(self):
+        if not self._resize_busy:
+            parsed = self._latest_pose
+            if parsed:
+                shown = format_pose(parsed)
+                joints = shown.get("joints_deg")
+                xyz = shown.get("xyz_mm")
+                rpy = shown.get("rpy_deg")
+                if joints:
+                    for i, val in enumerate(joints):
+                        self._set_var_if(self.var_j[i], "%.3f" % val)
+                if xyz:
+                    for i, val in enumerate(xyz):
+                        self._set_var_if(self.var_xyz[i], "%.2f" % val)
+                if rpy:
+                    for i, val in enumerate(rpy):
+                        self._set_var_if(self.var_rpy[i], "%.3f" % val)
+            if self._recording:
+                with self._rec_lock:
+                    n = len(self._rec_samples)
+                self._set_var_if(self.var_rec, "记录中  %d 点" % n)
+        try:
+            self.root.after(150 if self._resize_busy else 100, self._poll_pose)
         except tk.TclError:
             pass
 
