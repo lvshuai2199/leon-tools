@@ -292,6 +292,7 @@ function main() {
       store.saveRun({ nextRunAt: Date.now() + current.schedule.intervalMinutes * 60000 });
     }
     startWatchers(current);
+    armTyporaFlush();
   });
   setInterval(() => {
     const current = store.loadConfig();
