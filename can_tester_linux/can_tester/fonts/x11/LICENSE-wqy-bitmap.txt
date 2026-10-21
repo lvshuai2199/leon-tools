@@ -1,0 +1,4 @@
+WenQuanYi Bitmap Song (xfonts-wqy 1.0.0~rc1)
+Copyright (C) 2004-2007, WenQuanYi Board of Trustees and Qianqian Fang
+License: GPL-2.0 with font embedding exception
+Source: https://sourceforge.net/projects/wqy/files/wqy-bitmapfont/
