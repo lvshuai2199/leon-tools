@@ -207,6 +207,7 @@ class EliteScriptTester(object):
         self.txt.bind("<KeyRelease>", lambda *_: self._schedule_save())
         self.root.protocol("WM_DELETE_WINDOW", self._on_close)
         self.root.bind("<Configure>", self._on_root_configure)
+        self.root.bind("<Map>", lambda *_: self.root.after(50, self._end_resize))
         self._loading = False
         self._start_listen()
         self._poll_pose()
@@ -732,10 +733,17 @@ class EliteScriptTester(object):
         self._resize_job = None
         try:
             self.root.update_idletasks()
-            if getattr(self, "_body", None) is not None:
-                self._body.update_idletasks()
-            if getattr(self, "txt", None) is not None:
-                self.txt.update_idletasks()
+            body = getattr(self, "_body", None)
+            if body is not None:
+                body.update_idletasks()
+                # 触发一次真实尺寸同步，清掉最大化残留脏区
+                w = max(body.winfo_width(), 1)
+                h = max(body.winfo_height(), 1)
+                body.configure(width=w, height=h)
+            txt = getattr(self, "txt", None)
+            if txt is not None:
+                txt.update_idletasks()
+            self.root.update_idletasks()
         except tk.TclError:
             pass
 
@@ -1164,6 +1172,31 @@ class EliteScriptTester(object):
         self._run_bg("Dashboard " + cmd, fn)
 
 
+def _enable_windows_dpi():
+    """避免高 DPI / 最大化时 Tk 客户区黑块、叠影。"""
+    if sys.platform != "win32":
+        return
+    try:
+        import ctypes
+        # Per-monitor DPI v2 (Win10+)
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+            return
+        except Exception:
+            pass
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+            return
+        except Exception:
+            pass
+        try:
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def main(argv=None):
     saved = load_settings()
     parser = argparse.ArgumentParser(description="Elite 30001 脚本下发测试")
@@ -1191,7 +1224,12 @@ def main(argv=None):
     if tk is None:
         print("无 tkinter，请加 --cli", file=sys.stderr)
         return 1
+    _enable_windows_dpi()
     root = tk.Tk()
+    try:
+        root.tk.call("tk", "scaling", root.winfo_fpixels("1i") / 72.0)
+    except tk.TclError:
+        pass
     EliteScriptTester(root)
     root.mainloop()
     return 0
