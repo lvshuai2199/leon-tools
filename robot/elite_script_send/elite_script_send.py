@@ -157,7 +157,7 @@ class EliteScriptTester(object):
         self.cfg = load_settings()
         self.root.geometry(self._fit_geometry(self.cfg.get("geometry")))
         saved_dir = self.cfg.get("script_dir")
-        self.script_dir = Path(saved_dir) if saved_dir else DEFAULT_SCRIPT_DIR
+        self.script_dir = self._resolve_script_dir(saved_dir)
         self.busy = False
         self.stop_event = threading.Event()
         self._save_job = None
@@ -189,6 +189,11 @@ class EliteScriptTester(object):
         self._rec_t0 = None
         self.var_rec = tk.StringVar(value="")
         self.var_open_html = tk.BooleanVar(value=bool(self.cfg.get("open_html", False)))
+        self.current_name = ""
+        self.var_filename = tk.StringVar(value="未命名")
+        self._dir_full = ""
+        self._dir_label = None
+        self._host_menu = None
 
         self._build_ui()
         self._refresh(log=False)
@@ -202,6 +207,39 @@ class EliteScriptTester(object):
         self._loading = False
         self._start_listen()
         self._poll_pose()
+
+
+    def _resolve_script_dir(self, saved_dir):
+        candidates = []
+        if saved_dir:
+            candidates.append(Path(str(saved_dir)).expanduser())
+        candidates.append(Path(DEFAULT_SCRIPT_DIR))
+        candidates.append(app_dir() / "scripts")
+        for cand in candidates:
+            try:
+                resolved = cand.resolve()
+            except OSError:
+                resolved = cand
+            if resolved.is_dir():
+                return resolved
+        # Prefer creating default next to app rather than a dead saved path.
+        fallback = Path(DEFAULT_SCRIPT_DIR)
+        try:
+            fallback.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            pass
+        return fallback
+
+    def _ellipsis_path(self, shown, limit=36):
+        shown = str(shown or "")
+        if len(shown) <= limit:
+            return shown
+        return "…" + shown[-(limit - 1):]
+
+    def _set_filename(self, name):
+        name = (name or "").strip()
+        self.current_name = name
+        self.var_filename.set(name if name else "未命名")
 
     def _load_host_history(self, cfg):
         raw = cfg.get("host_history") or []
@@ -269,13 +307,13 @@ class EliteScriptTester(object):
         self.host_box = ttk.Combobox(
             bar, textvariable=self.var_host, width=16, values=self.host_history,
         )
-        self.host_box.pack(side="left", padx=(3, 2))
+        self.host_box.pack(side="left", padx=(3, 8))
         self.host_box.bind("<FocusOut>", lambda *_: self._remember_host())
         self.host_box.bind("<Return>", lambda *_: self._remember_host())
         self.host_box.bind("<<ComboboxSelected>>", lambda *_: self._remember_host())
-        ttk.Button(
-            bar, text="清历史", command=self._clear_host_history, style="Tool.TButton", width=6,
-        ).pack(side="left", padx=(0, 6))
+        self.host_box.bind("<Button-3>", self._on_host_right_click)
+        self._host_menu = tk.Menu(self.root, tearoff=0)
+        self._host_menu.add_command(label="清空连接历史", command=self._clear_host_history)
         ttk.Label(bar, text="PORT").pack(side="left")
         ttk.Entry(bar, textvariable=self.var_port, width=5).pack(side="left", padx=(3, 6))
         ttk.Label(bar, text="超时").pack(side="left")
@@ -310,7 +348,7 @@ class EliteScriptTester(object):
             font=("Microsoft YaHei", 9, "bold"), padx=8, pady=1,
         ).pack(side="right")
 
-        pose = ttk.LabelFrame(self.root, text=" 实时位姿  30001 ", padding=(6, 3, 6, 4))
+        pose = ttk.LabelFrame(self.root, text=" 实时位姿  30001 ", padding=(6, 1, 6, 2))
         pose.pack(fill="x", padx=6, pady=(0, 4))
         pose_bar = ttk.Frame(pose)
         pose_bar.pack(fill="x")
@@ -350,7 +388,7 @@ class EliteScriptTester(object):
         self.lbl_rec.pack(side="right")
         num_font = ("Consolas", 10)
         cart_row = ttk.Frame(pose)
-        cart_row.pack(fill="x", pady=(4, 2))
+        cart_row.pack(fill="x", pady=(2, 1))
         ttk.Label(cart_row, text="笛卡尔").pack(side="left")
         for name, var, unit in (
             ("X", self.var_xyz[0], "mm"),
@@ -380,7 +418,10 @@ class EliteScriptTester(object):
         ttk.Label(files_bar, text="脚本", font=("Microsoft YaHei", 9)).pack(side="left")
         ttk.Button(files_bar, text="目录", command=self._pick_dir, style="Tool.TButton", width=4).pack(side="right")
         ttk.Button(files_bar, text="刷新", command=self._refresh, style="Tool.TButton", width=4).pack(side="right", padx=(0, 2))
-        ttk.Label(left, textvariable=self.var_dir, font=("Microsoft YaHei", 7), foreground="#777777").pack(fill="x")
+        self._dir_label = ttk.Label(left, textvariable=self.var_dir, font=("Microsoft YaHei", 7), foreground="#777777")
+        self._dir_label.pack(fill="x")
+        self._dir_label.bind("<Enter>", self._on_dir_enter)
+        self._dir_label.bind("<Leave>", self._on_dir_leave)
         self.lst = tk.Listbox(
             left, width=18, height=10, font=("Consolas", 8), exportselection=False,
             relief="flat", highlightthickness=1, highlightbackground="#cfd8dc",
@@ -390,6 +431,15 @@ class EliteScriptTester(object):
         body.add(left, weight=0)
 
         editor = ttk.Frame(body)
+        editor_top = ttk.Frame(editor)
+        editor_top.pack(fill="x", pady=(0, 2))
+        ttk.Label(
+            editor_top, textvariable=self.var_filename, font=("Microsoft YaHei", 9),
+            foreground="#222222",
+        ).pack(side="left")
+        ttk.Button(
+            editor_top, text="另存为", command=self._save_as, style="Tool.TButton", width=6,
+        ).pack(side="right")
         self.txt = scrolledtext.ScrolledText(
             editor, font=("Consolas", 9), undo=True, relief="flat", height=12,
             highlightthickness=1, highlightbackground="#cfd8dc",
@@ -407,7 +457,7 @@ class EliteScriptTester(object):
 
         log_tab = ttk.Frame(tabs, padding=2)
         self.log = scrolledtext.ScrolledText(
-            log_tab, height=6, font=("Microsoft YaHei", 10), state="disabled",
+            log_tab, height=4, font=("Microsoft YaHei", 10), state="disabled",
             relief="flat", bg="#ffffff", fg="#111111", insertbackground="#111111",
             highlightthickness=1, highlightbackground="#cfd8dc",
         )
@@ -420,7 +470,7 @@ class EliteScriptTester(object):
 
         hist_tab = ttk.Frame(tabs, padding=2)
         self.hist_list = tk.Listbox(
-            hist_tab, font=("Microsoft YaHei", 10), exportselection=False, height=6,
+            hist_tab, font=("Microsoft YaHei", 10), exportselection=False, height=4,
             relief="flat", highlightthickness=1, highlightbackground="#cfd8dc",
             fg="#111111", bg="#ffffff",
         )
@@ -514,11 +564,13 @@ class EliteScriptTester(object):
         self._schedule_save()
 
     def _collect_settings(self):
-        last_file = ""
+        last_file = self.current_name or ""
         sel = self.lst.curselection()
         if sel:
-            last_file = self.lst.get(sel[0]).split("  (")[0]
-        elif self.cfg.get("last_file"):
+            item = self.lst.get(sel[0])
+            if not item.startswith("（"):
+                last_file = item.split("  (")[0]
+        elif not last_file and self.cfg.get("last_file"):
             last_file = self.cfg.get("last_file")
         try:
             port = int(self.var_port.get())
@@ -722,20 +774,28 @@ class EliteScriptTester(object):
     def _restore_last_file(self):
         name = self.cfg.get("last_file") or ""
         if not name:
+            self._set_filename("")
             return
         path = self.script_dir / name
         for i in range(self.lst.size()):
-            if self.lst.get(i).split("  (")[0] == name:
+            item = self.lst.get(i)
+            if item.startswith("（"):
+                continue
+            if item.split("  (")[0] == name:
                 self.lst.selection_set(i)
                 self.lst.see(i)
                 break
-        if path.is_file() and not self.cfg.get("script_text"):
-            try:
-                text = _read_file(path)
-                self.txt.delete("1.0", "end")
-                self.txt.insert("1.0", text)
-            except OSError:
-                pass
+        if path.is_file():
+            self._set_filename(name)
+            if not self.cfg.get("script_text"):
+                try:
+                    text = _read_file(path)
+                    self.txt.delete("1.0", "end")
+                    self.txt.insert("1.0", text)
+                except OSError:
+                    pass
+        else:
+            self._set_filename("")
 
     def _append(self, line, kind="info"):
         tag = kind if kind in ("ok", "err", "busy", "info") else "info"
@@ -745,21 +805,74 @@ class EliteScriptTester(object):
         self.log.configure(state="disabled")
         self._set_status(line.split("\n")[0][:80], kind)
 
+    def _on_host_right_click(self, event):
+        if self._host_menu is None:
+            return
+        try:
+            self._host_menu.tk_popup(event.x_root, event.y_root)
+        finally:
+            self._host_menu.grab_release()
+
+    def _on_dir_enter(self, _evt=None):
+        if self._dir_full:
+            self.var_dir.set(self._dir_full)
+
+    def _on_dir_leave(self, _evt=None):
+        if self._dir_full:
+            self.var_dir.set(self._ellipsis_path(self._dir_full))
+
     def _refresh(self, log=True):
-        self.script_dir.mkdir(parents=True, exist_ok=True)
-        shown = str(self.script_dir)
-        if len(shown) > 32:
-            shown = "..." + shown[-29:]
-        self.var_dir.set(shown)
+        path = Path(self.script_dir)
+        try:
+            path = path.expanduser()
+        except OSError:
+            pass
+        self.script_dir = path
+        self._dir_full = str(path)
+        self.var_dir.set(self._ellipsis_path(self._dir_full))
         self.lst.delete(0, "end")
-        files = list_script_files(self.script_dir)
+
+        if not path.exists():
+            self.lst.insert("end", "（路径不存在）")
+            if log:
+                self._append("脚本目录不存在：%s" % path, "err")
+            return
+        if not path.is_dir():
+            self.lst.insert("end", "（不是文件夹）")
+            if log:
+                self._append("脚本路径不是文件夹：%s" % path, "err")
+            return
+        try:
+            files = list_script_files(path)
+        except PermissionError:
+            self.lst.insert("end", "（无权限）")
+            if log:
+                self._append("无法读取脚本目录（无权限）：%s" % path, "err")
+            return
+        except OSError as exc:
+            self.lst.insert("end", "（读取失败）")
+            if log:
+                self._append("读取脚本目录失败：%s" % exc, "err")
+            return
+
+        if not files:
+            self.lst.insert("end", "（无脚本）")
+            if log:
+                self._append("目录 %s  无脚本（支持 .script/.prg/.txt）" % path)
+            return
+
         for p in files:
-            self.lst.insert("end", "%s  (%d B)" % (p.name, p.stat().st_size))
+            try:
+                size = p.stat().st_size
+            except OSError:
+                size = 0
+            self.lst.insert("end", "%s  (%d B)" % (p.name, size))
         if log:
-            self._append("目录 %s  共 %d 个脚本" % (self.script_dir, len(files)))
+            self._append("目录 %s  共 %d 个脚本" % (path, len(files)))
 
     def _pick_dir(self):
-        chosen = filedialog.askdirectory(initialdir=str(self.script_dir))
+        initial = str(self.script_dir) if Path(self.script_dir).exists() else str(app_dir())
+        chosen = filedialog.askdirectory(initialdir=initial)
         if chosen:
             self.script_dir = Path(chosen)
             self._refresh()
@@ -769,7 +882,10 @@ class EliteScriptTester(object):
         sel = self.lst.curselection()
         if not sel:
             return
-        name = self.lst.get(sel[0]).split("  (")[0]
+        item = self.lst.get(sel[0])
+        if item.startswith("（"):
+            return
+        name = item.split("  (")[0]
         try:
             text = _read_file(self.script_dir / name)
         except OSError as exc:
@@ -777,6 +893,50 @@ class EliteScriptTester(object):
             return
         self.txt.delete("1.0", "end")
         self.txt.insert("1.0", text)
+        self._set_filename(name)
+        self._schedule_save()
+
+    def _save_as(self):
+        initial = self.current_name or "untitled.script"
+        if Path(initial).suffix.lower() not in (".script", ".prg", ".txt"):
+            initial = initial + ".script"
+        initialdir = str(self.script_dir) if Path(self.script_dir).is_dir() else str(app_dir() / "scripts")
+        chosen = filedialog.asksaveasfilename(
+            parent=self.root,
+            title="另存为",
+            initialdir=initialdir,
+            initialfile=initial,
+            defaultextension=".script",
+            filetypes=(
+                ("Elite 脚本", "*.script"),
+                ("文本", "*.txt"),
+                ("PRG", "*.prg"),
+                ("所有文件", "*.*"),
+            ),
+        )
+        if not chosen:
+            return
+        path = Path(chosen)
+        content = self.txt.get("1.0", "end").rstrip("\n") + "\n"
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(content, encoding="utf-8")
+        except OSError as exc:
+            messagebox.showerror("另存为失败", str(exc), parent=self.root)
+            return
+        self.script_dir = path.parent
+        self._set_filename(path.name)
+        self._refresh(log=False)
+        for i in range(self.lst.size()):
+            item = self.lst.get(i)
+            if item.startswith("（"):
+                continue
+            if item.split("  (")[0] == path.name:
+                self.lst.selection_clear(0, "end")
+                self.lst.selection_set(i)
+                self.lst.see(i)
+                break
+        self._append("已另存为 %s" % path, "ok")
         self._schedule_save()
 
     def _params(self):

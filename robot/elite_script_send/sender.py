@@ -38,9 +38,22 @@ def list_script_files(directory=None):
     d = Path(directory) if directory else DEFAULT_SCRIPT_DIR
     if not d.exists():
         return []
-    return sorted(
-        p for p in d.iterdir() if p.is_file() and p.suffix.lower() in SCRIPT_SUFFIXES
-    )
+    if not d.is_dir():
+        raise OSError("not a directory: %s" % d)
+    try:
+        entries = list(d.iterdir())
+    except PermissionError:
+        raise
+    except OSError:
+        raise
+    files = []
+    for p in entries:
+        try:
+            if p.is_file() and p.suffix.lower() in SCRIPT_SUFFIXES:
+                files.append(p)
+        except OSError:
+            continue
+    return sorted(files, key=lambda x: x.name.lower())
 
 
 def send_text(script_text, host=None, port=None, timeout=None, read_reply=False):
