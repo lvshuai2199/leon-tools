@@ -33,7 +33,7 @@
 |----------|----------------|
 | `cursor-usage-widget/` | `D:\Softs\CursorUsage` |
 | `git-picbed/` | `D:\Softs\git-picbed` |
-| `leonpro-dev-hub/` | `D:\Softs\leonpro-local`（若不一致以本机实际为准） |
+| `leonpro-dev-hub/` | 无独立 Softs（`D:\Softs\leonpro-local` 是完整本地栈，不是本托盘） |
 | `stm32-servo/` | `D:\Softs\Servo` |
 | `robot/elite_script_send/` | `D:\Softs\elite-script-send` |
 | `can_tester_linux/` | 无 Windows Softs（Linux 部署） |
