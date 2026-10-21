@@ -10,6 +10,7 @@ const { walk } = require("./scan");
 const { scanFolders } = require("./scan");
 const { buildPlan } = require("./sync-plan");
 const { createStore } = require("./store");
+const { isTyporaRunning } = require("./typora");
 const {
   applyImagePlan,
   assertRepo,
@@ -229,6 +230,8 @@ function createService(appRoot) {
       return null;
     };
     const changed = [];
+    let deferred = 0;
+    const typoraOpen = isTyporaRunning();
     for (const folder of config.docFolders) {
       if (!folder.path || !fs.existsSync(folder.path) || !fs.statSync(folder.path).isDirectory()) {
         throw new Error(`文档文件夹不存在：${folder.path || ""}`);
@@ -251,17 +254,27 @@ function createService(appRoot) {
         });
         const next = rewriteContent(original, decide);
         if (next === original) return;
+        if (typoraOpen) {
+          deferred += 1;
+          return;
+        }
         fs.writeFileSync(abs, next);
         changed.push({ abs, rel: relFor(folder, abs, config.docFolders), rootId: folder.id });
         log(`已更新 ${abs}`);
       });
     }
+    if (typoraOpen && deferred) {
+      store.saveDeferred({ needed: true, at: new Date().toISOString(), count: deferred });
+      log(`Typora 未关闭，已推迟改写 ${deferred} 个文档；关掉后再写回`);
+      return { changed: 0, deferred, pending: (store.loadPending().files || []).length };
+    }
+    if (!typoraOpen) store.saveDeferred({ needed: false, at: "", count: 0 });
     const pending = store.loadPending();
     const merged = new Map((pending.files || []).map((file) => [normKey(file.abs), file]));
     for (const file of changed) merged.set(normKey(file.abs), file);
     store.savePending({ files: [...merged.values()], at: new Date().toISOString() });
     log(changed.length ? `链接已更新 ${changed.length} 个文件` : "没有需要更新的链接");
-    return { changed: changed.length, pending: merged.size };
+    return { changed: changed.length, deferred: 0, pending: merged.size };
   }
 
   async function publishDocs(config, files, log) {
@@ -426,7 +439,20 @@ function createService(appRoot) {
     return payload;
   }
 
-  return { store, sync, updateLinks, push, publish, describe };
+  async function flushDeferredDocs({ log = () => {} } = {}) {
+    const state = store.loadDeferred();
+    if (!state.needed) return { skipped: true, reason: "none" };
+    if (isTyporaRunning()) return { skipped: true, reason: "typora" };
+    log("Typora 已关闭，开始补写文档链接");
+    const linked = await updateLinks({ log });
+    const files = (store.loadPending().files || []).filter((file) => fs.existsSync(file.abs));
+    if (!files.length) return { ...linked, published: false };
+    const config = store.loadConfig();
+    const published = await publishDocs(config, files, log);
+    return { ...linked, published: Boolean(published && published.committed) };
+  }
+
+  return { store, sync, updateLinks, push, publish, describe, flushDeferredDocs };
 }
 
 module.exports = { createService };

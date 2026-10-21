@@ -37,6 +37,7 @@ function createStore(appRoot) {
   const sourcesPath = path.join(dataDir, "sources.json");
   const pendingPath = path.join(dataDir, "pending.json");
   const runPath = path.join(dataDir, "run.json");
+  const deferredPath = path.join(dataDir, "deferred-docs.json");
 
   function readJson(file, fallback) {
     try {
@@ -161,6 +162,14 @@ function createStore(appRoot) {
     return next;
   }
 
+  function loadDeferred() {
+    return readJson(deferredPath, { needed: false, at: "", count: 0 });
+  }
+
+  function saveDeferred(value) {
+    writeJson(deferredPath, value || { needed: false, at: "", count: 0 });
+  }
+
   return {
     loadConfig,
     saveConfig,
@@ -170,6 +179,8 @@ function createStore(appRoot) {
     savePending,
     loadRun,
     saveRun,
+    loadDeferred,
+    saveDeferred,
   };
 }
 

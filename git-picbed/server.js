@@ -89,6 +89,7 @@ function startJob(type, fn) {
 
 let watchers = [];
 let watchTimer = null;
+let typoraFlushTimer = null;
 let watchAgain = false;
 
 function watchedPath(filename, kind, imageDir) {
@@ -111,6 +112,24 @@ function pokeWatch() {
   }
   clearTimeout(watchTimer);
   watchTimer = setTimeout(() => runAuto("监听到文件变化，开始推送"), 8000);
+}
+
+
+function armTyporaFlush() {
+  if (typoraFlushTimer) return;
+  typoraFlushTimer = setInterval(() => {
+    try {
+      const state = store.loadDeferred();
+      if (!state.needed) return;
+      if (job.status === "running") return;
+      startJob("flush-docs", async (log) => {
+        const summary = await service.flushDeferredDocs({ log });
+        return summary;
+      });
+    } catch {
+      // busy or transient
+    }
+  }, 3000);
 }
 
 function startWatchers(config) {
