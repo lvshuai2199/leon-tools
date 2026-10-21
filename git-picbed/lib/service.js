@@ -156,6 +156,9 @@ function createService(appRoot) {
       return { ...synced, pushed };
     }
     const linked = await updateLinks({ log });
+    if (linked.deferred) {
+      return { ...synced, pushed: false, changed: 0, deferred: linked.deferred };
+    }
     if (!linked.changed) {
       log("没有需要推送的图片或链接");
       return { ...synced, pushed: false, changed: 0 };
@@ -260,12 +263,12 @@ function createService(appRoot) {
         }
         fs.writeFileSync(abs, next);
         changed.push({ abs, rel: relFor(folder, abs, config.docFolders), rootId: folder.id });
-        log(`已更新 ${abs}`);
+        log(`已写回 ${path.basename(abs)}`);
       });
     }
     if (typoraOpen && deferred) {
       store.saveDeferred({ needed: true, at: new Date().toISOString(), count: deferred });
-      log(`Typora 未关闭，已推迟改写 ${deferred} 个文档；关掉后再写回`);
+      log(`待 Typora 关闭后写回（${deferred}）`);
       return { changed: 0, deferred, pending: (store.loadPending().files || []).length };
     }
     if (!typoraOpen) store.saveDeferred({ needed: false, at: "", count: 0 });
@@ -327,6 +330,9 @@ function createService(appRoot) {
       log("图片分支还没有提交");
     }
     const linked = await updateLinks({ log });
+    if (linked.deferred) {
+      return { committed: false, pushed, branch: image.branch, deferred: linked.deferred };
+    }
     const files = (store.loadPending().files || []).filter((file) => fs.existsSync(file.abs));
     if (!files.length) {
       if (!linked.changed) log(pushed ? "图片已推送" : "没有新的文档要提交");
@@ -340,6 +346,7 @@ function createService(appRoot) {
     const config = store.loadConfig();
     const pending = store.loadPending();
     const run = store.loadRun();
+    const deferred = store.loadDeferred();
     const payload = {
       config,
       remoteUrl: "",
@@ -350,6 +357,7 @@ function createService(appRoot) {
       identity: null,
       images: [],
       pending,
+      deferred,
       run,
     };
     if (!config.repoPath) return payload;
@@ -443,13 +451,26 @@ function createService(appRoot) {
     const state = store.loadDeferred();
     if (!state.needed) return { skipped: true, reason: "none" };
     if (isTyporaRunning()) return { skipped: true, reason: "typora" };
-    log("Typora 已关闭，开始补写文档链接");
-    const linked = await updateLinks({ log });
-    const files = (store.loadPending().files || []).filter((file) => fs.existsSync(file.abs));
-    if (!files.length) return { ...linked, published: false };
-    const config = store.loadConfig();
-    const published = await publishDocs(config, files, log);
-    return { ...linked, published: Boolean(published && published.committed) };
+    log("Typora 已退出，开始写回文档链接");
+    try {
+      const linked = await updateLinks({ log });
+      if (linked.deferred) return { ...linked, published: false };
+      const files = (store.loadPending().files || []).filter((file) => fs.existsSync(file.abs));
+      if (!files.length) {
+        if (linked.changed) log("已写回");
+        return { ...linked, published: false };
+      }
+      const config = store.loadConfig();
+      const published = await publishDocs(config, files, log);
+      if (linked.changed) log("已写回");
+      return { ...linked, published: Boolean(published && published.committed) };
+    } catch (err) {
+      const reason = err && err.message ? err.message : String(err);
+      log(reason.includes("占用") || reason.includes("ENOENT") || reason.includes("不存在")
+        ? reason
+        : `写回失败：${reason}`);
+      throw err;
+    }
   }
 
   return { store, sync, updateLinks, push, publish, describe, flushDeferredDocs };

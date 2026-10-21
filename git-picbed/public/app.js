@@ -89,13 +89,22 @@ function renderStatus(state) {
         ? "status ok"
         : "status";
 
+  const deferred = state.deferred || {};
   const run = state.run || {};
-  const next = run.nextRunAt ? new Date(run.nextRunAt).toLocaleString() : "未排程";
-  const last = run.lastRunAt ? new Date(run.lastRunAt).toLocaleString() : "还没有";
-  $("runInfo").textContent = run.lastError
-    ? `上次 ${last} 失败：${run.lastError}`
-    : `上次 ${last}，下次 ${next}`;
-  $("runInfo").className = run.lastError ? "status bad" : "status";
+  if (deferred.needed) {
+    const n = deferred.count || 0;
+    $("runInfo").textContent = `待 Typora 关闭后写回（${n}）`;
+    $("runInfo").className = "status warn";
+  } else if (run.lastError) {
+    const last = run.lastRunAt ? new Date(run.lastRunAt).toLocaleString() : "还没有";
+    $("runInfo").textContent = `上次 ${last} 失败：${run.lastError}`;
+    $("runInfo").className = "status bad";
+  } else {
+    const next = run.nextRunAt ? new Date(run.nextRunAt).toLocaleString() : "未排程";
+    const last = run.lastRunAt ? new Date(run.lastRunAt).toLocaleString() : "还没有";
+    $("runInfo").textContent = `上次 ${last}，下次 ${next}`;
+    $("runInfo").className = "status";
+  }
 }
 
 function formatSize(size) {
