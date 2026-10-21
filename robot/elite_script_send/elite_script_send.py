@@ -299,6 +299,10 @@ class EliteScriptTester(object):
             return default
 
     def _build_ui(self):
+        try:
+            self.root.configure(bg="#eceff1")
+        except tk.TclError:
+            pass
         style = ttk.Style(self.root)
         style.configure(".", font=("Microsoft YaHei", 9))
         style.configure("Tool.TButton", padding=(4, 1))
@@ -412,13 +416,15 @@ class EliteScriptTester(object):
             tk.Label(joint_row, textvariable=var, font=num_font, fg="#111111", width=8, anchor="e").pack(side="left")
             ttk.Label(joint_row, text="°", foreground="#777777").pack(side="left")
 
-        body = tk.PanedWindow(
-            self.root, orient="horizontal", sashwidth=4, sashrelief="flat",
-            bd=0, opaqueresize=False, bg="#eceff1",
-        )
+        # 不用 PanedWindow：最大化时 Windows/Tk 易出黑块且子区不撑满
+        body = tk.Frame(self.root, bg="#eceff1", highlightthickness=0)
         body.pack(fill="both", expand=True, padx=6, pady=(0, 4))
+        self._body = body
 
-        left = ttk.Frame(body, padding=0)
+        left = tk.Frame(body, bg="#eceff1", width=180, highlightthickness=0)
+        left.pack(side="left", fill="y")
+        left.pack_propagate(False)
+
         files_bar = ttk.Frame(left)
         files_bar.pack(fill="x")
         ttk.Label(files_bar, text="脚本", font=("Microsoft YaHei", 9)).pack(side="left")
@@ -431,12 +437,13 @@ class EliteScriptTester(object):
         self.lst = tk.Listbox(
             left, width=18, height=10, font=("Consolas", 8), exportselection=False,
             relief="flat", highlightthickness=1, highlightbackground="#cfd8dc",
+            bg="#ffffff", fg="#111111",
         )
         self.lst.pack(fill="both", expand=True, pady=(2, 0))
         self.lst.bind("<<ListboxSelect>>", self._on_select)
-        body.add(left, stretch='never', minsize=140)
 
         editor = ttk.Frame(body)
+        editor.pack(side="left", fill="both", expand=True, padx=(6, 0))
         editor_top = ttk.Frame(editor)
         editor_top.pack(fill="x", pady=(0, 2))
         ttk.Label(
@@ -447,8 +454,9 @@ class EliteScriptTester(object):
             editor_top, text="另存为", command=self._save_as, style="Tool.TButton", width=6,
         ).pack(side="right")
         self.txt = scrolledtext.ScrolledText(
-            editor, font=("Consolas", 9), undo=True, relief="flat", height=12,
+            editor, font=("Consolas", 9), undo=True, relief="flat", height=1,
             highlightthickness=1, highlightbackground="#cfd8dc",
+            bg="#ffffff", fg="#111111", insertbackground="#111111",
         )
         self.txt.pack(fill="both", expand=True)
         self.txt.insert("1.0", self.cfg.get("script_text") or SAMPLE)
@@ -456,7 +464,6 @@ class EliteScriptTester(object):
         sendbar.pack(fill="x", pady=(4, 0))
         ttk.Button(sendbar, text="下发脚本", command=self._send, style="Tool.TButton", width=8).pack(side="left")
         ttk.Button(sendbar, text="上电+松闸+下发", command=self._boot_send, style="Tool.TButton").pack(side="left", padx=6)
-        body.add(editor, stretch='always', minsize=320)
 
         tabs = ttk.Notebook(self.root)
         tabs.pack(fill="x", padx=6, pady=(0, 6))
@@ -723,6 +730,14 @@ class EliteScriptTester(object):
     def _end_resize(self):
         self._resize_busy = False
         self._resize_job = None
+        try:
+            self.root.update_idletasks()
+            if getattr(self, "_body", None) is not None:
+                self._body.update_idletasks()
+            if getattr(self, "txt", None) is not None:
+                self.txt.update_idletasks()
+        except tk.TclError:
+            pass
 
     def _set_var_if(self, var, text):
         if var.get() != text:
