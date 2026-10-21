@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8"/>
+<title>Elite TCP 三维轨迹</title>
+<style>
+  html,body{margin:0;height:100%;width:100%;overflow:hidden;background:#111;color:#eee;font-family:Microsoft YaHei,Consolas,sans-serif}
+  #bar{padding:0 12px;background:#1c1c1c;font-size:13px;display:flex;gap:16px;align-items:center;height:40px;box-sizing:border-box;white-space:nowrap;overflow:hidden}
+  #bar label{cursor:pointer;user-select:none}
+  #bar button{background:#333;color:#eee;border:1px solid #555;padding:2px 10px;cursor:pointer;border-radius:3px}
+  #bar input[type=text]{width:96px;background:#222;color:#eee;border:1px solid #555;padding:2px 6px;border-radius:3px}
+  #markTools{display:none;align-items:center;gap:8px}
+  #wrap{display:flex;height:calc(100% - 40px)}
+  canvas{flex:1;display:block;min-width:0;cursor:grab;background:#111}
+  #side{width:320px;max-width:42vw;background:#181818;border-left:1px solid #333;padding:10px;overflow:auto;font-size:12px}
+  #side.hidden{display:none}
+  #hud{color:#ffcc02;min-height:4.5em;white-space:pre-wrap}
+  table{width:100%;border-collapse:collapse;margin-top:8px}
+  th,td{border-bottom:1px solid #333;padding:3px 4px;text-align:right;font-variant-numeric:tabular-nums}
+  th{color:#9e9e9e;position:sticky;top:0;background:#181818}
+  tr.sel td{background:#333;color:#ffcc02}
+  h3{margin:10px 0 6px;font-size:13px;color:#bbb;font-weight:600}
+</style>
+</head>
+<body>
+<div id="bar">
+  <span>TCP 轨迹（mm） 记录 132 点 / 显示 132 点 · 拖动旋转 · 悬停看点</span>
+  <label><input type="checkbox" id="chkAxes"/> 坐标系</label>
+  <label><input type="checkbox" id="chkData"/> 坐标数据</label>
+  <label><input type="checkbox" id="chkMark"/> 标记</label>
+  <span id="markTools">
+    <span>名称</span><input id="nameIn" type="text" placeholder="如 起弧"/>
+    <button type="button" id="btnOk">确定</button>
+    <button type="button" id="btnCancel">取消</button>
+  </span>
+  <button type="button" id="btnSaveHtml">保存HTML</button>
+  <span id="markMsg"></span>
+</div>
+<div id="wrap">
+  <canvas id="c"></canvas>
+  <div id="side">
+    <div id="hud">移动鼠标查看最近点</div>
+    <h3>范围 / 起终点</h3>
+    <div id="stat"></div>
+    <h3>点表</h3>
+    <table><thead><tr><th>#</th><th>t</th><th>X</th><th>Y</th><th>Z</th></tr></thead><tbody id="tb"></tbody></table>
+  </div>
+</div>
+<script type="application/json" id="savedState">{"marks": [], "yaw": 0.75, "pitch": 0.5, "dist": 1, "axes": false, "data": false, "marking": false}</script>
+<script>
+var pts = [{"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.034, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.135, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.237, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.337, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.438, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.538, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.639, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.74, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.84, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 0.941, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.042, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.142, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.243, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.344, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.445, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.546, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.646, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.747, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.848, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 1.949, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 2.05, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 2.151, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.957, "y": 11.93, "z": -428.696, "t": 2.251, "rx": 22.835, "ry": 18.057, "rz": 22.195, "j": [-3.144, -128.96, -113.431, -13.828, 110.619, -1.265]}, {"x": 911.785, "y": 7.451, "z": -424.283, "t": 2.352, "rx": 22.529, "ry": 18.218, "rz": 22.029, "j": [-3.197, -128.436, -113.438, -14.39, 110.291, -1.33]}, {"x": 911.857, "y": -5.027, "z": -410.899, "t": 2.454, "rx": 21.651, "ry": 18.607, "rz": 21.562, "j": [-3.342, -126.928, -113.429, -15.967, 109.382, -1.515]}, {"x": 912.25, "y": -22.905, "z": -391.703, "t": 2.554, "rx": 20.38, "ry": 19.141, "rz": 20.875, "j": [-3.541, -124.851, -113.302, -18.229, 108.078, -1.762]}, {"x": 912.277, "y": -40.056, "z": -373.624, "t": 2.655, "rx": 19.159, "ry": 19.666, "rz": 20.205, "j": [-3.722, -122.958, -113.086, -20.41, 106.822, -1.988]}, {"x": 912.342, "y": -57.389, "z": -355.323, "t": 2.756, "rx": 17.915, "ry": 20.181, "rz": 19.513, "j": [-3.898, -121.131, -112.771, -22.609, 105.551, -2.204]}, {"x": 912.481, "y": -74.731, "z": -336.929, "t": 2.857, "rx": 16.657, "ry": 20.674, "rz": 18.808, "j": [-4.067, -119.39, -112.363, -24.8, 104.278, -2.413]}, {"x": 912.558, "y": -91.735, "z": -318.949, "t": 2.958, "rx": 15.415, "ry": 21.148, "rz": 18.102, "j": [-4.226, -117.773, -111.881, -26.932, 103.029, -2.608]}, {"x": 912.638, "y": -109.062, "z": -300.589, "t": 3.059, "rx": 14.137, "ry": 21.616, "rz": 17.37, "j": [-4.381, -116.215, -111.309, -29.087, 101.753, -2.799]}, {"x": 912.772, "y": -126.917, "z": -281.665, "t": 3.16, "rx": 12.809, "ry": 22.079, "rz": 16.602, "j": [-4.535, -114.708, -110.636, -31.28, 100.437, -2.989]}, {"x": 912.828, "y": -144.086, "z": -263.526, "t": 3.261, "rx": 11.523, "ry": 22.514, "rz": 15.849, "j": [-4.678, -113.354, -109.92, -33.359, 99.17, -3.164]}, {"x": 912.951, "y": -161.397, "z": -245.164, "t": 3.362, "rx": 10.215, "ry": 22.933, "rz": 15.078, "j": [-4.818, -112.079, -109.126, -35.427, 97.892, -3.336]}, {"x": 912.988, "y": -178.37, "z": -227.199, "t": 3.463, "rx": 8.924, "ry": 23.332, "rz": 14.308, "j": [-4.95, -110.915, -108.29, -37.421, 96.637, -3.498]}, {"x": 913.208, "y": -195.535, "z": -208.926, "t": 3.564, "rx": 7.605, "ry": 23.706, "rz": 13.517, "j": [-5.082, -109.827, -107.381, -39.394, 95.37, -3.659]}, {"x": 913.268, "y": -212.871, "z": -190.598, "t": 3.665, "rx": 6.267, "ry": 24.079, "rz": 12.708, "j": [-5.212, -108.818, -106.413, -41.352, 94.088, -3.821]}, {"x": 913.361, "y": -230.73, "z": -171.726, "t": 3.765, "rx": 4.88, "ry": 24.443, "rz": 11.861, "j": [-5.343, -107.87, -105.362, -43.323, 92.769, -3.983]}, {"x": 913.5, "y": -247.884, "z": -153.488, "t": 3.867, "rx": 3.535, "ry": 24.77, "rz": 11.038, "j": [-5.468, -107.037, -104.302, -45.176, 91.5, -4.14]}, {"x": 913.553, "y": -265.047, "z": -135.368, "t": 3.967, "rx": 2.184, "ry": 25.088, "rz": 10.203, "j": [-5.591, -106.289, -103.202, -46.988, 90.231, -4.296]}, {"x": 913.657, "y": -282.208, "z": -117.167, "t": 4.068, "rx": 0.823, "ry": 25.381, "rz": 9.361, "j": [-5.715, -105.613, -102.061, -48.756, 88.964, -4.454]}, {"x": 913.768, "y": -299.542, "z": -98.826, "t": 4.169, "rx": -0.56, "ry": 25.662, "rz": 8.498, "j": [-5.839, -105.01, -100.869, -50.498, 87.683, -4.613]}, {"x": 913.89, "y": -316.726, "z": -80.623, "t": 4.27, "rx": -1.937, "ry": 25.917, "rz": 7.635, "j": [-5.963, -104.482, -99.654, -52.179, 86.415, -4.774]}, {"x": 914.037, "y": -335.662, "z": -61.916, "t": 4.371, "rx": -3.466, "ry": 26.179, "rz": 6.673, "j": [-6.1, -104.029, -98.361, -53.849, 85.017, -4.953]}, {"x": 914.298, "y": -355.454, "z": -48.775, "t": 4.473, "rx": -5.069, "ry": 26.414, "rz": 5.657, "j": [-6.249, -103.849, -97.4, -54.891, 83.564, -5.147]}, {"x": 914.676, "y": -372.255, "z": -49.773, "t": 4.573, "rx": -6.442, "ry": 26.579, "rz": 4.785, "j": [-6.374, -104.141, -97.373, -54.518, 82.332, -5.317]}, {"x": 914.543, "y": -381.437, "z": -72.993, "t": 4.674, "rx": -7.188, "ry": 26.696, "rz": 4.307, "j": [-6.448, -105.136, -98.741, -52.128, 81.665, -5.417]}, {"x": 914.151, "y": -382.949, "z": -114.15, "t": 4.775, "rx": -7.308, "ry": 26.742, "rz": 4.227, "j": [-6.463, -106.854, -101.056, -48.116, 81.564, -5.442]}, {"x": 913.834, "y": -382.817, "z": -136.571, "t": 4.876, "rx": -7.298, "ry": 26.759, "rz": 4.234, "j": [-6.463, -107.874, -102.223, -45.947, 81.576, -5.446]}, {"x": 914.153, "y": -382.915, "z": -135.858, "t": 4.977, "rx": -7.304, "ry": 26.727, "rz": 4.227, "j": [-6.467, -107.846, -102.196, -45.969, 81.577, -5.446]}, {"x": 914.161, "y": -382.851, "z": -135.883, "t": 5.077, "rx": -7.303, "ry": 26.729, "rz": 4.231, "j": [-6.463, -107.847, -102.197, -45.969, 81.577, -5.446]}, {"x": 914.101, "y": -382.793, "z": -136.0, "t": 5.179, "rx": -7.302, "ry": 26.737, "rz": 4.235, "j": [-6.46, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.076, "y": -382.842, "z": -136.013, "t": 5.279, "rx": -7.302, "ry": 26.737, "rz": 4.232, "j": [-6.463, -107.852, -102.201, -45.969, 81.577, -5.446]}, {"x": 914.076, "y": -382.837, "z": -136.017, "t": 5.379, "rx": -7.302, "ry": 26.738, "rz": 4.232, "j": [-6.463, -107.852, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.105, "y": -382.819, "z": -135.983, "t": 5.481, "rx": -7.302, "ry": 26.735, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.09, "y": -382.83, "z": -135.994, "t": 5.582, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.096, "y": -382.827, "z": -135.991, "t": 5.683, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.102, "y": -382.823, "z": -135.987, "t": 5.784, "rx": -7.302, "ry": 26.735, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.098, "y": -382.822, "z": -135.991, "t": 5.885, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 5.986, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.096, "y": -382.827, "z": -135.991, "t": 6.086, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 6.187, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 6.288, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 6.389, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 6.489, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 6.59, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 6.691, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 6.792, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 6.893, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 6.994, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 7.095, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 7.195, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 7.296, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 7.397, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 7.498, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 7.598, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 7.699, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.095, "y": -382.826, "z": -135.995, "t": 7.8, "rx": -7.302, "ry": 26.736, "rz": 4.233, "j": [-6.462, -107.851, -102.2, -45.969, 81.577, -5.446]}, {"x": 914.171, "y": -380.537, "z": -137.613, "t": 7.901, "rx": -7.112, "ry": 26.703, "rz": 4.355, "j": [-6.447, -107.89, -102.3, -45.833, 81.75, -5.425]}, {"x": 914.142, "y": -369.405, "z": -145.819, "t": 8.002, "rx": -6.206, "ry": 26.584, "rz": 4.932, "j": [-6.36, -108.098, -102.788, -45.194, 82.566, -5.309]}, {"x": 913.876, "y": -349.571, "z": -160.675, "t": 8.103, "rx": -4.591, "ry": 26.363, "rz": 5.954, "j": [-6.211, -108.519, -103.663, -44.002, 84.024, -5.108]}, {"x": 913.809, "y": -329.45, "z": -175.573, "t": 8.204, "rx": -2.966, "ry": 26.101, "rz": 6.985, "j": [-6.06, -109.006, -104.524, -42.738, 85.504, -4.913]}, {"x": 913.677, "y": -309.384, "z": -190.489, "t": 8.305, "rx": -1.35, "ry": 25.815, "rz": 8.0, "j": [-5.915, -109.557, -105.369, -41.419, 86.984, -4.722]}, {"x": 913.656, "y": -289.083, "z": -205.417, "t": 8.405, "rx": 0.27, "ry": 25.492, "rz": 9.016, "j": [-5.767, -110.177, -106.196, -40.032, 88.481, -4.534]}, {"x": 913.492, "y": -269.011, "z": -220.392, "t": 8.507, "rx": 1.866, "ry": 25.158, "rz": 10.007, "j": [-5.624, -110.87, -106.996, -38.602, 89.963, -4.348]}, {"x": 913.453, "y": -248.114, "z": -235.788, "t": 8.608, "rx": 3.512, "ry": 24.773, "rz": 11.025, "j": [-5.472, -111.66, -107.795, -37.058, 91.505, -4.157]}, {"x": 913.272, "y": -228.042, "z": -250.772, "t": 8.71, "rx": 5.085, "ry": 24.392, "rz": 11.988, "j": [-5.326, -112.504, -108.535, -35.523, 92.987, -3.972]}, {"x": 913.232, "y": -207.557, "z": -265.878, "t": 8.81, "rx": 6.674, "ry": 23.966, "rz": 12.955, "j": [-5.174, -113.436, -109.25, -33.901, 94.499, -3.782]}, {"x": 913.049, "y": -187.474, "z": -280.844, "t": 8.911, "rx": 8.222, "ry": 23.535, "rz": 13.888, "j": [-5.022, -114.437, -109.917, -32.262, 95.981, -3.593]}, {"x": 912.993, "y": -167.588, "z": -295.567, "t": 9.012, "rx": 9.739, "ry": 23.078, "rz": 14.796, "j": [-4.866, -115.507, -110.53, -30.59, 97.447, -3.402]}, {"x": 912.864, "y": -146.528, "z": -311.18, "t": 9.113, "rx": 11.334, "ry": 22.573, "rz": 15.738, "j": [-4.698, -116.728, -111.133, -28.77, 99.001, -3.192]}, {"x": 912.767, "y": -126.436, "z": -326.074, "t": 9.214, "rx": 12.84, "ry": 22.069, "rz": 16.618, "j": [-4.529, -117.981, -111.653, -26.989, 100.48, -2.984]}, {"x": 912.643, "y": -106.369, "z": -340.988, "t": 9.315, "rx": 14.331, "ry": 21.546, "rz": 17.482, "j": [-4.356, -119.321, -112.116, -25.17, 101.957, -2.771]}, {"x": 912.506, "y": -86.095, "z": -356.052, "t": 9.416, "rx": 15.824, "ry": 20.997, "rz": 18.336, "j": [-4.172, -120.762, -112.523, -23.293, 103.448, -2.545]}, {"x": 912.42, "y": -65.82, "z": -371.095, "t": 9.516, "rx": 17.301, "ry": 20.425, "rz": 19.171, "j": [-3.979, -122.292, -112.86, -21.381, 104.936, -2.308]}, {"x": 912.295, "y": -45.75, "z": -385.986, "t": 9.618, "rx": 18.751, "ry": 19.84, "rz": 19.979, "j": [-3.78, -123.893, -113.122, -19.461, 106.407, -2.061]}, {"x": 912.197, "y": -25.87, "z": -400.723, "t": 9.717, "rx": 20.171, "ry": 19.241, "rz": 20.762, "j": [-3.572, -125.564, -113.306, -17.535, 107.862, -1.804]}, {"x": 912.135, "y": -5.586, "z": -415.728, "t": 9.818, "rx": 21.606, "ry": 18.61, "rz": 21.537, "j": [-3.348, -127.352, -113.409, -15.548, 109.343, -1.519]}, {"x": 911.368, "y": 12.386, "z": -429.732, "t": 9.92, "rx": 22.881, "ry": 18.09, "rz": 22.219, "j": [-3.135, -129.04, -113.437, -13.79, 110.644, -1.258]}, {"x": 911.927, "y": 12.183, "z": -428.897, "t": 10.021, "rx": 22.848, "ry": 18.052, "rz": 22.205, "j": [-3.138, -128.982, -113.433, -13.805, 110.632, -1.261]}, {"x": 912.004, "y": 12.082, "z": -428.818, "t": 10.122, "rx": 22.844, "ry": 18.047, "rz": 22.2, "j": [-3.143, -128.978, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.994, "y": 12.119, "z": -428.836, "t": 10.223, "rx": 22.844, "ry": 18.048, "rz": 22.202, "j": [-3.141, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.998, "y": 12.09, "z": -428.832, "t": 10.324, "rx": 22.844, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.091, "z": -428.84, "t": 10.425, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 10.525, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 10.626, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.989, "y": 12.087, "z": -428.844, "t": 10.727, "rx": 22.845, "ry": 18.049, "rz": 22.2, "j": [-3.143, -128.98, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 10.827, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 10.928, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.029, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.129, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.231, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.332, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.433, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.533, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.634, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.735, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.836, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 11.937, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.037, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.138, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.239, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.34, "rx": 22.844, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.441, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.543, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.643, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.744, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.845, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 12.945, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 13.046, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 13.147, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}, {"x": 911.992, "y": 12.086, "z": -428.84, "t": 13.247, "rx": 22.845, "ry": 18.048, "rz": 22.2, "j": [-3.143, -128.979, -113.431, -13.806, 110.631, -1.262]}];
+var savedState = {};
+try { savedState = JSON.parse(document.getElementById("savedState").textContent || "{}"); } catch (e) { savedState = {}; }
+var canvas = document.getElementById("c");
+var ctx = canvas.getContext("2d");
+var yaw = savedState.yaw != null ? savedState.yaw : 0.75;
+var pitch = savedState.pitch != null ? savedState.pitch : 0.5;
+var dist = savedState.dist != null ? savedState.dist : 1;
+var drag = false, lx = 0, ly = 0, hover = -1, picked = -1, downX = 0, downY = 0;
+var marks = savedState.marks || [];
+var PAL = ["#29b6f6","#ab47bc","#ff7043","#26a69a","#ec407a","#7e57c2","#66bb6a","#ffa726"];
+var chkAxes = document.getElementById("chkAxes");
+var chkData = document.getElementById("chkData");
+var chkMark = document.getElementById("chkMark");
+var markTools = document.getElementById("markTools");
+var side = document.getElementById("side");
+if (savedState.axes) chkAxes.checked = true;
+if (savedState.data) chkData.checked = true;
+if (savedState.marking) chkMark.checked = true;
+function n(v){ return (v==null||isNaN(v)) ? "—" : Number(v).toFixed(2); }
+function bounds(includeOrigin){
+  if(!pts.length) return {c:[0,0,0], r:1, min:[0,0,0], max:[0,0,0]};
+  var min=[pts[0].x, pts[0].y, pts[0].z], max=[pts[0].x, pts[0].y, pts[0].z];
+  for (var i=1;i<pts.length;i++){
+    var p=[pts[i].x, pts[i].y, pts[i].z];
+    for (var k=0;k<3;k++){ if(p[k]<min[k])min[k]=p[k]; if(p[k]>max[k])max[k]=p[k]; }
+  }
+  if (includeOrigin){
+    for (var k=0;k<3;k++){ if(0<min[k])min[k]=0; if(0>max[k])max[k]=0; }
+  }
+  var c=[(min[0]+max[0])/2,(min[1]+max[1])/2,(min[2]+max[2])/2];
+  var r=1;
+  for (var i=0;i<3;i++){
+    r=Math.max(r, Math.abs(min[i]-c[i]), Math.abs(max[i]-c[i]));
+  }
+  return {c:c, r:r, min:min, max:max};
+}
+var B = bounds(false);
+function refreshBounds(){ B = bounds(!!chkAxes.checked); }
+function niceStep(span){
+  var raw = Math.max(span, 1) / 5, mag = Math.pow(10, Math.floor(Math.log10(raw))), nrm = raw/mag;
+  return nrm<1.5?mag:(nrm<3.5?2*mag:(nrm<7.5?5*mag:10*mag));
+}
+function project(x,y,z){
+  x-=B.c[0]; y-=B.c[1]; z-=B.c[2];
+  var cy=Math.cos(yaw), sy=Math.sin(yaw), cp=Math.cos(pitch), sp=Math.sin(pitch);
+  var x1=x*cy - y*sy, y1=x*sy + y*cy;
+  var y2=y1*cp - z*sp, z2=y1*sp + z*cp;
+  var s = Math.min(canvas.width, canvas.height) * 0.86 / (B.r * dist * 2);
+  return [canvas.width/2 + x1*s, canvas.height/2 - z2*s];
+}
+function drawAxes(){
+  var step = niceStep(B.r*2);
+  var reach = Math.ceil((B.r*1.15)/step)*step;
+  var cols=["#e53935","#43a047","#1e88e5"], names=["X","Y","Z"];
+  ctx.font="12px Consolas,Microsoft YaHei";
+  for (var a=0;a<3;a++){
+    var p0=[0,0,0], p1=[0,0,0]; p1[a]=reach;
+    var n1=[0,0,0]; n1[a]=-reach;
+    var A=project(n1[0],n1[1],n1[2]), C=project(p1[0],p1[1],p1[2]);
+    ctx.strokeStyle=cols[a]; ctx.lineWidth=1.8;
+    ctx.beginPath(); ctx.moveTo(A[0],A[1]); ctx.lineTo(C[0],C[1]); ctx.stroke();
+    ctx.fillStyle=cols[a];
+    ctx.fillText(names[a]+" mm", C[0]+6, C[1]-4);
+    ctx.lineWidth=1;
+    for (var v=-reach; v<=reach+1e-6; v+=step){
+      if (Math.abs(v)<1e-9) continue;
+      var t0=[0,0,0], t1=[0,0,0]; t0[a]=v; t1[a]=v;
+      var b=(a+1)%3; t0[b]=-step*0.08; t1[b]=step*0.08;
+      var u=project(t0[0],t0[1],t0[2]), w=project(t1[0],t1[1],t1[2]);
+      ctx.beginPath(); ctx.moveTo(u[0],u[1]); ctx.lineTo(w[0],w[1]); ctx.stroke();
+      var lab=project(t1[0],t1[1],t1[2]);
+      ctx.fillText(String(Math.round(v)), lab[0]+3, lab[1]+3);
+    }
+  }
+  var o=project(0,0,0);
+  ctx.fillStyle="#fff"; ctx.beginPath(); ctx.arc(o[0],o[1],3.5,0,6.28); ctx.fill();
+  ctx.fillText("O(0,0,0)", o[0]+8, o[1]-8);
+}
+function drawPath(color, width){
+  ctx.strokeStyle=color; ctx.lineWidth=width;
+  ctx.beginPath();
+  for (var i=0;i<pts.length;i++){
+    var p=project(pts[i].x, pts[i].y, pts[i].z);
+    if(i===0) ctx.moveTo(p[0],p[1]); else ctx.lineTo(p[0],p[1]);
+  }
+  ctx.stroke();
+}
+function draw(){
+  refreshBounds();
+  ctx.fillStyle="#111"; ctx.fillRect(0,0,canvas.width,canvas.height);
+  if (chkAxes.checked) drawAxes();
+  if(!pts.length){ ctx.fillStyle="#888"; ctx.fillText("无笛卡尔点", 20, 40); return; }
+  drawPath("#ffcc02", 1.8);
+  var s=project(pts[0].x,pts[0].y,pts[0].z), e=project(pts[pts.length-1].x,pts[pts.length-1].y,pts[pts.length-1].z);
+  ctx.fillStyle="#4caf50"; ctx.beginPath(); ctx.arc(s[0],s[1],5,0,6.28); ctx.fill();
+  ctx.fillStyle="#ff5252"; ctx.beginPath(); ctx.arc(e[0],e[1],5,0,6.28); ctx.fill();
+  ctx.font="12px Microsoft YaHei,Consolas";
+  for (var m=0;m<marks.length;m++){
+    var mp=project(marks[m].x, marks[m].y, marks[m].z);
+    var col=PAL[m % PAL.length];
+    ctx.globalAlpha=0.35; ctx.fillStyle=col;
+    ctx.beginPath(); ctx.arc(mp[0],mp[1],16,0,6.28); ctx.fill();
+    ctx.globalAlpha=1; ctx.beginPath(); ctx.arc(mp[0],mp[1],8,0,6.28); ctx.fill();
+    ctx.strokeStyle="#fff"; ctx.lineWidth=1.6; ctx.stroke();
+    ctx.fillStyle="#fff";
+    ctx.fillText(marks[m].name, mp[0]+12, mp[1]-8);
+  }
+  if (picked>=0){
+    var q=project(pts[picked].x, pts[picked].y, pts[picked].z);
+    ctx.strokeStyle="#fff"; ctx.lineWidth=2; ctx.setLineDash([5,4]);
+    ctx.beginPath(); ctx.arc(q[0],q[1],12,0,6.28); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath(); ctx.moveTo(q[0]-16,q[1]); ctx.lineTo(q[0]+16,q[1]);
+    ctx.moveTo(q[0],q[1]-16); ctx.lineTo(q[0],q[1]+16); ctx.stroke();
+  }
+  if (hover>=0 && hover!==picked){
+    var h=project(pts[hover].x, pts[hover].y, pts[hover].z);
+    ctx.strokeStyle="#fff"; ctx.beginPath(); ctx.arc(h[0],h[1],7,0,6.28); ctx.stroke();
+  }
+  var look = picked>=0 ? picked : hover;
+  if (look>=0){
+    var lp=pts[look];
+    var tip="X="+n(lp.x)+"  Y="+n(lp.y)+"  Z="+n(lp.z)+" mm   Rx="+n(lp.rx)+"  Ry="+n(lp.ry)+"  Rz="+n(lp.rz)+" °";
+    ctx.font="13px Consolas,Microsoft YaHei";
+    var tw=ctx.measureText(tip).width+20;
+    ctx.fillStyle="rgba(0,0,0,0.7)";
+    ctx.fillRect(10, canvas.height-34, tw, 24);
+    ctx.fillStyle="#ffcc02";
+    ctx.fillText(tip, 20, canvas.height-17);
+  }
+}
+function markIndexOf(i){
+  for (var k=0;k<marks.length;k++){ if(marks[k].i===i) return k; }
+  return -1;
+}
+function setPicked(i){
+  picked=i;
+  if(i<0){
+    document.getElementById("markMsg").textContent="先单击选点预览，再确定标记";
+    draw();
+    return;
+  }
+  var p=pts[i], mi=markIndexOf(i);
+  if(mi>=0) document.getElementById("nameIn").value=marks[mi].name;
+  document.getElementById("markMsg").textContent="预览  X="+n(p.x)+"  Y="+n(p.y)+"  Z="+n(p.z)+" mm"+(mi>=0?"  「"+marks[mi].name+"」":"");
+  draw();
+}
+function confirmMark(){
+  if(!chkMark.checked) return;
+  if(picked<0){
+    document.getElementById("markMsg").textContent="还没有选点";
+    return;
+  }
+  var name=(document.getElementById("nameIn").value||"").replace(/^\s+|\s+$/g,"");
+  if(!name){
+    document.getElementById("markMsg").textContent="先填写该点的实际意义";
+    return;
+  }
+  var p=pts[picked], found=markIndexOf(picked);
+  var rec={name:name, i:picked, t:p.t, x:p.x, y:p.y, z:p.z, rx:p.rx, ry:p.ry, rz:p.rz, j:p.j.slice()};
+  if(found>=0) marks[found]=rec; else marks.push(rec);
+  document.getElementById("markMsg").textContent="已确定「"+name+"」";
+  picked=-1;
+  draw();
+}
+function cancelMark(){
+  if(!chkMark.checked) return;
+  if(picked<0){
+    document.getElementById("markMsg").textContent="没有可取消的选择";
+    return;
+  }
+  var found=markIndexOf(picked);
+  if(found>=0){
+    var name=marks[found].name;
+    marks.splice(found,1);
+    document.getElementById("markMsg").textContent="已取消标记「"+name+"」";
+  } else {
+    document.getElementById("markMsg").textContent="已取消选点";
+  }
+  picked=-1;
+  draw();
+}
+function hitMark(mx,my){
+  var best=-1, bd=18*18;
+  for (var m=0;m<marks.length;m++){
+    var p=project(marks[m].x, marks[m].y, marks[m].z);
+    var d=(p[0]-mx)*(p[0]-mx)+(p[1]-my)*(p[1]-my);
+    if(d<bd){ bd=d; best=marks[m].i; }
+  }
+  return best;
+}
+function saveHtml(){
+  var st={marks:marks, yaw:yaw, pitch:pitch, dist:dist, axes:!!chkAxes.checked, data:!!chkData.checked, marking:!!chkMark.checked};
+  document.getElementById("savedState").textContent=JSON.stringify(st);
+  if (chkAxes.checked) chkAxes.setAttribute("checked","checked"); else chkAxes.removeAttribute("checked");
+  if (chkData.checked) chkData.setAttribute("checked","checked"); else chkData.removeAttribute("checked");
+  if (chkMark.checked) chkMark.setAttribute("checked","checked"); else chkMark.removeAttribute("checked");
+  var html="<!DOCTYPE html>\n"+document.documentElement.outerHTML;
+  var blob=new Blob([html], {type:"text/html;charset=utf-8"});
+  var a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=(document.title||"traj")+"_marked.html";
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+  document.getElementById("markMsg").textContent="已保存当前HTML";
+}
+function showHover(i){
+  hover=i;
+  var el=document.getElementById("hud");
+  if(i<0){ el.textContent="移动鼠标查看最近点"; draw(); return; }
+  var p=pts[i];
+  el.textContent="点 "+(i+1)+" / "+pts.length+"   t="+n(p.t)+" s\n"+
+    "笛卡尔  X="+n(p.x)+"  Y="+n(p.y)+"  Z="+n(p.z)+" mm\n"+
+    "姿态    Rx="+n(p.rx)+"  Ry="+n(p.ry)+"  Rz="+n(p.rz)+" °\n"+
+    "关节    "+p.j.map(function(v,k){return "J"+(k+1)+"="+n(v);}).join("  ")+" °";
+  var rows=document.querySelectorAll("#tb tr");
+  for (var r=0;r<rows.length;r++) rows[r].className = (r===i ? "sel" : "");
+  if (chkData.checked && rows[i]) rows[i].scrollIntoView({block:"nearest", inline:"nearest"});
+  draw();
+}
+function nearest(mx,my){
+  var best=-1, bd=64;
+  for (var i=0;i<pts.length;i++){
+    var p=project(pts[i].x, pts[i].y, pts[i].z);
+    var d=(p[0]-mx)*(p[0]-mx)+(p[1]-my)*(p[1]-my);
+    if(d<bd){ bd=d; best=i; }
+  }
+  return best;
+}
+function fillStats(){
+  if(!pts.length){ document.getElementById("stat").textContent="无数据"; return; }
+  var a=pts[0], b=pts[pts.length-1], len=0;
+  for (var i=1;i<pts.length;i++){
+    var dx=pts[i].x-pts[i-1].x, dy=pts[i].y-pts[i-1].y, dz=pts[i].z-pts[i-1].z;
+    len+=Math.sqrt(dx*dx+dy*dy+dz*dz);
+  }
+  document.getElementById("stat").innerHTML =
+    "起点  X "+n(a.x)+"  Y "+n(a.y)+"  Z "+n(a.z)+"<br>"+
+    "终点  X "+n(b.x)+"  Y "+n(b.y)+"  Z "+n(b.z)+"<br>"+
+    "最小  X "+n(B.min[0])+"  Y "+n(B.min[1])+"  Z "+n(B.min[2])+"<br>"+
+    "最大  X "+n(B.max[0])+"  Y "+n(B.max[1])+"  Z "+n(B.max[2])+"<br>"+
+    "路径长 "+n(len)+" mm";
+  var tb=document.getElementById("tb"); tb.innerHTML="";
+  for (var i=0;i<pts.length;i++){
+    var tr=document.createElement("tr");
+    tr.innerHTML="<td>"+(i+1)+"</td><td>"+n(pts[i].t)+"</td><td>"+n(pts[i].x)+"</td><td>"+n(pts[i].y)+"</td><td>"+n(pts[i].z)+"</td>";
+    (function(idx){ tr.onmouseover=function(){ showHover(idx); }; })(i);
+    tb.appendChild(tr);
+  }
+}
+function resize(){
+  canvas.width = canvas.clientWidth;
+  canvas.height = canvas.clientHeight;
+  draw();
+}
+function syncMarkMode(){
+  markTools.style.display = chkMark.checked ? "inline-flex" : "none";
+  if (!chkMark.checked){
+    picked=-1;
+    document.getElementById("markMsg").textContent="";
+  } else {
+    document.getElementById("markMsg").textContent="单击选点预览，确定后才标记";
+  }
+  draw();
+}
+chkAxes.addEventListener("change", draw);
+chkData.addEventListener("change", function(){ side.className = chkData.checked ? "" : "hidden"; resize(); });
+document.getElementById("btnSaveHtml").addEventListener("click", saveHtml);
+document.getElementById("btnOk").addEventListener("click", confirmMark);
+document.getElementById("btnCancel").addEventListener("click", cancelMark);
+document.getElementById("nameIn").addEventListener("keydown", function(e){ if(e.key==="Enter") confirmMark(); });
+side.className = savedState.data ? "" : "hidden";
+canvas.addEventListener("mousedown", function(e){
+  drag=true; lx=e.clientX; ly=e.clientY; downX=e.clientX; downY=e.clientY;
+  canvas.style.cursor="grabbing";
+});
+window.addEventListener("mouseup", function(e){
+  if (drag && chkMark.checked){
+    var dx=e.clientX-downX, dy=e.clientY-downY;
+    if (dx*dx+dy*dy < 16){
+      var rec=canvas.getBoundingClientRect();
+      var mx=e.clientX-rec.left, my=e.clientY-rec.top;
+      var hit=hitMark(mx,my);
+      if(hit<0) hit=nearest(mx,my);
+      setPicked(hit);
+    }
+  }
+  drag=false;
+  canvas.style.cursor="grab";
+});
+window.addEventListener("mousemove", function(e){
+  if(drag){
+    var moved=(e.clientX-downX)*(e.clientX-downX)+(e.clientY-downY)*(e.clientY-downY);
+    if (moved < 16) return;
+    yaw += (e.clientX-lx)*0.008; pitch += (e.clientY-ly)*0.008;
+    if(pitch>1.4) pitch=1.4; if(pitch<-1.4) pitch=-1.4;
+    lx=e.clientX; ly=e.clientY; draw();
+    return;
+  }
+  var r=canvas.getBoundingClientRect();
+  if(e.clientX>=r.left && e.clientX<=r.right && e.clientY>=r.top && e.clientY<=r.bottom){
+    showHover(nearest(e.clientX-r.left, e.clientY-r.top));
+  }
+});
+canvas.addEventListener("wheel", function(e){
+  e.preventDefault();
+  dist *= (e.deltaY>0 ? 1.08 : 0.92);
+  if(dist<0.2) dist=0.2; if(dist>8) dist=8; draw();
+}, {passive:false});
+window.addEventListener("blur", function(){ drag=false; canvas.style.cursor="grab"; });
+syncMarkMode();
+chkMark.addEventListener("change", syncMarkMode);
+fillStats();
+resize();
+</script>
+</body>
+</html>
