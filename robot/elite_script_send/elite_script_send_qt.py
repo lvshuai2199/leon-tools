@@ -432,14 +432,14 @@ class EliteScriptWindow(QMainWindow):
         ed_l.addWidget(self.txt, 1)
         splitter.addWidget(editor)
 
-        # 右：可滚操作区 + 急停钉底；组内≥6、组间≥10
+        # 右：无滚动条；组内≥6、组间≥10；急停钉底；小窗靠缩钮高
         right = QFrame()
         right.setObjectName("zone")
         right.setMinimumWidth(128)
         right.setMaximumWidth(140)
-        right_outer = QVBoxLayout(right)
-        right_outer.setContentsMargins(8, 8, 8, 8)
-        right_outer.setSpacing(8)
+        right_l = QVBoxLayout(right)
+        right_l.setContentsMargins(8, 8, 8, 8)
+        right_l.setSpacing(10)
 
         def _sec_title(text):
             lab = QLabel(text)
@@ -455,49 +455,38 @@ class EliteScriptWindow(QMainWindow):
             for text, slot in items:
                 btn = self._tool_btn(text, slot)
                 btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                btn.setMinimumHeight(32)
+                btn.setMinimumHeight(28)
                 self._right_btns.append(btn)
                 box.addWidget(btn)
             return box
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
-        scroll.setFrameShape(QFrame.NoFrame)
-        scroll_body = QWidget()
-        scroll_l = QVBoxLayout(scroll_body)
-        scroll_l.setContentsMargins(0, 0, 0, 0)
-        scroll_l.setSpacing(10)
-        scroll_l.addWidget(_sec_title("电源"))
-        scroll_l.addLayout(_add_btns((
+        right_l.addWidget(_sec_title("电源"))
+        right_l.addLayout(_add_btns((
             ("上电", self._power_on),
             ("下电", self._power_off),
             ("松闸", self._brake),
         )))
-        scroll_l.addWidget(_sec_title("运动"))
-        scroll_l.addLayout(_add_btns((
+        right_l.addWidget(_sec_title("运动"))
+        right_l.addLayout(_add_btns((
             ("运行", self._play),
             ("停止", self._stop_task),
             ("查询", self._task),
         )))
-        scroll_l.addLayout(_add_btns((
+        right_l.addLayout(_add_btns((
             ("清弹窗", self._close_popup),
         )))
-        scroll_l.addStretch(1)
-        scroll.setWidget(scroll_body)
-        right_outer.addWidget(scroll, 1)
-
+        right_l.addStretch(1)
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
         sep.setFixedHeight(1)
         sep.setStyleSheet("background:#E5E7EB;border:none;max-height:1px;")
-        right_outer.addWidget(sep)
+        right_l.addWidget(sep)
         estop = self._tool_btn("急停", self._estop, danger=True)
-        estop.setMinimumHeight(40)
+        estop.setMinimumHeight(36)
         estop.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._right_estop = estop
         self._right_btns.append(estop)
-        right_outer.addWidget(estop)
+        right_l.addWidget(estop)
         splitter.addWidget(right)
 
         splitter.setStretchFactor(0, 0)
@@ -684,22 +673,25 @@ class EliteScriptWindow(QMainWindow):
 
 
     def _fit_right_btns(self):
-        """小窗略缩右栏钮高，下限 32；正常约 42。"""
+        """无滚动条：小窗缩钮高塞下，下限 28；正常约 42；急停略高。"""
         btns = getattr(self, "_right_btns", None) or []
         if not btns:
             return
         h = max(320, int(self.height()))
         if h >= 720:
             bh = 42
-        elif h <= 480:
-            bh = 32
+        elif h <= 520:
+            # 小窗更狠一点，避免挤成一坨又不出滚条
+            bh = 28 if h <= 480 else int(28 + (h - 480) * (6 / 40.0))
         else:
-            bh = int(32 + (h - 480) * (10 / 240.0))
+            bh = int(34 + (h - 520) * (8 / 200.0))
+            bh = min(42, max(34, bh))
         for b in btns:
             if b is getattr(self, "_right_estop", None):
-                b.setFixedHeight(max(40, bh))
+                b.setFixedHeight(max(36, bh + 4))
             else:
                 b.setFixedHeight(bh)
+
 
     def closeEvent(self, event):
         self._save_timer.stop()
