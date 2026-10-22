@@ -420,10 +420,12 @@ class EliteScriptWindow(QMainWindow):
         ed_l = QVBoxLayout(editor)
         ed_l.setContentsMargins(6, 6, 6, 6)
         ed_l.setSpacing(4)
+        # 顶栏：文件名左 · 下发脚本（主蓝）→ 另存为（次）右对齐；无底栏组合钮
         ed_top = QHBoxLayout()
-        ed_top.setSpacing(6)
+        ed_top.setSpacing(8)
         self.lbl_filename = QLabel("未命名")
         ed_top.addWidget(self.lbl_filename, 1)
+        ed_top.addWidget(self._tool_btn("下发脚本", self._send, primary=True, min_w=80))
         ed_top.addWidget(self._tool_btn("另存为", self._save_as, min_w=72))
         ed_l.addLayout(ed_top)
         self.txt = QPlainTextEdit()
@@ -434,12 +436,6 @@ class EliteScriptWindow(QMainWindow):
         self.txt.setPlainText(self.cfg.get("script_text") or SAMPLE)
         self.txt.textChanged.connect(self._schedule_save)
         ed_l.addWidget(self.txt, 1)
-        sendbar = QHBoxLayout()
-        sendbar.setSpacing(6)
-        sendbar.addWidget(self._tool_btn("下发脚本", self._send, primary=True, min_w=80))
-        sendbar.addWidget(self._tool_btn("上电+松闸+下发", self._boot_send))
-        sendbar.addStretch(1)
-        ed_l.addLayout(sendbar)
         splitter.addWidget(editor)
 
         # 右：操作竖条 128～140，电源/运动/其它 + 急停
