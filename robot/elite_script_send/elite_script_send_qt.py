@@ -250,8 +250,8 @@ class EliteScriptWindow(QMainWindow):
             "QPushButton#primary:hover{background:#1D4ED8;}"
             "QPushButton#danger{background:#DC2626;color:#FFFFFF;border:1px solid #DC2626;font-weight:bold;}"
             "QPushButton#danger:hover{background:#B91C1C;}"
-            "QPushButton#warn{background:#EA580C;color:#FFFFFF;border:1px solid #EA580C;}"
-            "QPushButton#warn:hover{background:#C2410C;}"
+            "QPushButton#warn{background:#F59E0B;color:#FFFFFF;border:1px solid #F59E0B;}"
+            "QPushButton#warn:hover{background:#D97706;}"
             "QPushButton#success{background:#15803D;color:#FFFFFF;border:1px solid #15803D;}"
             "QPushButton#success:hover{background:#166534;}"
             "QLabel#muted{color:#6B7280;}"
@@ -300,6 +300,11 @@ class EliteScriptWindow(QMainWindow):
         bar.addWidget(self.chk_open_html)
         # 顶栏只留 IP/PORT/超时/打开HTML；状态字/说明/回执/测连全去
         bar.addStretch(1)
+        estop_top = self._tool_btn("急停", self._estop, danger=True, min_w=96)
+        estop_top.setFixedHeight(35)
+        estop_top.setFixedWidth(96)
+        self._right_estop = estop_top
+        bar.addWidget(estop_top)
         top_wrap = QFrame()
         top_wrap.setObjectName("zone")
         top_l = QVBoxLayout(top_wrap)
@@ -483,17 +488,6 @@ class EliteScriptWindow(QMainWindow):
             ("清弹窗", self._close_popup),
         )))
         right_l.addStretch(1)
-        sep = QFrame()
-        sep.setFrameShape(QFrame.HLine)
-        sep.setFixedHeight(1)
-        sep.setStyleSheet("background:#E5E7EB;border:none;max-height:1px;")
-        right_l.addWidget(sep)
-        estop = self._tool_btn("急停", self._estop, danger=True)
-        estop.setMinimumHeight(35)
-        estop.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        self._right_estop = estop
-        self._right_btns.append(estop)
-        right_l.addWidget(estop)
         mid_wrap = QFrame()
         mid_wrap.setObjectName("zone")
         mid_l = QHBoxLayout(mid_wrap)
@@ -687,24 +681,21 @@ class EliteScriptWindow(QMainWindow):
 
 
     def _fit_right_btns(self):
-        """主钮常态 29；小窗 ≥26；急停固定 35。"""
+        """主钮常态 29；小窗 ≥26；顶栏急停固定 35。"""
         btns = getattr(self, "_right_btns", None) or []
-        if not btns:
-            return
         h = max(320, int(self.height()))
         if h >= 620:
             bh = 29
         elif h <= 480:
             bh = 26
         else:
-            # 480→620: 26→29
             bh = int(26 + (h - 480) * (3 / 140.0))
             bh = min(29, max(26, bh))
         for b in btns:
-            if b is getattr(self, "_right_estop", None):
-                b.setFixedHeight(35)
-            else:
-                b.setFixedHeight(bh)
+            b.setFixedHeight(bh)
+        est = getattr(self, "_right_estop", None)
+        if est is not None:
+            est.setFixedHeight(35)
 
 
     def closeEvent(self, event):
