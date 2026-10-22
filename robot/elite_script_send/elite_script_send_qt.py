@@ -928,7 +928,7 @@ class EliteScriptWindow(QMainWindow):
         if not files:
             self.lst.addItem("（无脚本）")
             if log:
-                self._append("目录 %s  无脚本（支持 .script/.prg/.txt）" % path)
+                self._append("目录 %s  无脚本（支持 .script/.lua/.py/.prg/.txt）" % path)
             return
 
         for p in files:
@@ -969,14 +969,14 @@ class EliteScriptWindow(QMainWindow):
 
     def _save_as(self):
         initial = self.current_name or "untitled.script"
-        if Path(initial).suffix.lower() not in (".script", ".prg", ".txt"):
+        if Path(initial).suffix.lower() not in (".script", ".lua", ".py", ".prg", ".txt"):
             initial = initial + ".script"
         initialdir = str(self.script_dir) if Path(self.script_dir).is_dir() else str(app_dir() / "scripts")
         chosen, _ = QFileDialog.getSaveFileName(
             self,
             "另存为",
             str(Path(initialdir) / initial),
-            "Elite 脚本 (*.script);;文本 (*.txt);;PRG (*.prg);;所有文件 (*.*)",
+            "脚本 (*.script *.lua *.py);;Elite (*.script);;Lua (*.lua);;Python (*.py);;文本 (*.txt);;PRG (*.prg);;所有文件 (*.*)",
         )
         if not chosen:
             return

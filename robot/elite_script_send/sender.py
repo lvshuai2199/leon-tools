@@ -9,7 +9,7 @@ import sys
 import time
 from pathlib import Path
 
-SCRIPT_SUFFIXES = {".script", ".prg", ".txt"}
+SCRIPT_SUFFIXES = {".script", ".lua", ".py", ".prg", ".txt"}
 DEFAULT_HOST = os.environ.get("SCRIPT_SEND_HOST", "192.168.249.128")
 DEFAULT_PORT = int(os.environ.get("SCRIPT_SEND_PORT", "30001"))
 DEFAULT_DASHBOARD_PORT = int(os.environ.get("DASHBOARD_PORT", "29999"))
