@@ -292,7 +292,7 @@ class EliteScriptWindow(QMainWindow):
         self.chk_reply.toggled.connect(lambda *_: self._schedule_save())
         bar.addWidget(self.chk_reply)
         bar.addWidget(self._tool_btn("测连", self._ping, primary=True, min_w=52))
-        bar.addWidget(self._tool_btn("Dashboard", self._dashboard, primary=True, min_w=80))
+        # Dashboard 钮已去；历史 Tab 仍留 29999 输入框发指令
         self.chk_open_html = QCheckBox("打开HTML")
         self.chk_open_html.setChecked(bool(self.cfg.get("open_html", False)))
         self.chk_open_html.toggled.connect(lambda *_: self._schedule_save())
@@ -320,23 +320,15 @@ class EliteScriptWindow(QMainWindow):
         top_l.addWidget(row)
         lay.addWidget(top_wrap)
 
-        # ----- 2 位姿白卡（不动） -----
+        # ----- 2 位姿白卡：左坐标 · 右竖排停止监听/记录 -----
         pose_box = QFrame()
         pose_box.setObjectName("zone")
-        pose_l = QVBoxLayout(pose_box)
-        pose_l.setContentsMargins(10, 8, 10, 8)
-        pose_l.setSpacing(4)
-        pose_bar = QHBoxLayout()
-        self.btn_listen = self._tool_btn("监听", self._toggle_listen, success=True, min_w=88)
-        pose_bar.addWidget(self.btn_listen)
-        self.btn_record = self._tool_btn("记录", self._toggle_record, primary=True, min_w=88)
-        pose_bar.addWidget(self.btn_record)
-        self.lbl_rec = QLabel("")
-        self.lbl_rec.setStyleSheet("color:#2563EB;")
-        pose_bar.addStretch(1)
-        pose_bar.addWidget(self.lbl_rec)
-        pose_l.addLayout(pose_bar)
+        pose_outer = QHBoxLayout(pose_box)
+        pose_outer.setContentsMargins(10, 8, 10, 8)
+        pose_outer.setSpacing(10)
 
+        pose_left = QVBoxLayout()
+        pose_left.setSpacing(4)
         cart = QHBoxLayout()
         cart.addWidget(QLabel("笛卡尔"))
         self.lbl_xyz = []
@@ -360,7 +352,7 @@ class EliteScriptWindow(QMainWindow):
             u.setObjectName("muted")
             cart.addWidget(u)
         cart.addStretch(1)
-        pose_l.addLayout(cart)
+        pose_left.addLayout(cart)
 
         joint = QHBoxLayout()
         joint.addWidget(QLabel("关节"))
@@ -377,7 +369,25 @@ class EliteScriptWindow(QMainWindow):
             u.setObjectName("muted")
             joint.addWidget(u)
         joint.addStretch(1)
-        pose_l.addLayout(joint)
+        pose_left.addLayout(joint)
+        self.lbl_rec = QLabel("")
+        self.lbl_rec.setStyleSheet("color:#2563EB;")
+        pose_left.addWidget(self.lbl_rec)
+        pose_outer.addLayout(pose_left, 1)
+
+        pose_right = QVBoxLayout()
+        pose_right.setSpacing(6)
+        pose_right.setContentsMargins(0, 0, 0, 0)
+        self.btn_listen = self._tool_btn("监听", self._toggle_listen, success=True, min_w=88)
+        self.btn_listen.setFixedHeight(32)
+        self.btn_listen.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        pose_right.addWidget(self.btn_listen)
+        self.btn_record = self._tool_btn("记录", self._toggle_record, primary=True, min_w=88)
+        self.btn_record.setFixedHeight(32)
+        self.btn_record.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        pose_right.addWidget(self.btn_record)
+        pose_right.addStretch(1)
+        pose_outer.addLayout(pose_right)
         lay.addWidget(pose_box)
 
         # ----- 3 中区三栏：左列表 | 编辑 | 右操作 -----
@@ -474,10 +484,9 @@ class EliteScriptWindow(QMainWindow):
             ("停止", self._stop_task),
             ("查询", self._task),
         )))
-        right_l.addWidget(_sec_title("其它"))
+        # 清弹窗贴运动组下（无「其它」标题）；取消已删
         right_l.addLayout(_add_btns((
             ("清弹窗", self._close_popup),
-            ("取消", self._cancel_wait),
         )))
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
