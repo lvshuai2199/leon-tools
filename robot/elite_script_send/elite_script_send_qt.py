@@ -31,6 +31,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSizePolicy,
     QSplitter,
     QTabWidget,
@@ -130,8 +131,6 @@ class EliteScriptWindow(QMainWindow):
         self._refresh(log=False)
         self._restore_last_file()
         self._refresh_history_list()
-        self._set_tip("30001 下发会立即执行；停止工程=stop，急停=halt+stop")
-        self._append("30001 下发脚本会立即执行；停止工程=stop，急停=halt+stop。")
         self._loading = False
         self._start_listen()
         self._pose_timer.start(100)
@@ -237,15 +236,15 @@ class EliteScriptWindow(QMainWindow):
         self.setCentralWidget(root)
         root.setStyleSheet(
             "QWidget{background:#F5F7FA;color:#1F2937;font-family:'Microsoft YaHei';font-size:9pt;}"
-            "QFrame#zone{background:#FFFFFF;border:1px solid #E5E7EB;border-radius:6px;}"
+            "QFrame#zone{background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;}"
             "QPlainTextEdit,QListWidget,QLineEdit,QComboBox{"
-            "background:#FFFFFF;color:#1F2937;border:1px solid #D0D7E2;border-radius:6px;padding:3px;}"
-            "QTabWidget::pane{border:1px solid #E5E7EB;background:#F9FAFB;border-radius:6px;}"
+            "background:#FFFFFF;color:#1F2937;border:1px solid #E5E7EB;border-radius:8px;padding:3px;}"
+            "QTabWidget::pane{border:1px solid #E5E7EB;background:#FFFFFF;border-radius:8px;}"
             "QTabBar::tab{background:#FFFFFF;color:#6B7280;border:1px solid #E5E7EB;"
             "border-bottom:none;border-top-left-radius:6px;border-top-right-radius:6px;padding:6px 12px;}"
             "QTabBar::tab:selected{color:#2563EB;background:#EFF4FF;}"
             "QPushButton{background:#FFFFFF;color:#1F2937;border:1px solid #E5E7EB;"
-            "border-radius:6px;padding:4px 12px;min-height:32px;}"
+            "border-radius:8px;padding:4px 12px;min-height:32px;}"
             "QPushButton:hover{background:#EFF4FF;border-color:#2563EB;color:#2563EB;}"
             "QPushButton#primary{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;}"
             "QPushButton#primary:hover{background:#1D4ED8;}"
@@ -255,7 +254,7 @@ class EliteScriptWindow(QMainWindow):
             "QPushButton#success:hover{background:#166534;}"
             "QLabel#muted{color:#6B7280;}"
             "QSplitter::handle{background:#E5E7EB;width:4px;}"
-            "QPlainTextEdit#log{background:#F9FAFB;}"
+            "QPlainTextEdit#log{background:#FFFFFF;border:1px solid #E5E7EB;}QScrollArea{border:none;background:transparent;}"
         )
         lay = QVBoxLayout(root)
         lay.setContentsMargins(12, 10, 12, 10)
@@ -433,56 +432,72 @@ class EliteScriptWindow(QMainWindow):
         ed_l.addWidget(self.txt, 1)
         splitter.addWidget(editor)
 
-        # 右：操作竖条 128～140，电源/运动/其它 + 急停
+        # 右：可滚操作区 + 急停钉底；组内≥6、组间≥10
         right = QFrame()
         right.setObjectName("zone")
         right.setMinimumWidth(128)
         right.setMaximumWidth(140)
-        right_l = QVBoxLayout(right)
-        right_l.setContentsMargins(8, 8, 8, 8)
-        right_l.setSpacing(10)
+        right_outer = QVBoxLayout(right)
+        right_outer.setContentsMargins(8, 8, 8, 8)
+        right_outer.setSpacing(8)
 
         def _sec_title(text):
             lab = QLabel(text)
             lab.setStyleSheet("color:#6B7280;font-size:12px;")
             return lab
 
+        self._right_btns = []
+
         def _add_btns(items):
             box = QVBoxLayout()
-            box.setSpacing(4)
+            box.setSpacing(6)
             box.setContentsMargins(0, 0, 0, 0)
             for text, slot in items:
                 btn = self._tool_btn(text, slot)
                 btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                btn.setMinimumHeight(32)
+                self._right_btns.append(btn)
                 box.addWidget(btn)
             return box
 
-        right_l.addWidget(_sec_title("电源"))
-        right_l.addLayout(_add_btns((
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll_body = QWidget()
+        scroll_l = QVBoxLayout(scroll_body)
+        scroll_l.setContentsMargins(0, 0, 0, 0)
+        scroll_l.setSpacing(10)
+        scroll_l.addWidget(_sec_title("电源"))
+        scroll_l.addLayout(_add_btns((
             ("上电", self._power_on),
             ("下电", self._power_off),
             ("松闸", self._brake),
         )))
-        right_l.addWidget(_sec_title("运动"))
-        right_l.addLayout(_add_btns((
+        scroll_l.addWidget(_sec_title("运动"))
+        scroll_l.addLayout(_add_btns((
             ("运行", self._play),
             ("停止", self._stop_task),
             ("查询", self._task),
         )))
-        # 清弹窗贴运动组下（无「其它」标题）；取消已删
-        right_l.addLayout(_add_btns((
+        scroll_l.addLayout(_add_btns((
             ("清弹窗", self._close_popup),
         )))
+        scroll_l.addStretch(1)
+        scroll.setWidget(scroll_body)
+        right_outer.addWidget(scroll, 1)
+
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
         sep.setFixedHeight(1)
         sep.setStyleSheet("background:#E5E7EB;border:none;max-height:1px;")
-        right_l.addWidget(sep)
+        right_outer.addWidget(sep)
         estop = self._tool_btn("急停", self._estop, danger=True)
         estop.setMinimumHeight(40)
         estop.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-        right_l.addWidget(estop)
-        right_l.addStretch(1)
+        self._right_estop = estop
+        self._right_btns.append(estop)
+        right_outer.addWidget(estop)
         splitter.addWidget(right)
 
         splitter.setStretchFactor(0, 0)
@@ -645,9 +660,13 @@ class EliteScriptWindow(QMainWindow):
         QTimer.singleShot(0, self._fill_splitter)
         QTimer.singleShot(50, self._fill_splitter)
 
+        self._fit_right_btns()
+
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._fill_splitter()
+
+        self._fit_right_btns()
 
     def _fill_splitter(self):
         sp = getattr(self, "splitter", None)
@@ -662,6 +681,25 @@ class EliteScriptWindow(QMainWindow):
         ed = getattr(self, "_editor_frame", None)
         if ed is not None:
             ed.setMinimumWidth(mid - 8)
+
+
+    def _fit_right_btns(self):
+        """小窗略缩右栏钮高，下限 32；正常约 42。"""
+        btns = getattr(self, "_right_btns", None) or []
+        if not btns:
+            return
+        h = max(320, int(self.height()))
+        if h >= 720:
+            bh = 42
+        elif h <= 480:
+            bh = 32
+        else:
+            bh = int(32 + (h - 480) * (10 / 240.0))
+        for b in btns:
+            if b is getattr(self, "_right_estop", None):
+                b.setFixedHeight(max(40, bh))
+            else:
+                b.setFixedHeight(bh)
 
     def closeEvent(self, event):
         self._save_timer.stop()
