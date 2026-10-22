@@ -88,15 +88,15 @@ class EliteScriptWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Elite 脚本下发测试")
-        self.setMinimumSize(720, 420)
+        self.setMinimumSize(720, 560)
         self.cfg = load_settings()
         geo = self.cfg.get("geometry") or "900x620"
         try:
             part = str(geo).split("+")[0]
             w, h = part.lower().split("x")
-            self.resize(max(720, int(w)), max(420, int(h)))
+            self.resize(max(720, int(w)), max(560, int(h)))
         except (TypeError, ValueError):
-            self.resize(900, 620)
+            self.resize(900, 640)
 
         self.script_dir = self._resolve_script_dir(self.cfg.get("script_dir"))
         self.busy = False
@@ -262,7 +262,7 @@ class EliteScriptWindow(QMainWindow):
         )
         lay = QVBoxLayout(root)
         lay.setContentsMargins(12, 10, 12, 10)
-        lay.setSpacing(10)
+        lay.setSpacing(6)
 
         # ----- 1 顶栏 -----
         bar = QHBoxLayout()
@@ -313,7 +313,7 @@ class EliteScriptWindow(QMainWindow):
         pose_box.setObjectName("zone")
         pose_outer = QHBoxLayout(pose_box)
         pose_outer.setContentsMargins(10, 8, 10, 8)
-        pose_outer.setSpacing(10)
+        pose_outer.setSpacing(6)
 
         pose_left = QVBoxLayout()
         pose_left.setSpacing(4)
@@ -444,18 +444,18 @@ class EliteScriptWindow(QMainWindow):
         right.setMaximumWidth(140)
         right_l = QVBoxLayout(right)
         right_l.setContentsMargins(0, 0, 0, 0)
-        right_l.setSpacing(10)
+        right_l.setSpacing(4)
 
         def _sec_title(text):
             lab = QLabel(text)
-            lab.setStyleSheet("color:#6B7280;font-size:12px;")
+            lab.setStyleSheet("color:#6B7280;font-size:11px;padding:0;margin:0;")
             return lab
 
         self._right_btns = []
 
         def _add_btns(items):
             box = QVBoxLayout()
-            box.setSpacing(6)
+            box.setSpacing(3)
             box.setContentsMargins(0, 0, 0, 0)
             for text, slot in items:
                 btn = self._tool_btn(text, slot)
