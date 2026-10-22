@@ -74,7 +74,7 @@ save_settings = _legacy.save_settings
 _read_file = _legacy._read_file
 run_cli = _legacy.run_cli
 
-BTN_MIN_H = 28
+BTN_MIN_H = 29
 NUM_FONT = QFont("Consolas", 10)
 UI_FONT = QFont("Microsoft YaHei", 9)
 
@@ -253,7 +253,7 @@ class EliteScriptWindow(QMainWindow):
             "QPushButton#success{background:#15803D;color:#FFFFFF;border:1px solid #15803D;}"
             "QPushButton#success:hover{background:#166534;}"
             "QLabel#muted{color:#6B7280;}"
-            "QSplitter::handle{background:#F5F7FA;width:2px;}"
+            "QSplitter::handle{background:#E5E7EB;width:1px;}"
             "QPlainTextEdit#log{background:#FFFFFF;border:1px solid #E5E7EB;}"
             "QScrollBar:horizontal{height:6px;background:transparent;margin:0;}"
             "QScrollBar:horizontal:handle{background:#D1D5DB;border-radius:3px;min-width:24px;}"
@@ -367,11 +367,11 @@ class EliteScriptWindow(QMainWindow):
         pose_right.setSpacing(6)
         pose_right.setContentsMargins(0, 0, 0, 0)
         self.btn_listen = self._tool_btn("监听", self._toggle_listen, success=True, min_w=88)
-        self.btn_listen.setFixedHeight(30)
+        self.btn_listen.setFixedHeight(29)
         self.btn_listen.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         pose_right.addWidget(self.btn_listen)
         self.btn_record = self._tool_btn("记录", self._toggle_record, primary=True, min_w=88)
-        self.btn_record.setFixedHeight(30)
+        self.btn_record.setFixedHeight(29)
         self.btn_record.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         pose_right.addWidget(self.btn_record)
         pose_right.addStretch(1)
@@ -382,7 +382,7 @@ class EliteScriptWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Horizontal)
         splitter = self.splitter
         splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(2)
+        splitter.setHandleWidth(1)
 
         # 左：脚本列表 200～220
         left = QFrame()
@@ -417,7 +417,7 @@ class EliteScriptWindow(QMainWindow):
         editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         editor.setMinimumWidth(240)
         ed_l = QVBoxLayout(editor)
-        ed_l.setContentsMargins(6, 6, 6, 6)
+        ed_l.setContentsMargins(6, 6, 4, 6)
         ed_l.setSpacing(4)
         # 顶栏：文件名左 · 下发脚本（主蓝）→ 另存为（次）右对齐；无底栏组合钮
         ed_top = QHBoxLayout()
@@ -445,7 +445,7 @@ class EliteScriptWindow(QMainWindow):
         right.setMinimumWidth(128)
         right.setMaximumWidth(140)
         right_l = QVBoxLayout(right)
-        right_l.setContentsMargins(8, 8, 8, 8)
+        right_l.setContentsMargins(4, 8, 8, 8)
         right_l.setSpacing(10)
 
         def _sec_title(text):
@@ -489,7 +489,7 @@ class EliteScriptWindow(QMainWindow):
         sep.setStyleSheet("background:#E5E7EB;border:none;max-height:1px;")
         right_l.addWidget(sep)
         estop = self._tool_btn("急停", self._estop, danger=True)
-        estop.setMinimumHeight(34)
+        estop.setMinimumHeight(35)
         estop.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._right_estop = estop
         self._right_btns.append(estop)
@@ -678,21 +678,22 @@ class EliteScriptWindow(QMainWindow):
 
 
     def _fit_right_btns(self):
-        """主钮常态 28～30；小窗 ≥26；急停 34～36。"""
+        """主钮常态 29；小窗 ≥26；急停固定 35。"""
         btns = getattr(self, "_right_btns", None) or []
         if not btns:
             return
         h = max(320, int(self.height()))
-        if h >= 720:
-            bh = 30
-        elif h <= 520:
-            bh = 26 if h <= 480 else int(26 + (h - 480) * (2 / 40.0))
+        if h >= 620:
+            bh = 29
+        elif h <= 480:
+            bh = 26
         else:
-            bh = int(28 + (h - 520) * (2 / 200.0))
-            bh = min(30, max(28, bh))
+            # 480→620: 26→29
+            bh = int(26 + (h - 480) * (3 / 140.0))
+            bh = min(29, max(26, bh))
         for b in btns:
             if b is getattr(self, "_right_estop", None):
-                b.setFixedHeight(max(34, min(36, bh + 6)))
+                b.setFixedHeight(35)
             else:
                 b.setFixedHeight(bh)
 
