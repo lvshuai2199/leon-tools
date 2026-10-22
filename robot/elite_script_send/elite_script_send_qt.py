@@ -63,17 +63,52 @@ from sender import (
 from state_listener import RobotStateStream, format_pose
 from trajectory import pose_sample, write_csv, write_html
 
-# CLI helpers live in Tk module; import without launching GUI
-import elite_script_send as _legacy
-
+# Settings / sample helpers inlined — avoid importing Tk legacy (elite_script_send)
+# which pulls tkinter into the onefile and slows cold extract.
 SETTINGS_PATH = app_dir() / "last_settings.json"
 HOST_HISTORY_MAX = 20
-SAMPLE = _legacy.SAMPLE
-TITLE_CMDS = _legacy.TITLE_CMDS
-load_settings = _legacy.load_settings
-save_settings = _legacy.save_settings
-_read_file = _legacy._read_file
-run_cli = _legacy.run_cli
+SAMPLE = """def elite_script_send_probe():
+    popup(s="elite_script_send ok", blocking=False)
+end
+elite_script_send_probe()
+"""
+TITLE_CMDS = {
+    "上电": "robotControl -on",
+    "下电": "robotControl -off",
+    "松闸": "brakeRelease",
+    "运行": "play",
+    "停止工程": "stop",
+    "查询任务": "task -r",
+    "清除弹窗": "popup -c",
+    "测试连接": "echo",
+}
+
+
+def load_settings():
+    try:
+        data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+        if isinstance(data, dict):
+            return data
+    except (OSError, ValueError):
+        pass
+    return {}
+
+
+def save_settings(data):
+    try:
+        SETTINGS_PATH.write_text(
+            json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        )
+    except OSError:
+        pass
+
+
+def _read_file(path):
+    p = Path(path)
+    try:
+        return p.read_text(encoding="utf-8")
+    except OSError:
+        return SAMPLE
 
 BTN_MIN_H = 29
 NUM_FONT = QFont("Consolas", 10)
@@ -1333,7 +1368,8 @@ def main(argv=None):
         or args.task
         or args.boot_send
     ):
-        return run_cli(args)
+        import elite_script_send as _legacy
+        return _legacy.run_cli(args)
 
     # High-DPI: Qt6 handles by default; ensure AA attributes for older bindings
     QApplication.setHighDpiScaleFactorRoundingPolicy(
