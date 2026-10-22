@@ -253,8 +253,12 @@ class EliteScriptWindow(QMainWindow):
             "QPushButton#success{background:#15803D;color:#FFFFFF;border:1px solid #15803D;}"
             "QPushButton#success:hover{background:#166534;}"
             "QLabel#muted{color:#6B7280;}"
-            "QSplitter::handle{background:#E5E7EB;width:4px;}"
-            "QPlainTextEdit#log{background:#FFFFFF;border:1px solid #E5E7EB;}QScrollArea{border:none;background:transparent;}"
+            "QSplitter::handle{background:#F5F7FA;width:2px;}"
+            "QPlainTextEdit#log{background:#FFFFFF;border:1px solid #E5E7EB;}"
+            "QScrollBar:horizontal{height:6px;background:transparent;margin:0;}"
+            "QScrollBar:horizontal:handle{background:#D1D5DB;border-radius:3px;min-width:24px;}"
+            "QScrollBar:vertical{width:6px;background:transparent;margin:0;}"
+            "QScrollBar:vertical:handle{background:#D1D5DB;border-radius:3px;min-height:24px;}"
         )
         lay = QVBoxLayout(root)
         lay.setContentsMargins(12, 10, 12, 10)
@@ -378,7 +382,7 @@ class EliteScriptWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Horizontal)
         splitter = self.splitter
         splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(4)
+        splitter.setHandleWidth(2)
 
         # 左：脚本列表 200～220
         left = QFrame()
@@ -399,9 +403,10 @@ class EliteScriptWindow(QMainWindow):
         left_l.addWidget(self.lbl_dir)
         self.lst = QListWidget()
         self.lst.setFont(QFont("Consolas", 8))
+        self.lst.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.lst.currentRowChanged.connect(self._on_select)
         left_l.addWidget(self.lst, 1)
-        left.setMinimumWidth(200)
+        left.setMinimumWidth(160)
         left.setMaximumWidth(220)
         splitter.addWidget(left)
 
@@ -410,7 +415,7 @@ class EliteScriptWindow(QMainWindow):
         self._editor_frame = editor
         editor.setObjectName("zone")
         editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        editor.setMinimumWidth(400)
+        editor.setMinimumWidth(240)
         ed_l = QVBoxLayout(editor)
         ed_l.setContentsMargins(6, 6, 6, 6)
         ed_l.setSpacing(4)
@@ -425,8 +430,10 @@ class EliteScriptWindow(QMainWindow):
         self.txt = QPlainTextEdit()
         self.txt.setFont(QFont("Consolas", 9))
         self.txt.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
-        self.txt.setMinimumWidth(300)
+        self.txt.setMinimumWidth(160)
         self.txt.setLineWrapMode(QPlainTextEdit.NoWrap)
+        self.txt.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        self.txt.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
         self.txt.setPlainText(self.cfg.get("script_text") or SAMPLE)
         self.txt.textChanged.connect(self._schedule_save)
         ed_l.addWidget(self.txt, 1)
@@ -658,18 +665,16 @@ class EliteScriptWindow(QMainWindow):
         self._fit_right_btns()
 
     def _fill_splitter(self):
+        """按窗宽分配三栏；不抬编辑区 minWidth，避免小窗右栏盖住编辑。"""
         sp = getattr(self, "splitter", None)
         if sp is None:
             return
         total = max(sp.width(), 1)
-        left_w = 210
         right_w = 134
         handles = sp.handleWidth() * 2
-        mid = max(total - left_w - right_w - handles, 400)
+        left_w = 210 if total >= 900 else (180 if total >= 720 else 160)
+        mid = max(total - left_w - right_w - handles, 120)
         sp.setSizes([left_w, mid, right_w])
-        ed = getattr(self, "_editor_frame", None)
-        if ed is not None:
-            ed.setMinimumWidth(mid - 8)
 
 
     def _fit_right_btns(self):
