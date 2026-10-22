@@ -442,30 +442,51 @@ class EliteScriptWindow(QMainWindow):
         ed_l.addLayout(sendbar)
         splitter.addWidget(editor)
 
-        # 右：操作竖条 128～140
+        # 右：操作竖条 128～140，电源/运动/其它 + 急停
         right = QFrame()
         right.setObjectName("zone")
         right.setMinimumWidth(128)
         right.setMaximumWidth(140)
         right_l = QVBoxLayout(right)
         right_l.setContentsMargins(8, 8, 8, 8)
-        right_l.setSpacing(6)
-        for text, slot in (
+        right_l.setSpacing(10)
+
+        def _sec_title(text):
+            lab = QLabel(text)
+            lab.setStyleSheet("color:#6B7280;font-size:12px;")
+            return lab
+
+        def _add_btns(items):
+            box = QVBoxLayout()
+            box.setSpacing(4)
+            box.setContentsMargins(0, 0, 0, 0)
+            for text, slot in items:
+                btn = self._tool_btn(text, slot)
+                btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
+                box.addWidget(btn)
+            return box
+
+        right_l.addWidget(_sec_title("电源"))
+        right_l.addLayout(_add_btns((
             ("上电", self._power_on),
             ("下电", self._power_off),
             ("松闸", self._brake),
+        )))
+        right_l.addWidget(_sec_title("运动"))
+        right_l.addLayout(_add_btns((
             ("运行", self._play),
             ("停止", self._stop_task),
             ("查询", self._task),
+        )))
+        right_l.addWidget(_sec_title("其它"))
+        right_l.addLayout(_add_btns((
             ("清弹窗", self._close_popup),
             ("取消", self._cancel_wait),
-        ):
-            btn = self._tool_btn(text, slot)
-            btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-            right_l.addWidget(btn)
+        )))
         sep = QFrame()
         sep.setFrameShape(QFrame.HLine)
-        sep.setStyleSheet("color:#E5E7EB;background:#E5E7EB;max-height:1px;")
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background:#E5E7EB;border:none;max-height:1px;")
         right_l.addWidget(sep)
         estop = self._tool_btn("急停", self._estop, danger=True)
         estop.setMinimumHeight(40)
