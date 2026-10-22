@@ -35,25 +35,35 @@ class SendError(Exception):
 
 
 def list_script_files(directory=None):
+    """列出目录及子目录下 .script/.lua/.py/.txt（大小写不敏感），按相对路径排序。"""
     d = Path(directory) if directory else DEFAULT_SCRIPT_DIR
     if not d.exists():
         return []
     if not d.is_dir():
         raise OSError("not a directory: %s" % d)
+    d = d.resolve()
+    files = []
     try:
-        entries = list(d.iterdir())
+        for p in d.rglob("*"):
+            try:
+                if p.is_file() and p.suffix.lower() in SCRIPT_SUFFIXES:
+                    files.append(p)
+            except OSError:
+                continue
     except PermissionError:
         raise
     except OSError:
         raise
-    files = []
-    for p in entries:
+
+    def _key(p):
         try:
-            if p.is_file() and p.suffix.lower() in SCRIPT_SUFFIXES:
-                files.append(p)
-        except OSError:
-            continue
-    return sorted(files, key=lambda x: x.name.lower())
+            return p.relative_to(d).as_posix().lower()
+        except ValueError:
+            return p.name.lower()
+
+    files.sort(key=_key)
+    return files
+
 
 
 def send_text(script_text, host=None, port=None, timeout=None, read_reply=False):

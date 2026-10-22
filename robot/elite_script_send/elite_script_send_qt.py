@@ -931,12 +931,19 @@ class EliteScriptWindow(QMainWindow):
                 self._append("目录 %s  无脚本（支持 .script/.lua/.py/.txt）" % path)
             return
 
+        root = Path(path).resolve()
         for p in files:
             try:
                 size = p.stat().st_size
             except OSError:
                 size = 0
-            self.lst.addItem("%s  (%d B)" % (p.name, size))
+            try:
+                rel = p.resolve().relative_to(root).as_posix()
+            except ValueError:
+                rel = p.name
+            item = QListWidgetItem("%s  (%d B)" % (rel, size))
+            item.setData(Qt.UserRole, str(p.resolve()))
+            self.lst.addItem(item)
         if log:
             self._append("目录 %s  共 %d 个脚本" % (path, len(files)))
 
@@ -955,11 +962,13 @@ class EliteScriptWindow(QMainWindow):
         if item is None:
             return
         text = item.text()
-        if text.startswith("（"):
+        if text.startswith("（") or text.startswith("("):
             return
+        stored = item.data(Qt.UserRole)
         name = text.split("  (")[0]
+        path = Path(stored) if stored else (Path(self.script_dir) / name)
         try:
-            content = _read_file(self.script_dir / name)
+            content = _read_file(path)
         except OSError as exc:
             QMessageBox.critical(self, "读取失败", str(exc))
             return
