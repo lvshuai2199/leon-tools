@@ -287,29 +287,14 @@ class EliteScriptWindow(QMainWindow):
         self.ed_timeout.setFixedWidth(48)
         self.ed_timeout.textChanged.connect(lambda *_: self._schedule_save())
         bar.addWidget(self.ed_timeout)
-        self.chk_reply = QCheckBox("回执")
-        self.chk_reply.setChecked(bool(self.cfg.get("read_reply", False)))
-        self.chk_reply.toggled.connect(lambda *_: self._schedule_save())
-        bar.addWidget(self.chk_reply)
+        # 回执/Dashboard 已去；测连保留（帅吕：测连不需要去掉）
         bar.addWidget(self._tool_btn("测连", self._ping, primary=True, min_w=52))
-        # Dashboard 钮已去；历史 Tab 仍留 29999 输入框发指令
         self.chk_open_html = QCheckBox("打开HTML")
         self.chk_open_html.setChecked(bool(self.cfg.get("open_html", False)))
         self.chk_open_html.toggled.connect(lambda *_: self._schedule_save())
         bar.addWidget(self.chk_open_html)
-        self.lbl_listen = QLabel("未监听")
-        self.lbl_listen.setStyleSheet("color:#6B7280;")
-        bar.addWidget(self.lbl_listen)
+        # 顶栏只留 IP/PORT/超时/打开HTML；状态字/说明/回执/测连全去
         bar.addStretch(1)
-        self.lbl_tip = QLabel("")
-        self.lbl_tip.setObjectName("muted")
-        self.lbl_tip.setStyleSheet("color:#6B7280;")
-        self.lbl_tip.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        bar.addWidget(self.lbl_tip)
-        self.lbl_status = QLabel("未连接")
-        self.lbl_status.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-        self.lbl_status.setMinimumWidth(72)
-        bar.addWidget(self.lbl_status)
         top_wrap = QFrame()
         top_wrap.setObjectName("zone")
         top_l = QVBoxLayout(top_wrap)
@@ -539,13 +524,15 @@ class EliteScriptWindow(QMainWindow):
         self._sync_pose_buttons()
 
     def _set_tip(self, text):
-        if hasattr(self, "lbl_tip"):
-            self.lbl_tip.setText(text or "")
+        # 顶栏说明已去，仅保留日志侧提示
+        return
 
     def _set_status(self, text, kind="info"):
         colors = {"ok": "#15803D", "err": "#DC2626", "info": "#6B7280", "busy": "#2563EB"}
-        self.lbl_status.setText(text)
-        self.lbl_status.setStyleSheet("color:%s;" % colors.get(kind, "#6B7280"))
+        if hasattr(self, "lbl_status"):
+            self.lbl_status.setText(text)
+        if hasattr(self, "lbl_status"):
+            self.lbl_status.setStyleSheet("color:%s;" % colors.get(kind, "#6B7280"))
 
     def _history_item(self):
         row = self.hist_list.currentRow()
@@ -632,7 +619,7 @@ class EliteScriptWindow(QMainWindow):
             "host_history": list(self.host_history),
             "port": port,
             "timeout": timeout,
-            "read_reply": bool(self.chk_reply.isChecked()),
+            "read_reply": False,
             "script_dir": str(self.script_dir),
             "last_file": last_file,
             "script_text": self.txt.toPlainText().rstrip("\n"),
@@ -722,8 +709,10 @@ class EliteScriptWindow(QMainWindow):
         self._listen_stop.set()
         self._listen_stop = threading.Event()
         self._listening = True
-        self.lbl_listen.setText("正在连接…")
-        self.lbl_listen.setStyleSheet("color:#2563EB;")
+        if hasattr(self, "lbl_listen"):
+            self.lbl_listen.setText("正在连接…")
+        if hasattr(self, "lbl_listen"):
+            self.lbl_listen.setStyleSheet("color:#2563EB;")
         self._sync_pose_buttons()
         self._listen_thread = threading.Thread(target=self._listen_worker, daemon=True)
         self._listen_thread.start()
@@ -731,14 +720,18 @@ class EliteScriptWindow(QMainWindow):
     def _stop_listen(self):
         self._listen_stop.set()
         self._listening = False
-        self.lbl_listen.setText("已停止")
-        self.lbl_listen.setStyleSheet("color:#6B7280;")
+        if hasattr(self, "lbl_listen"):
+            self.lbl_listen.setText("已停止")
+        if hasattr(self, "lbl_listen"):
+            self.lbl_listen.setStyleSheet("color:#6B7280;")
         self._sync_pose_buttons()
 
     def _on_listen_status(self, text, kind):
-        self.lbl_listen.setText(text[:72])
+        if hasattr(self, "lbl_listen"):
+            self.lbl_listen.setText(text[:72])
         colors = {"ok": "#15803D", "err": "#DC2626", "info": "#6B7280", "busy": "#B45309"}
-        self.lbl_listen.setStyleSheet("color:%s;" % colors.get(kind, "#6B7280"))
+        if hasattr(self, "lbl_listen"):
+            self.lbl_listen.setStyleSheet("color:%s;" % colors.get(kind, "#6B7280"))
 
     def _listen_worker(self):
         stop = self._listen_stop
@@ -1083,7 +1076,7 @@ class EliteScriptWindow(QMainWindow):
         def fn():
             host, port, timeout = self._params()
             return send_text(
-                text, host=host, port=port, timeout=timeout, read_reply=self.chk_reply.isChecked()
+                text, host=host, port=port, timeout=timeout, read_reply=False
             )
 
         self._run_bg("下发", fn)
@@ -1156,7 +1149,7 @@ class EliteScriptWindow(QMainWindow):
                 host=host,
                 timeout=timeout,
                 stop_event=self.stop_event,
-                read_reply=self.chk_reply.isChecked(),
+                read_reply=False,
             )
 
         self._run_bg("上电+松闸+下发", fn)
