@@ -411,13 +411,12 @@ class EliteScriptWindow(QMainWindow):
         splitter.addWidget(left)
 
         # 中：编辑器
-        editor = QFrame()
+        editor = QWidget()
         self._editor_frame = editor
-        editor.setObjectName("zone")
         editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         editor.setMinimumWidth(240)
         ed_l = QVBoxLayout(editor)
-        ed_l.setContentsMargins(6, 6, 2, 6)
+        ed_l.setContentsMargins(0, 0, 0, 0)
         ed_l.setSpacing(4)
         # 顶栏：文件名左 · 下发脚本（主蓝）→ 另存为（次）右对齐；无底栏组合钮
         ed_top = QHBoxLayout()
@@ -437,16 +436,14 @@ class EliteScriptWindow(QMainWindow):
         self.txt.setPlainText(self.cfg.get("script_text") or SAMPLE)
         self.txt.textChanged.connect(self._schedule_save)
         ed_l.addWidget(self.txt, 1)
-        splitter.addWidget(editor)
+        self._editor_zone = editor  # pack with right below
 
         # 右：无滚动条；组内≥6、组间≥10；急停钉底；小窗靠缩钮高
-        right = QFrame()
-        right.setObjectName("zone")
+        right = QWidget()
         right.setMinimumWidth(128)
-        right.setMaximumWidth(160)
         right.setMaximumWidth(140)
         right_l = QVBoxLayout(right)
-        right_l.setContentsMargins(2, 8, 8, 8)
+        right_l.setContentsMargins(0, 0, 0, 0)
         right_l.setSpacing(10)
 
         def _sec_title(text):
@@ -495,11 +492,18 @@ class EliteScriptWindow(QMainWindow):
         self._right_estop = estop
         self._right_btns.append(estop)
         right_l.addWidget(estop)
-        splitter.addWidget(right)
+        mid_wrap = QFrame()
+        mid_wrap.setObjectName("zone")
+        mid_l = QHBoxLayout(mid_wrap)
+        mid_l.setContentsMargins(6, 6, 6, 6)
+        mid_l.setSpacing(0)
+        mid_l.addWidget(self._editor_zone, 1)
+        mid_l.addWidget(right, 0)
+        right.setFixedWidth(128)
+        splitter.addWidget(mid_wrap)
 
         splitter.setStretchFactor(0, 0)
         splitter.setStretchFactor(1, 1)
-        splitter.setStretchFactor(2, 0)
         splitter.setSizes([210, 900, 134])
         lay.addWidget(splitter, 1)
 
@@ -666,20 +670,18 @@ class EliteScriptWindow(QMainWindow):
         self._fit_right_btns()
 
     def _fill_splitter(self):
-        """铺满 splitter；右栏定宽，剩余给编辑，避免编辑↔右栏白缝。"""
+        """两栏：左列表 |（编辑+右栏零间距）。"""
         sp = getattr(self, "splitter", None)
         if sp is None:
             return
         total = max(sp.width(), 1)
-        right_w = 132
-        handles = max(sp.handleWidth(), 0) * 2
+        handles = max(sp.handleWidth(), 0)
         left_w = 210 if total >= 900 else (180 if total >= 720 else 160)
-        mid = max(total - left_w - right_w - handles, 120)
-        # 把舍入余量塞进 mid，杜绝缝
-        used = left_w + mid + right_w + handles
+        mid = max(total - left_w - handles, 260)
+        used = left_w + mid + handles
         if used < total:
             mid += total - used
-        sp.setSizes([left_w, mid, right_w])
+        sp.setSizes([left_w, mid])
 
 
     def _fit_right_btns(self):
