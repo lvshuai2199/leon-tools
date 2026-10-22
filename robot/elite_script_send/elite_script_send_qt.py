@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import json
 import socket
 import sys
@@ -132,6 +133,8 @@ class EliteScriptWindow(QMainWindow):
         self._restore_last_file()
         self._refresh_history_list()
         self._loading = False
+        # 启动仅自动监听；禁止自动记录（须用户点「记录」才写 traces）
+        assert self._recording is False
         self._start_listen()
         self._pose_timer.start(100)
 
@@ -305,6 +308,17 @@ class EliteScriptWindow(QMainWindow):
         self.chk_open_html.setChecked(bool(self.cfg.get("open_html", False)))
         self.chk_open_html.toggled.connect(lambda *_: self._schedule_save())
         bar.addWidget(self.chk_open_html)
+
+        self.btn_open_traces = self._tool_btn("打开文件夹", self._open_traces_folder, min_w=88)
+        self.btn_open_traces.setFixedHeight(29)
+        self.btn_open_traces.setMinimumHeight(29)
+        self.btn_open_traces.setMaximumHeight(29)
+        self.btn_open_traces.setStyleSheet(
+            "QPushButton{background:#FFFFFF;color:#1F2937;border:1px solid #E5E7EB;"
+            "border-radius:6px;padding:0px 10px;min-height:29px;max-height:29px;}"
+            "QPushButton:hover{background:#EFF4FF;border-color:#2563EB;color:#2563EB;}"
+        )
+        bar.addWidget(self.btn_open_traces)
         # 顶栏只留 IP/PORT/超时/打开HTML；状态字/说明/回执/测连全去
         bar.addStretch(1)
         estop_top = self._tool_btn("急停", self._estop, danger=True, min_w=96)
@@ -862,6 +876,9 @@ class EliteScriptWindow(QMainWindow):
     def _start_record(self):
         if self._recording:
             return
+        # 启动/加载阶段禁止自动进入记录
+        if getattr(self, "_loading", False):
+            return
         if self._listen_stop.is_set():
             self._start_listen()
         with self._rec_lock:
@@ -904,6 +921,17 @@ class EliteScriptWindow(QMainWindow):
                 webbrowser.open(html_path.resolve().as_uri())
             except Exception:
                 pass
+
+
+    def _open_traces_folder(self):
+        """打开轨迹 traces 目录（与写 CSV/HTML 同路径）；缺则创建。"""
+        folder = app_dir() / "traces"
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+            os.startfile(str(folder.resolve()))
+            self._append("已打开轨迹目录  %s" % folder, "ok")
+        except OSError as exc:
+            self._append("打开轨迹目录失败: %s" % exc, "err")
 
     # ----- files / editor -----
     def _append(self, line, kind="info"):
