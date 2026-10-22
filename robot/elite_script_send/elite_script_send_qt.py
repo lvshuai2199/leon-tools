@@ -444,7 +444,7 @@ class EliteScriptWindow(QMainWindow):
         right.setMaximumWidth(140)
         right_l = QVBoxLayout(right)
         right_l.setContentsMargins(0, 0, 0, 0)
-        right_l.setSpacing(4)
+        right_l.setSpacing(6)
 
         def _sec_title(text):
             lab = QLabel(text)
@@ -455,7 +455,7 @@ class EliteScriptWindow(QMainWindow):
 
         def _add_btns(items):
             box = QVBoxLayout()
-            box.setSpacing(3)
+            box.setSpacing(4)
             box.setContentsMargins(0, 0, 0, 0)
             for text, slot in items:
                 btn = self._tool_btn(text, slot)
