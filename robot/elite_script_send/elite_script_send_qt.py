@@ -244,16 +244,23 @@ class EliteScriptWindow(QMainWindow):
             "border-bottom:none;border-top-left-radius:6px;border-top-right-radius:6px;padding:6px 12px;}"
             "QTabBar::tab:selected{color:#2563EB;background:#EFF4FF;}"
             "QPushButton{background:#FFFFFF;color:#1F2937;border:1px solid #E5E7EB;"
-            "border-radius:6px;padding:0px 10px;min-height:0px;}"
+            "border-radius:6px;padding:0px 10px;}"
             "QPushButton:hover{background:#EFF4FF;border-color:#2563EB;color:#2563EB;}"
-            "QPushButton#primary{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;}"
+            "QPushButton#primary{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;"
+            "min-height:29px;max-height:29px;}"
             "QPushButton#primary:hover{background:#1D4ED8;}"
-            "QPushButton#danger{background:#DC2626;color:#FFFFFF;border:1px solid #DC2626;font-weight:bold;}"
+            "QPushButton#danger{background:#DC2626;color:#FFFFFF;border:1px solid #DC2626;font-weight:bold;"
+            "min-height:35px;max-height:35px;}"
             "QPushButton#danger:hover{background:#B91C1C;}"
-            "QPushButton#warn{background:#F59E0B;color:#FFFFFF;border:1px solid #F59E0B;}"
+            "QPushButton#dangerOutline{background:#FFFFFF;color:#DC2626;border:1px solid #DC2626;"
+            "min-height:29px;max-height:29px;}"
+            "QPushButton#dangerOutline:hover{background:#FEF2F2;color:#B91C1C;border-color:#B91C1C;}"
+            "QPushButton#warn{background:#F59E0B;color:#FFFFFF;border:1px solid #D97706;"
+            "min-height:29px;max-height:29px;}"
             "QPushButton#warn:hover{background:#D97706;}"
-            "QPushButton#success{background:#15803D;color:#FFFFFF;border:1px solid #15803D;}"
-            "QPushButton#success:hover{background:#166534;}"
+            "QPushButton#success{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;"
+            "min-height:29px;max-height:29px;}"
+            "QPushButton#success:hover{background:#1D4ED8;}"
             "QLabel#muted{color:#6B7280;}"
             "QSplitter::handle{background:#E5E7EB;width:0px;}"
             "QPlainTextEdit#log{background:#FFFFFF;border:1px solid #E5E7EB;}"
@@ -318,6 +325,7 @@ class EliteScriptWindow(QMainWindow):
         # ----- 2 位姿白卡：左坐标 · 右竖排停止监听/记录 -----
         pose_box = QFrame()
         pose_box.setObjectName("zone")
+        pose_box.setMinimumHeight(72)
         pose_outer = QHBoxLayout(pose_box)
         pose_outer.setContentsMargins(10, 8, 10, 8)
         pose_outer.setSpacing(6)
@@ -373,12 +381,16 @@ class EliteScriptWindow(QMainWindow):
         pose_right = QVBoxLayout()
         pose_right.setSpacing(6)
         pose_right.setContentsMargins(0, 0, 0, 0)
-        self.btn_listen = self._tool_btn("监听", self._toggle_listen, success=True, min_w=88)
+        self.btn_listen = self._tool_btn("监听", self._toggle_listen, primary=True, min_w=88)
         self.btn_listen.setFixedHeight(29)
+        self.btn_listen.setMinimumHeight(29)
+        self.btn_listen.setMaximumHeight(29)
         self.btn_listen.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         pose_right.addWidget(self.btn_listen)
         self.btn_record = self._tool_btn("记录", self._toggle_record, primary=True, min_w=88)
         self.btn_record.setFixedHeight(29)
+        self.btn_record.setMinimumHeight(29)
+        self.btn_record.setMaximumHeight(29)
         self.btn_record.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         pose_right.addWidget(self.btn_record)
         pose_right.addStretch(1)
@@ -430,8 +442,21 @@ class EliteScriptWindow(QMainWindow):
         ed_top.setSpacing(8)
         self.lbl_filename = QLabel("未命名")
         ed_top.addWidget(self.lbl_filename, 1)
-        ed_top.addWidget(self._tool_btn("下发脚本", self._send, primary=True, min_w=80))
-        ed_top.addWidget(self._tool_btn("另存为", self._save_as, min_w=72))
+        self.btn_send = self._tool_btn("下发脚本", self._send, primary=True, min_w=80)
+        self.btn_send.setFixedHeight(29)
+        self.btn_send.setMinimumHeight(29)
+        self.btn_send.setMaximumHeight(29)
+        ed_top.addWidget(self.btn_send)
+        self.btn_save_as = self._tool_btn("另存为", self._save_as, min_w=72)
+        self.btn_save_as.setFixedHeight(29)
+        self.btn_save_as.setMinimumHeight(29)
+        self.btn_save_as.setMaximumHeight(29)
+        self.btn_save_as.setStyleSheet(
+            "QPushButton{background:#FFFFFF;color:#1F2937;border:1px solid #E5E7EB;"
+            "border-radius:6px;padding:0px 10px;min-height:29px;max-height:29px;}"
+            "QPushButton:hover{background:#EFF4FF;border-color:#2563EB;color:#2563EB;}"
+        )
+        ed_top.addWidget(self.btn_save_as)
         ed_l.addLayout(ed_top)
         self.txt = QPlainTextEdit()
         self.txt.setFont(QFont("Consolas", 9))
@@ -712,10 +737,10 @@ class EliteScriptWindow(QMainWindow):
     def _sync_pose_buttons(self):
         if self._listening:
             self.btn_listen.setText("停止监听")
-            self.btn_listen.setObjectName("danger")
+            self.btn_listen.setObjectName("dangerOutline")
         else:
             self.btn_listen.setText("监听")
-            self.btn_listen.setObjectName("success")
+            self.btn_listen.setObjectName("primary")
         if self._recording:
             self.btn_record.setText("停止记录")
             self.btn_record.setObjectName("warn")
@@ -727,8 +752,10 @@ class EliteScriptWindow(QMainWindow):
         self.btn_listen.style().polish(self.btn_listen)
         self.btn_record.style().unpolish(self.btn_record)
         self.btn_record.style().polish(self.btn_record)
-        self.btn_listen.setFixedHeight(BTN_MIN_H)
-        self.btn_record.setFixedHeight(BTN_MIN_H)
+        for b in (self.btn_listen, self.btn_record):
+            b.setFixedHeight(BTN_MIN_H)
+            b.setMinimumHeight(BTN_MIN_H)
+            b.setMaximumHeight(BTN_MIN_H)
 
     def _toggle_listen(self):
         if self._listening:
