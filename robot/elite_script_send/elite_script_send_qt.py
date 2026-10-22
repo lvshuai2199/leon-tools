@@ -82,6 +82,7 @@ UI_FONT = QFont("Microsoft YaHei", 9)
 
 class _Bridge(QObject):
     listen_status = Signal(str, str)
+    listen_connected = Signal(bool)  # True=socket ok; False=retrying/disconnected
     work_done = Signal(str, object, object, bool)  # title, result, err, force
 
 
@@ -112,6 +113,8 @@ class EliteScriptWindow(QMainWindow):
         self._listen_thread = None
         self._latest_pose = None
         self._listening = False
+        self._listen_connected = False
+        self._boot_after_show_done = False
         self._recording = False
         self._rec_lock = threading.Lock()
         self._rec_samples = []
@@ -119,6 +122,7 @@ class EliteScriptWindow(QMainWindow):
 
         self._bridge = _Bridge()
         self._bridge.listen_status.connect(self._on_listen_status)
+        self._bridge.listen_connected.connect(self._on_listen_connected)
         self._bridge.work_done.connect(self._done)
 
         self._save_timer = QTimer(self)
@@ -133,10 +137,9 @@ class EliteScriptWindow(QMainWindow):
         self._restore_last_file()
         self._refresh_history_list()
         self._loading = False
-        # 启动仅自动监听；禁止自动记录（须用户点「记录」才写 traces）
+        # 启动仅自动监听（show 后异步）；禁止自动记录
         assert self._recording is False
-        self._start_listen()
-        self._pose_timer.start(100)
+        # listen / pose_timer 延后到 showEvent，先让顶栏可点
 
     # ----- settings helpers -----
     def _resolve_script_dir(self, saved_dir):
@@ -249,6 +252,7 @@ class EliteScriptWindow(QMainWindow):
             "QPushButton{background:#FFFFFF;color:#1F2937;border:1px solid #E5E7EB;"
             "border-radius:6px;padding:0px 10px;}"
             "QPushButton:hover{background:#EFF4FF;border-color:#2563EB;color:#2563EB;}"
+            "QPushButton:disabled{background:#F3F4F6;color:#9CA3AF;border:1px solid #D1D5DB;}"
             "QPushButton#primary{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;"
             "min-height:29px;max-height:29px;}"
             "QPushButton#primary:hover{background:#1D4ED8;}"
@@ -697,12 +701,23 @@ class EliteScriptWindow(QMainWindow):
         QTimer.singleShot(50, self._fill_splitter)
 
         self._fit_right_btns()
+        if not self._boot_after_show_done:
+            self._boot_after_show_done = True
+            # 先让窗口可交互，再后台连监听
+            QTimer.singleShot(0, self._boot_after_show)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._fill_splitter()
 
         self._fit_right_btns()
+
+    def _boot_after_show(self):
+        """窗口已显示后再自动监听；不阻塞顶栏点击。"""
+        if not self._listening and not self._recording:
+            self._start_listen()
+        if not self._pose_timer.isActive():
+            self._pose_timer.start(100)
 
     def _fill_splitter(self):
         """两栏：左列表 |（编辑+右栏零间距）。"""
@@ -750,11 +765,18 @@ class EliteScriptWindow(QMainWindow):
     # ----- pose / listen -----
     def _sync_pose_buttons(self):
         if self._listening:
-            self.btn_listen.setText("停止监听")
-            self.btn_listen.setObjectName("dangerOutline")
+            if self._listen_connected:
+                self.btn_listen.setText("停止监听")
+                self.btn_listen.setObjectName("dangerOutline")
+                self.btn_listen.setEnabled(True)
+            else:
+                self.btn_listen.setText("连接中…")
+                self.btn_listen.setObjectName("")
+                self.btn_listen.setEnabled(False)
         else:
             self.btn_listen.setText("监听")
             self.btn_listen.setObjectName("primary")
+            self.btn_listen.setEnabled(True)
         if self._recording:
             self.btn_record.setText("停止记录")
             self.btn_record.setObjectName("warn")
@@ -787,9 +809,9 @@ class EliteScriptWindow(QMainWindow):
         self._listen_stop.set()
         self._listen_stop = threading.Event()
         self._listening = True
+        self._listen_connected = False
         if hasattr(self, "lbl_listen"):
             self.lbl_listen.setText("正在连接…")
-        if hasattr(self, "lbl_listen"):
             self.lbl_listen.setStyleSheet("color:#2563EB;")
         self._sync_pose_buttons()
         self._listen_thread = threading.Thread(target=self._listen_worker, daemon=True)
@@ -798,6 +820,7 @@ class EliteScriptWindow(QMainWindow):
     def _stop_listen(self):
         self._listen_stop.set()
         self._listening = False
+        self._listen_connected = False
         if hasattr(self, "lbl_listen"):
             self.lbl_listen.setText("已停止")
         if hasattr(self, "lbl_listen"):
@@ -811,6 +834,10 @@ class EliteScriptWindow(QMainWindow):
         if hasattr(self, "lbl_listen"):
             self.lbl_listen.setStyleSheet("color:%s;" % colors.get(kind, "#6B7280"))
 
+    def _on_listen_connected(self, ok):
+        self._listen_connected = bool(ok)
+        self._sync_pose_buttons()
+
     def _listen_worker(self):
         stop = self._listen_stop
         stream = RobotStateStream()
@@ -822,6 +849,7 @@ class EliteScriptWindow(QMainWindow):
                 sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
                 sock.settimeout(1.0)
                 stream.reset()
+                self._bridge.listen_connected.emit(True)
                 self._bridge.listen_status.emit("监听中  %s:%s" % (host, port), "ok")
                 while not stop.is_set():
                     try:
@@ -843,6 +871,7 @@ class EliteScriptWindow(QMainWindow):
             except Exception as exc:
                 if stop.is_set():
                     break
+                self._bridge.listen_connected.emit(False)
                 self._bridge.listen_status.emit("断开，重连中  %s" % exc, "err")
                 stop.wait(1.5)
             finally:
@@ -1314,6 +1343,7 @@ def main(argv=None):
     app.setFont(UI_FONT)
     win = EliteScriptWindow()
     win.show()
+    app.processEvents()  # 先画出可点壳，listen 在 showEvent 里异步启动
     return app.exec()
 
 
