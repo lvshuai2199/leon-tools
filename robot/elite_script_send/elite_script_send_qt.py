@@ -74,7 +74,7 @@ save_settings = _legacy.save_settings
 _read_file = _legacy._read_file
 run_cli = _legacy.run_cli
 
-BTN_MIN_H = 32
+BTN_MIN_H = 28
 NUM_FONT = QFont("Consolas", 10)
 UI_FONT = QFont("Microsoft YaHei", 9)
 
@@ -244,7 +244,7 @@ class EliteScriptWindow(QMainWindow):
             "border-bottom:none;border-top-left-radius:6px;border-top-right-radius:6px;padding:6px 12px;}"
             "QTabBar::tab:selected{color:#2563EB;background:#EFF4FF;}"
             "QPushButton{background:#FFFFFF;color:#1F2937;border:1px solid #E5E7EB;"
-            "border-radius:8px;padding:4px 12px;min-height:32px;}"
+            "border-radius:6px;padding:2px 10px;min-height:26px;}"
             "QPushButton:hover{background:#EFF4FF;border-color:#2563EB;color:#2563EB;}"
             "QPushButton#primary{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;}"
             "QPushButton#primary:hover{background:#1D4ED8;}"
@@ -367,11 +367,11 @@ class EliteScriptWindow(QMainWindow):
         pose_right.setSpacing(6)
         pose_right.setContentsMargins(0, 0, 0, 0)
         self.btn_listen = self._tool_btn("监听", self._toggle_listen, success=True, min_w=88)
-        self.btn_listen.setFixedHeight(32)
+        self.btn_listen.setFixedHeight(30)
         self.btn_listen.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         pose_right.addWidget(self.btn_listen)
         self.btn_record = self._tool_btn("记录", self._toggle_record, primary=True, min_w=88)
-        self.btn_record.setFixedHeight(32)
+        self.btn_record.setFixedHeight(30)
         self.btn_record.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
         pose_right.addWidget(self.btn_record)
         pose_right.addStretch(1)
@@ -462,7 +462,7 @@ class EliteScriptWindow(QMainWindow):
             for text, slot in items:
                 btn = self._tool_btn(text, slot)
                 btn.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
-                btn.setMinimumHeight(28)
+                btn.setMinimumHeight(26)
                 self._right_btns.append(btn)
                 box.addWidget(btn)
             return box
@@ -489,7 +489,7 @@ class EliteScriptWindow(QMainWindow):
         sep.setStyleSheet("background:#E5E7EB;border:none;max-height:1px;")
         right_l.addWidget(sep)
         estop = self._tool_btn("急停", self._estop, danger=True)
-        estop.setMinimumHeight(36)
+        estop.setMinimumHeight(34)
         estop.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Fixed)
         self._right_estop = estop
         self._right_btns.append(estop)
@@ -678,22 +678,21 @@ class EliteScriptWindow(QMainWindow):
 
 
     def _fit_right_btns(self):
-        """无滚动条：小窗缩钮高塞下，下限 28；正常约 42；急停略高。"""
+        """主钮常态 28～30；小窗 ≥26；急停 34～36。"""
         btns = getattr(self, "_right_btns", None) or []
         if not btns:
             return
         h = max(320, int(self.height()))
         if h >= 720:
-            bh = 42
+            bh = 30
         elif h <= 520:
-            # 小窗更狠一点，避免挤成一坨又不出滚条
-            bh = 28 if h <= 480 else int(28 + (h - 480) * (6 / 40.0))
+            bh = 26 if h <= 480 else int(26 + (h - 480) * (2 / 40.0))
         else:
-            bh = int(34 + (h - 520) * (8 / 200.0))
-            bh = min(42, max(34, bh))
+            bh = int(28 + (h - 520) * (2 / 200.0))
+            bh = min(30, max(28, bh))
         for b in btns:
             if b is getattr(self, "_right_estop", None):
-                b.setFixedHeight(max(36, bh + 4))
+                b.setFixedHeight(max(34, min(36, bh + 6)))
             else:
                 b.setFixedHeight(bh)
 
