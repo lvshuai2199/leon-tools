@@ -217,7 +217,7 @@ class EliteScriptWindow(QMainWindow):
 
     def _tool_btn(self, text, slot, danger=False, primary=False, success=False, min_w=0):
         btn = QPushButton(text)
-        btn.setMinimumHeight(BTN_MIN_H)
+        btn.setFixedHeight(BTN_MIN_H)
         if min_w:
             btn.setMinimumWidth(min_w)
         btn.setCursor(Qt.PointingHandCursor)
@@ -244,7 +244,7 @@ class EliteScriptWindow(QMainWindow):
             "border-bottom:none;border-top-left-radius:6px;border-top-right-radius:6px;padding:6px 12px;}"
             "QTabBar::tab:selected{color:#2563EB;background:#EFF4FF;}"
             "QPushButton{background:#FFFFFF;color:#1F2937;border:1px solid #E5E7EB;"
-            "border-radius:6px;padding:2px 10px;min-height:26px;}"
+            "border-radius:6px;padding:0px 10px;min-height:0px;}"
             "QPushButton:hover{background:#EFF4FF;border-color:#2563EB;color:#2563EB;}"
             "QPushButton#primary{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;}"
             "QPushButton#primary:hover{background:#1D4ED8;}"
@@ -734,6 +734,8 @@ class EliteScriptWindow(QMainWindow):
         self.btn_listen.style().polish(self.btn_listen)
         self.btn_record.style().unpolish(self.btn_record)
         self.btn_record.style().polish(self.btn_record)
+        self.btn_listen.setFixedHeight(BTN_MIN_H)
+        self.btn_record.setFixedHeight(BTN_MIN_H)
 
     def _toggle_listen(self):
         if self._listening:
