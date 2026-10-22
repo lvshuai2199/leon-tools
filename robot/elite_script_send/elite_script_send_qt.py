@@ -250,6 +250,8 @@ class EliteScriptWindow(QMainWindow):
             "QPushButton#primary:hover{background:#1D4ED8;}"
             "QPushButton#danger{background:#DC2626;color:#FFFFFF;border:1px solid #DC2626;font-weight:bold;}"
             "QPushButton#danger:hover{background:#B91C1C;}"
+            "QPushButton#warn{background:#EA580C;color:#FFFFFF;border:1px solid #EA580C;}"
+            "QPushButton#warn:hover{background:#C2410C;}"
             "QPushButton#success{background:#15803D;color:#FFFFFF;border:1px solid #15803D;}"
             "QPushButton#success:hover{background:#166534;}"
             "QLabel#muted{color:#6B7280;}"
@@ -725,7 +727,7 @@ class EliteScriptWindow(QMainWindow):
             self.btn_listen.setObjectName("success")
         if self._recording:
             self.btn_record.setText("停止记录")
-            self.btn_record.setObjectName("danger")
+            self.btn_record.setObjectName("warn")
         else:
             self.btn_record.setText("记录")
             self.btn_record.setObjectName("primary")
