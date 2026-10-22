@@ -253,7 +253,7 @@ class EliteScriptWindow(QMainWindow):
             "QPushButton#success{background:#15803D;color:#FFFFFF;border:1px solid #15803D;}"
             "QPushButton#success:hover{background:#166534;}"
             "QLabel#muted{color:#6B7280;}"
-            "QSplitter::handle{background:#E5E7EB;width:1px;}"
+            "QSplitter::handle{background:#E5E7EB;width:0px;}"
             "QPlainTextEdit#log{background:#FFFFFF;border:1px solid #E5E7EB;}"
             "QScrollBar:horizontal{height:6px;background:transparent;margin:0;}"
             "QScrollBar:horizontal:handle{background:#D1D5DB;border-radius:3px;min-width:24px;}"
@@ -382,7 +382,7 @@ class EliteScriptWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Horizontal)
         splitter = self.splitter
         splitter.setChildrenCollapsible(False)
-        splitter.setHandleWidth(1)
+        splitter.setHandleWidth(0)
 
         # 左：脚本列表 200～220
         left = QFrame()
@@ -417,7 +417,7 @@ class EliteScriptWindow(QMainWindow):
         editor.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         editor.setMinimumWidth(240)
         ed_l = QVBoxLayout(editor)
-        ed_l.setContentsMargins(6, 6, 4, 6)
+        ed_l.setContentsMargins(6, 6, 2, 6)
         ed_l.setSpacing(4)
         # 顶栏：文件名左 · 下发脚本（主蓝）→ 另存为（次）右对齐；无底栏组合钮
         ed_top = QHBoxLayout()
@@ -443,9 +443,10 @@ class EliteScriptWindow(QMainWindow):
         right = QFrame()
         right.setObjectName("zone")
         right.setMinimumWidth(128)
+        right.setMaximumWidth(160)
         right.setMaximumWidth(140)
         right_l = QVBoxLayout(right)
-        right_l.setContentsMargins(4, 8, 8, 8)
+        right_l.setContentsMargins(2, 8, 8, 8)
         right_l.setSpacing(10)
 
         def _sec_title(text):
@@ -665,15 +666,19 @@ class EliteScriptWindow(QMainWindow):
         self._fit_right_btns()
 
     def _fill_splitter(self):
-        """按窗宽分配三栏；不抬编辑区 minWidth，避免小窗右栏盖住编辑。"""
+        """铺满 splitter；右栏定宽，剩余给编辑，避免编辑↔右栏白缝。"""
         sp = getattr(self, "splitter", None)
         if sp is None:
             return
         total = max(sp.width(), 1)
-        right_w = 134
-        handles = sp.handleWidth() * 2
+        right_w = 132
+        handles = max(sp.handleWidth(), 0) * 2
         left_w = 210 if total >= 900 else (180 if total >= 720 else 160)
         mid = max(total - left_w - right_w - handles, 120)
+        # 把舍入余量塞进 mid，杜绝缝
+        used = left_w + mid + right_w + handles
+        if used < total:
+            mid += total - used
         sp.setSizes([left_w, mid, right_w])
 
 
