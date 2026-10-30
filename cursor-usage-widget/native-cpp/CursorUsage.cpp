@@ -1,4 +1,4 @@
-﻿#define _CRT_SECURE_NO_WARNINGS
+#define _CRT_SECURE_NO_WARNINGS
 #define NOMINMAX
 #include <windows.h>
 #include <windowsx.h>
@@ -26,6 +26,8 @@
 #include <commoncontrols.h>
 #include <tlhelp32.h>
 #include <wincodec.h>
+#include <bcrypt.h>
+#include <wincrypt.h>
 
 #pragma comment(lib, "user32.lib")
 #pragma comment(lib, "gdi32.lib")
@@ -39,6 +41,8 @@
 #pragma comment(lib, "comctl32.lib")
 #pragma comment(lib, "shlwapi.lib")
 #pragma comment(lib, "windowscodecs.lib")
+#pragma comment(lib, "bcrypt.lib")
+#pragma comment(lib, "crypt32.lib")
 
 using Gdiplus::Graphics;
 using Gdiplus::Pen;
@@ -214,6 +218,156 @@ static std::string B64Url(const std::string& in) {
     return out;
 }
 
+
+// ---- Chrome/Electron OSCrypt (cursor-safe-storage:v1) ----
+// blob = base64( "v10" | 12B nonce | ciphertext | 16B tag )
+// key  = CryptUnprotectData( Local State os_crypt.encrypted_key without "DPAPI" prefix )
+static std::string B64Std(const std::string& in) {
+    return B64Url(in); // standard alphabet; B64Url only remaps -/_ then decodes
+}
+
+static bool ReadFileUtf8(const std::wstring& path, std::string& out) {
+    out.clear();
+    HANDLE h = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                           nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (h == INVALID_HANDLE_VALUE) return false;
+    DWORD sz = GetFileSize(h, nullptr);
+    if (sz == INVALID_FILE_SIZE || sz > 8 * 1024 * 1024) { CloseHandle(h); return false; }
+    out.resize(sz);
+    DWORD rd = 0;
+    BOOL ok = ReadFile(h, out.empty() ? nullptr : &out[0], sz, &rd, nullptr);
+    CloseHandle(h);
+    if (!ok) { out.clear(); return false; }
+    out.resize(rd);
+    return true;
+}
+
+static bool ExtractJsonString(const std::string& json, const char* key, std::string& val) {
+    val.clear();
+    std::string needle = std::string("\"") + key + "\"";
+    size_t p = json.find(needle);
+    if (p == std::string::npos) return false;
+    p = json.find(':', p + needle.size());
+    if (p == std::string::npos) return false;
+    ++p;
+    while (p < json.size() && (json[p] == ' ' || json[p] == '\t' || json[p] == '\r' || json[p] == '\n')) ++p;
+    if (p >= json.size() || json[p] != '"') return false;
+    ++p;
+    std::string out;
+    while (p < json.size()) {
+        char c = json[p++];
+        if (c == '\\' && p < json.size()) {
+            char e = json[p++];
+            if (e == '"' || e == '\\' || e == '/') out.push_back(e);
+            else if (e == 'n') out.push_back('\n');
+            else if (e == 't') out.push_back('\t');
+            else if (e == 'r') out.push_back('\r');
+            else out.push_back(e);
+            continue;
+        }
+        if (c == '"') break;
+        out.push_back(c);
+    }
+    val = out;
+    return !val.empty();
+}
+
+static bool DpapiUnprotect(const BYTE* data, DWORD len, std::vector<BYTE>& plain) {
+    plain.clear();
+    DATA_BLOB in{};
+    in.pbData = const_cast<BYTE*>(data);
+    in.cbData = len;
+    DATA_BLOB out{};
+    if (!CryptUnprotectData(&in, nullptr, nullptr, nullptr, nullptr, 0, &out)) return false;
+    plain.assign(out.pbData, out.pbData + out.cbData);
+    LocalFree(out.pbData);
+    return !plain.empty();
+}
+
+static bool ReadOsCryptAesKey(std::vector<BYTE>& key) {
+    key.clear();
+    wchar_t appdata[MAX_PATH];
+    if (!GetEnvironmentVariableW(L"APPDATA", appdata, MAX_PATH)) return false;
+    std::wstring path = std::wstring(appdata) + L"\\Cursor\\Local State";
+    std::string json;
+    if (!ReadFileUtf8(path, json)) return false;
+    // Prefer nested os_crypt.encrypted_key; fall back to first encrypted_key string.
+    std::string b64;
+    size_t oc = json.find("\"os_crypt\"");
+    if (oc != std::string::npos) {
+        size_t end = json.find('}', oc);
+        std::string slice = (end == std::string::npos) ? json.substr(oc) : json.substr(oc, end - oc + 1);
+        ExtractJsonString(slice, "encrypted_key", b64);
+    }
+    if (b64.empty()) ExtractJsonString(json, "encrypted_key", b64);
+    if (b64.empty()) return false;
+    std::string raw = B64Std(b64);
+    static const char kDpapi[] = "DPAPI";
+    if (raw.size() <= 5 || memcmp(raw.data(), kDpapi, 5) != 0) return false;
+    return DpapiUnprotect(reinterpret_cast<const BYTE*>(raw.data() + 5),
+                          (DWORD)(raw.size() - 5), key) && key.size() == 32;
+}
+
+static bool AesGcmDecrypt(const BYTE* key, DWORD keyLen,
+                          const BYTE* nonce, DWORD nonceLen,
+                          const BYTE* cipher, DWORD cipherLen,
+                          const BYTE* tag, DWORD tagLen,
+                          std::string& plain) {
+    plain.clear();
+    BCRYPT_ALG_HANDLE hAlg = nullptr;
+    BCRYPT_KEY_HANDLE hKey = nullptr;
+    NTSTATUS st = BCryptOpenAlgorithmProvider(&hAlg, BCRYPT_AES_ALGORITHM, nullptr, 0);
+    if (!BCRYPT_SUCCESS(st)) return false;
+    st = BCryptSetProperty(hAlg, BCRYPT_CHAINING_MODE,
+                           (PUCHAR)BCRYPT_CHAIN_MODE_GCM, sizeof(BCRYPT_CHAIN_MODE_GCM), 0);
+    if (!BCRYPT_SUCCESS(st)) { BCryptCloseAlgorithmProvider(hAlg, 0); return false; }
+    st = BCryptGenerateSymmetricKey(hAlg, &hKey, nullptr, 0, (PUCHAR)key, keyLen, 0);
+    if (!BCRYPT_SUCCESS(st)) { BCryptCloseAlgorithmProvider(hAlg, 0); return false; }
+    BCRYPT_AUTHENTICATED_CIPHER_MODE_INFO info;
+    BCRYPT_INIT_AUTH_MODE_INFO(info);
+    info.pbNonce = (PUCHAR)nonce;
+    info.cbNonce = nonceLen;
+    info.pbTag = (PUCHAR)tag;
+    info.cbTag = tagLen;
+    // AES-GCM: plaintext length equals ciphertext length (tag is separate).
+    DWORD outLen = 0;
+    plain.resize(cipherLen);
+    st = BCryptDecrypt(hKey, (PUCHAR)cipher, cipherLen, &info, nullptr, 0,
+                       plain.empty() ? nullptr : (PUCHAR)&plain[0], cipherLen, &outLen, 0);
+    BCryptDestroyKey(hKey);
+    BCryptCloseAlgorithmProvider(hAlg, 0);
+    if (!BCRYPT_SUCCESS(st)) { plain.clear(); return false; }
+    plain.resize(outLen);
+    return true;
+}
+
+static std::string MaybeDecryptCursorToken(const std::string& raw) {
+    static const char kPrefix[] = "cursor-safe-storage:v1:";
+    const size_t prefLen = sizeof(kPrefix) - 1;
+    if (raw.size() <= prefLen || raw.compare(0, prefLen, kPrefix) != 0) return raw;
+    static std::vector<BYTE> aesKey;
+    static bool keyTried = false;
+    static bool keyOk = false;
+    if (!keyTried) {
+        keyTried = true;
+        keyOk = ReadOsCryptAesKey(aesKey);
+    }
+    if (!keyOk) return raw;
+    std::string blob = B64Std(raw.substr(prefLen));
+    // v10 + 12 nonce + ciphertext + 16 tag
+    if (blob.size() < 3 + 12 + 16 + 1) return raw;
+    if (blob[0] != 'v' || blob[1] != '1' || (blob[2] != '0' && blob[2] != '1')) return raw;
+    const BYTE* nonce = reinterpret_cast<const BYTE*>(blob.data() + 3);
+    const BYTE* tag = reinterpret_cast<const BYTE*>(blob.data() + blob.size() - 16);
+    const BYTE* cipher = reinterpret_cast<const BYTE*>(blob.data() + 3 + 12);
+    DWORD cipherLen = (DWORD)(blob.size() - 3 - 12 - 16);
+    std::string plain;
+    if (!AesGcmDecrypt(aesKey.data(), (DWORD)aesKey.size(), nonce, 12, cipher, cipherLen, tag, 16, plain))
+        return raw;
+    // strip trailing NULs if any
+    while (!plain.empty() && plain.back() == '\0') plain.pop_back();
+    return plain;
+}
 // ---- sqlite via winsqlite3.dll ----
 typedef struct sqlite3 sqlite3;
 typedef struct sqlite3_stmt sqlite3_stmt;
@@ -256,6 +410,13 @@ static std::map<std::string, std::string> ReadAuth() {
     }
     close(db);
     FreeLibrary(m);
+    // Cursor may store access/refresh as cursor-safe-storage:v1: (AES-GCM via OSCrypt).
+    // Never CryptUnprotectData the whole blob (ERROR_INVALID_DATA / 13). Decrypt here.
+    for (const char* k : {"cursorAuth/accessToken", "cursorAuth/refreshToken"}) {
+        auto it = out.find(k);
+        if (it == out.end() || it->second.empty()) continue;
+        it->second = MaybeDecryptCursorToken(it->second);
+    }
     return out;
 }
 
