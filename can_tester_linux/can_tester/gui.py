@@ -145,6 +145,7 @@ from can_tester.init_module import (
     run_module,
     save_module,
 )
+from can_tester.arc_replay import OFF_LABEL, ArcPlayer
 from can_tester.megmeet_responder import (
     ROBOT_ID,
     WELDER_ID,
@@ -2648,8 +2649,8 @@ class CanTesterApp(tk.Tk):
     def __init__(self, initial_iface: str = DEFAULT_IFACE) -> None:
         super().__init__()
         self.title("CAN 通用监听 / 发送")
-        self.geometry("720x580")
-        self.minsize(620, 480)
+        self.geometry("720x616")
+        self.minsize(620, 512)
         self.configure(bg=BG)
         self._style = _apply_app_style(self)
         self.session = CanSession()
@@ -2663,6 +2664,8 @@ class CanTesterApp(tk.Tk):
         self._connect_init_count: int | None = None  # frames sent by auto-init this session
         self.settings = load_settings()
         self._responder_state = ResponderState()
+        self._arc_player = ArcPlayer.load_default()
+        self._bind_arc_player()
         self._responder_module: ResponderModule | None = None
         self._responder_detail: ResponderDetailDialog | None = None
         self._signal_values: dict = {}
@@ -3961,6 +3964,22 @@ class CanTesterApp(tk.Tk):
             variable=self._welder_auto_arc,
             command=self._on_welder_auto_arc,
         ).pack(side=tk.LEFT)
+        wreplay = ttk.Frame(self._welder_box)
+        wreplay.pack(fill=tk.X, pady=(4, 0))
+        ttk.Label(wreplay, text="电弧回放").pack(side=tk.LEFT)
+        group_names = [OFF_LABEL] + [g.name for g in self._arc_player.groups]
+        self._arc_group_var = tk.StringVar(value=OFF_LABEL)
+        self._arc_group_combo = ttk.Combobox(
+            wreplay,
+            textvariable=self._arc_group_var,
+            state="readonly",
+            width=32,
+            values=group_names,
+        )
+        self._arc_group_combo.pack(side=tk.LEFT, padx=(6, 0))
+        self._arc_group_combo.bind("<<ComboboxSelected>>", lambda _e: self._on_arc_group())
+        self._arc_status_var = tk.StringVar(value=OFF_LABEL)
+        ttk.Label(wreplay, textvariable=self._arc_status_var).pack(side=tk.LEFT, padx=(8, 0))
         self._build_nbm_send_panels(mid)
         self._layout_goo_panels()
 
@@ -4182,10 +4201,12 @@ class CanTesterApp(tk.Tk):
         st.stick = bool(self._welder_stick.get())
         st.range_over = bool(self._welder_over.get())
         st.auto_reply = bool(self._welder_auto.get())
-        try:
-            st.current = int(float(self._welder_i.get() or "0"))
-        except ValueError:
-            pass
+        playing = bool(getattr(getattr(self, "_arc_player", None), "playing", False))
+        if not playing:
+            try:
+                st.current = int(float(self._welder_i.get() or "0"))
+            except ValueError:
+                pass
         try:
             st.voltage = float(self._welder_u.get() or "0")
         except ValueError:
@@ -4580,7 +4601,9 @@ class CanTesterApp(tk.Tk):
             return (
                 "Megmeet - GOO · 模拟焊机\n\n"
                 "看机器人下发，按勾选回帧（0x1FD08063）。\n"
-                "开总线后自动应答。"
+                "开总线后自动应答。\n"
+                "电弧回放：选一组后，收到起焊（起弧）上升沿才按该组电流下发，落下后恢复。\n"
+                "焊机反馈电流是小端。机器人给定电流仍是大端，和机械臂下发一致。电压仍是大端。"
             )
         if combo == nbm.COMBO_JASIC_NBM:
             if role == ROLE_CLIENT:
@@ -5244,6 +5267,11 @@ class CanTesterApp(tk.Tk):
 
     def _parse_tx_fields(self) -> tuple[int, bytes, bool]:
         """Parse ID/data/ext from send form. Raises ValueError on bad input."""
+        if self._goo_combo_active():
+            if self._goo_role() == ROLE_WELDER:
+                self._sync_welder_send_fields()
+            else:
+                self._sync_client_poll_fields()
         if self.ext_var.get():
             can_id, extended = parse_can_id_auto(self.id_var.get(), True)
         else:
@@ -5508,12 +5536,14 @@ class CanTesterApp(tk.Tk):
         mod = self._responder_module
         if mod is None:
             self._responder_state = ResponderState()
+            self._bind_arc_player()
             self._signal_values = {}
             self._sync_auto_arc_var_from_state()
             if hasattr(self, "_refresh_signal_card"):
                 self._refresh_signal_card()
             return
         self._responder_state = state_from_mapping(mod.state)
+        self._bind_arc_player()
         # Defaults from JSON signals; overlay module.state via key mapping.
         vals = signal_defaults_dict(mod.signals)
         for i, s in enumerate(mod.signals):
@@ -5535,6 +5565,38 @@ class CanTesterApp(tk.Tk):
         self._sync_auto_arc_var_from_state()
         if hasattr(self, "_refresh_signal_card"):
             self._refresh_signal_card()
+
+    def _bind_arc_player(self) -> None:
+        player = getattr(self, "_arc_player", None)
+        st = getattr(self, "_responder_state", None)
+        if st is not None and player is not None:
+            st.arc_player = player
+
+    def _on_arc_group(self) -> None:
+        player = getattr(self, "_arc_player", None)
+        if player is None:
+            return
+        try:
+            name = (self._arc_group_var.get() or "").strip()
+        except tk.TclError:
+            return
+        restore = player.select(None if not name or name == OFF_LABEL else name)
+        st = getattr(self, "_responder_state", None)
+        if restore is not None and st is not None:
+            st.current = int(restore)
+            self._pull_welder_panel_from_state()
+            self._sync_welder_send_fields()
+        self._refresh_arc_status()
+
+    def _refresh_arc_status(self) -> None:
+        label = getattr(self, "_arc_status_var", None)
+        player = getattr(self, "_arc_player", None)
+        if label is None or player is None:
+            return
+        try:
+            label.set(player.status_text())
+        except tk.TclError:
+            pass
 
     def _on_auto_arc_toggled(self) -> None:
         """Main-UI switch for megmeet auto_arc (hardcoded arc edge; default on)."""
@@ -5765,6 +5827,10 @@ class CanTesterApp(tk.Tk):
         plan = plans[0]
         # plan_reply / on_robot_frame may have auto-set arc_ok / touch_ok — mirror UI.
         self._sync_signal_vars_from_state()
+        self._refresh_arc_status()
+        player = getattr(self, "_arc_player", None)
+        if player is not None and player.group is not None:
+            self._sync_welder_send_fields()
         fr = self.session.send(plan.can_id, plan.data, plan.extended)
         ts = getattr(fr, "timestamp", None) or __import__("time").time()
         self._append_frame("TX", fr.can_id, fr.is_extended, fr.data, ts)

@@ -47,6 +47,8 @@ def pack_robot_poll(
     )
     cur = max(0, min(0xFFFF, int(current)))
     volt_x10 = max(0, min(0xFFFF, int(round(float(voltage) * 10.0))))
+    # Robot command current stays big-endian, same as FFW writeUint16.
+    # Welder feedback current is little-endian in build_reply.
     return bytes(
         [
             0xFF,
@@ -132,7 +134,8 @@ def describe_welder(data: bytes) -> dict:
     gas_ex = bool(raw[2] & 0x04)
     stick = bool(raw[2] & 0x08)
     over = bool(raw[2] & 0x80)
-    current = (raw[3] << 8) | raw[4]
+    # Same as FFW CanBusService: feedback current is little-endian.
+    current = (raw[4] << 8) | raw[3]
     voltage = ((raw[5] << 8) | raw[6]) / 10.0
     err = raw[7]
     chips = [

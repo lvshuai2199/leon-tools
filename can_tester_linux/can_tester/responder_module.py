@@ -47,6 +47,7 @@ class SignalDef:
     scale: float = 1.0
     default: Any = False
     key: str = ""  # optional sync key into megmeet ResponderState / module.state
+    endian: str = "be"  # u16 only; feedback current uses le
     raw: dict = field(default_factory=dict)
 
     def rule_summary(self) -> str:
@@ -57,9 +58,10 @@ class SignalDef:
             return f"u8@{int(self.byte)}"
         if k in ("u16", "uint16"):
             sc = float(self.scale) if self.scale else 1.0
+            order = "LE" if (self.endian or "be").strip().lower() == "le" else ""
             if abs(sc - 1.0) < 1e-9:
-                return f"u16@{int(self.byte)}"
-            return f"u16@{int(self.byte)}×{sc:g}"
+                return f"u16{order}@{int(self.byte)}"
+            return f"u16{order}@{int(self.byte)}×{sc:g}"
         return k or "?"
 
     def to_dict(self) -> dict:
@@ -94,6 +96,8 @@ class SignalDef:
                 out["default"] = float(self.default)
             except (TypeError, ValueError):
                 out["default"] = 0
+            if (self.endian or "be").strip().lower() == "le":
+                out["endian"] = "le"
         if self.key:
             out["key"] = str(self.key)
         return out
@@ -142,6 +146,7 @@ def _parse_signal(item: dict) -> SignalDef:
         scale=scale,
         default=default,
         key=str(item.get("key", "") or ""),
+        endian="le" if str(item.get("endian", "") or "").strip().lower() == "le" else "be",
         raw=dict(item),
     )
 
@@ -205,8 +210,12 @@ def apply_signals_to_buffer(
             raw = max(0, min(0xFFFF, raw))
             if b + 1 >= len(data):
                 data.extend(b"\x00" * (b + 2 - len(data)))
-            data[b] = (raw >> 8) & 0xFF
-            data[b + 1] = raw & 0xFF
+            if (getattr(s, "endian", "be") or "be").strip().lower() == "le":
+                data[b] = raw & 0xFF
+                data[b + 1] = (raw >> 8) & 0xFF
+            else:
+                data[b] = (raw >> 8) & 0xFF
+                data[b + 1] = raw & 0xFF
     return bytes(data[: max(8, len(data))])
 
 

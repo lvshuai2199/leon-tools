@@ -6,7 +6,7 @@ Pure functions + ResponderState for unit tests and engine=megmeet profiles.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Optional
+from typing import Any, Optional
 
 ROBOT_ID = 0x1FD07063
 WELDER_ID = 0x1FD08063
@@ -39,6 +39,7 @@ class ResponderState:
     auto_reply: bool = True
     auto_arc: bool = True
     range_over: bool = False
+    arc_player: Any = field(default=None, repr=False, compare=False)
     _prev_weld: bool = field(default=False, repr=False)
 
     def reset_edge(self) -> None:
@@ -65,7 +66,7 @@ def build_reply(state: ResponderState) -> bytes:
     data[0] unused (manual Byte2 starts at data[1])
     data[1] bit0 ready, bit1 error, bit2 touch_ok
     data[2] bit0 arc_ok, bit1 arc_ex, bit2 gas/other, bit3 stick, bit7 range_over
-    data[3:5] current uint16 BE
+    data[3:5] feedback current uint16 LE (FFW CanBusService.dataAnalysis)
     data[5:7] voltage*10 uint16 BE
     data[7] errcode
     """
@@ -90,12 +91,13 @@ def build_reply(state: ResponderState) -> bytes:
     cur = max(0, min(0xFFFF, int(state.current)))
     volt_x10 = max(0, min(0xFFFF, int(round(float(state.voltage) * 10.0))))
     err = max(0, min(0xFF, int(state.errcode)))
+    # FFW reads feedback current as (src[4] << 8) | src[3]. Voltage stays big-endian.
     return bytes([
         0x00,
         b1 & 0xFF,
         b2 & 0xFF,
-        (cur >> 8) & 0xFF,
         cur & 0xFF,
+        (cur >> 8) & 0xFF,
         (volt_x10 >> 8) & 0xFF,
         volt_x10 & 0xFF,
         err & 0xFF,
@@ -125,6 +127,9 @@ def apply_auto_arc(state: ResponderState, robot: RobotFrame) -> None:
 
 def on_robot_frame(state: ResponderState, data: bytes) -> Optional[bytes]:
     robot = parse_robot_frame(data)
+    player = getattr(state, "arc_player", None)
+    if player is not None:
+        player.apply(state, robot)
     apply_auto_arc(state, robot)
     if not state.auto_reply:
         return None

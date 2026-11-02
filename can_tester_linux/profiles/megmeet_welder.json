@@ -80,9 +80,10 @@
     },
     {
       "name": "电流 A",
-      "note": "焊接电流 A（对应 py「A」）",
+      "note": "焊接电流 A。焊机回帧按小端，与 FFW CanBusService 反馈电流一致",
       "kind": "u16",
       "byte": 3,
+      "endian": "le",
       "scale": 1.0,
       "default": 180,
       "key": "current"
@@ -111,7 +112,7 @@
       "enabled": true,
       "match_id": "0x1FD07063",
       "extended": true,
-      "reply": "00 01 00 00 B4 00 E1 00",
+      "reply": "00 01 00 B4 00 00 E1 00",
       "delay_ms": 0,
       "note": "插件轮询 → 动态焊机回帧（HEX 为默认快照，运行时由 engine=megmeet 覆盖）"
     }

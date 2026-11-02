@@ -563,8 +563,9 @@ class MegmeetCanResponder(object):
             err = max(0, min(255, int(self.var_errcode.get())))
         except ValueError:
             err = 0
-        data[3] = (current >> 8) & 0xFF
-        data[4] = current & 0xFF
+        # Feedback current is little-endian, same as FFW CanBusService.
+        data[3] = current & 0xFF
+        data[4] = (current >> 8) & 0xFF
         data[5] = (voltage_x10 >> 8) & 0xFF
         data[6] = voltage_x10 & 0xFF
         data[7] = err

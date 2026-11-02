@@ -23,9 +23,18 @@
 | `robot/` | 机器人相关（不拆散） |
 | `robot/elite_script_send/` | Elite 脚本下发 |
 | `robot/urdf-server/` | 本地 URDF 预览 |
+| `doc-tools/` | 文档导出脚本（改路径后运行） |
 | `archive/` | 历史归档（原 `history/`，只读；大 zip 暂留） |
 
 根目录 `.venv/` 仅本机 Python 环境，**不提交**。打包产物 `build/`、`dist/`、`*.exe` 也不进 git；运行拷贝放 Softs。
+
+## doc-tools
+
+文档导出类脚本都放这个目录。以后新增同类工具，放这里并在下表补一行。
+
+| 脚本 | 说明 |
+|------|------|
+| `md2docx.py` | Markdown 导出 Word。改顶部 `MD_PATH`（`DOCX_PATH` 可空），双击 `启动.bat` |
 
 ## Softs 对应（本机 DESKTOP）
 
@@ -40,5 +49,6 @@
 | `edge-start-hub/` | 浏览器扩展，无 Softs |
 | `local-git/` | 无独立 Softs |
 | `robot/urdf-server/` | 本地预览，无 Softs |
+| `doc-tools/` | 无独立 Softs（改 `md2docx.py` 顶部路径后双击 `启动.bat`） |
 
 整理约定：不改各工具业务逻辑；`archive/` 内删除需帅吕点头；push 另说。

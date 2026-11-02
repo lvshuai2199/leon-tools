@@ -80,7 +80,27 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="列出可用应答档后退出",
     )
+    p.add_argument(
+        "--arc-group",
+        default="",
+        metavar="NAME",
+        help="Megmeet 模拟焊机：起弧后回放的电流组（名称或 id，见 profiles/arc_replay/groups.json）",
+    )
     return p
+
+
+def _attach_arc_group(resp_svc, name: str) -> int:
+    from can_tester.arc_replay import ArcPlayer
+
+    player = ArcPlayer.load_default()
+    player.select(name)
+    if player.group is None:
+        names = "、".join(g.name for g in player.groups) or "(无)"
+        print(f"未知电弧回放组: {name}\n可选: {names}", file=sys.stderr)
+        return 1
+    resp_svc.state.arc_player = player
+    print(f"电弧回放: {player.group.name}（收到起弧后下发）")
+    return 0
 
 
 def _run_init(session: CanSession | None, path: str, dry_run: bool, only_enabled: bool) -> int:
@@ -223,12 +243,21 @@ def main(argv: list[str] | None = None) -> int:
             f"应答服务: 开 · {mod.name}"
             f"（engine={mod.engine or 'static'}）"
         )
-        if session.backend == "virtual":
-            print(
-                "提示: virtual 仅本进程内共享；双终端请用 vcan0，"
-                "或同进程库测（tests/test_dual_virtual_responder.py）",
-                file=sys.stderr,
-            )
+        arc_name = str(getattr(args, "arc_group", "") or "").strip()
+        if arc_name:
+            if _attach_arc_group(resp_svc, arc_name) != 0:
+                session.disconnect()
+                return 1
+    elif str(getattr(args, "arc_group", "") or "").strip():
+        print("电弧回放需要同时打开应答服务（--responder）", file=sys.stderr)
+        session.disconnect()
+        return 1
+    if resp_svc is not None and session.backend == "virtual":
+        print(
+            "提示: virtual 仅本进程内共享；双终端请用 vcan0，"
+            "或同进程库测（tests/test_dual_virtual_responder.py）",
+            file=sys.stderr,
+        )
     wl = parse_rx_id_whitelist(settings.rx_id_filter)
     if not settings.print_client_data:
         print(
