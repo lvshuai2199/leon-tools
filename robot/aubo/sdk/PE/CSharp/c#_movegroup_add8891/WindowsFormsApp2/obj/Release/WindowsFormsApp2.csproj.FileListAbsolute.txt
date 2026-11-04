@@ -1,0 +1,8 @@
+E:\港珠澳项目\负压吸附机器人3D显示C#工程相关文件\遨博i5_服务端\WindowsFormsApp2\bin\Release\WindowsFormsApp2.exe.config
+E:\港珠澳项目\负压吸附机器人3D显示C#工程相关文件\遨博i5_服务端\WindowsFormsApp2\bin\Release\WindowsFormsApp2.exe
+E:\港珠澳项目\负压吸附机器人3D显示C#工程相关文件\遨博i5_服务端\WindowsFormsApp2\bin\Release\WindowsFormsApp2.pdb
+E:\港珠澳项目\负压吸附机器人3D显示C#工程相关文件\遨博i5_服务端\WindowsFormsApp2\obj\Release\WindowsFormsApp2.Form1.resources
+E:\港珠澳项目\负压吸附机器人3D显示C#工程相关文件\遨博i5_服务端\WindowsFormsApp2\obj\Release\WindowsFormsApp2.Properties.Resources.resources
+E:\港珠澳项目\负压吸附机器人3D显示C#工程相关文件\遨博i5_服务端\WindowsFormsApp2\obj\Release\WindowsFormsApp2.csproj.GenerateResource.Cache
+E:\港珠澳项目\负压吸附机器人3D显示C#工程相关文件\遨博i5_服务端\WindowsFormsApp2\obj\Release\WindowsFormsApp2.exe
+E:\港珠澳项目\负压吸附机器人3D显示C#工程相关文件\遨博i5_服务端\WindowsFormsApp2\obj\Release\WindowsFormsApp2.pdb

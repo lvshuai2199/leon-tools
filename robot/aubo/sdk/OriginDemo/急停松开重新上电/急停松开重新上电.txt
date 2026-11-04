@@ -1,0 +1,65 @@
+void threadFunction(RpcClientPtr cli) {
+    // 接口调用: 获取机器人的名字，定义控制接口
+    auto robot_name = cli->getRobotNames().front();
+    auto robot_interface = cli->getRobotInterface(robot_name);
+
+    for (int i = 0; i < 5; ++i) {
+        std::cout << "Hello from thread! " << i << std::endl;
+        // 接口调用: 获取机械臂当前模式
+        auto robot_mode = robot_interface->getRobotState()->getRobotModeType();
+
+        std::cout << "机械臂当前模式为：%s" << robot_mode << std::endl;
+    }
+    int num = 0;
+    while (true)
+    {
+        // 接口调用: 获取机械臂当前模式状态
+        auto robot_mode = robot_interface->getRobotState()->getRobotModeType();
+
+        std::cout << "机械臂当前模式为：%s" << robot_mode << std::endl;
+
+        // 接口调用: 获取机械臂当前安全模式状态
+        auto robot_safe_mode = robot_interface->getRobotState()->getSafetyModeType();
+
+        std::cout << "机械臂当前安全模式为：%s" << robot_safe_mode << std::endl;
+
+        if (robot_safe_mode == SafetyModeType::Normal && robot_mode == RobotModeType::PowerOff)
+        {
+            //先获取所有的需要设置的参数
+            //获取当前的tcp位姿
+            //auto aubo_tcp = robot_interface->getRobotState()->getTcpPose();
+            auto aubo_tcp = robot_interface->getRobotConfig()->getTcpOffset();
+            auto aubo_payload = robot_interface->getRobotConfig()->getPayload();
+
+            //设置tcp及负载信息
+            robot_interface->getRobotConfig()->setTcpOffset(aubo_tcp);
+            //robot_interface->getRobotConfig()->setPayload(aubo_payload);
+
+            // 接口调用: 设置负载
+            robot_interface->getRobotConfig()->setPayload(std::get<0>(aubo_payload), std::get<1>(aubo_payload), std::get<2>(aubo_payload), std::get<3>(aubo_payload));
+            std::cout << "机械臂安全" << std::endl;
+            // 接口调用: 机械臂发起上电请求
+            robot_interface->getRobotManage()->poweron();
+
+            // 等待机械臂进入空闲模式
+            waitForRobotMode(robot_interface, RobotModeType::Idle);
+
+            std::cout << "机械臂上电成功，当前模式:"
+                << robot_interface->getRobotState()->getRobotModeType()
+                << std::endl;
+
+            // 接口调用: 机械臂发起松刹车请求
+            cli->getRobotInterface(robot_name)->getRobotManage()->startup();
+
+            // 等待机械臂进入运行模式
+            waitForRobotMode(robot_interface, RobotModeType::Running);
+
+            std::cout << "机械臂松刹车成功，当前模式:"
+                << robot_interface->getRobotState()->getRobotModeType()
+                << std::endl;
+
+        }
+
+        num++;
+    }
+}

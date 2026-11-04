@@ -1,0 +1,105 @@
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe.config
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.pdb
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.Form1.resources
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.Properties.Resources.resources
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.GenerateResource.Cache
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.exe
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.pdb
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.dll
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.dll
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.pdb
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.xml
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.pdb
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.xml
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe.manifest
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.application
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.exe.manifest
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.application
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csprojResolveAssemblyReference.cache
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe.config
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe.manifest
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.application
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.pdb
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.dll
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.dll
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.pdb
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.xml
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.pdb
+D:\project\VS_project\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.xml
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.AssemblyReference.cache
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.Form1.resources
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.Properties.Resources.resources
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.GenerateResource.cache
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.CoreCompileInputs.cache
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.exe.manifest
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.application
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.CopyComplete
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.exe
+D:\project\VS_project\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.pdb
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.AssemblyReference.cache
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.Form1.resources
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.Properties.Resources.resources
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.GenerateResource.cache
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.CoreCompileInputs.cache
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.exe
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.pdb
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe.config
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe.manifest
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.application
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.pdb
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.dll
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.dll
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.pdb
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.xml
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.pdb
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.xml
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.exe.manifest
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.application
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManSheng.06D734F6.Up2Date
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe.config
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe.manifest
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.application
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.exe
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\ManShengTest.pdb
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.dll
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.dll
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.pdb
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.xml
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.pdb
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.xml
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.AssemblyReference.cache
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.SuggestedBindingRedirects.cache
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.Form1.resources
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.Properties.Resources.resources
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.GenerateResource.cache
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.CoreCompileInputs.cache
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.exe.manifest
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.application
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.csproj.CopyComplete
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.exe
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest\ManShengTest\obj\x64\Debug\ManShengTest.pdb
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\ManShengTest.exe.config
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\ManShengTest.exe.manifest
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\ManShengTest.application
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\ManShengTest.exe
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\ManShengTest.pdb
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.dll
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\Newtonsoft.Json.dll
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\Newtonsoft.Json.pdb
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\Newtonsoft.Json.xml
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.pdb
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\bin\x64\Debug\Newtonsoft.Json.Bson.xml
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.csproj.AssemblyReference.cache
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.csproj.SuggestedBindingRedirects.cache
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.Form1.resources
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.Properties.Resources.resources
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.csproj.GenerateResource.cache
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.csproj.CoreCompileInputs.cache
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.exe.manifest
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.application
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.csproj.CopyComplete
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.exe
+C:\Users\13326\xwechat_files\wxid_as4qht1jbch821_0dcc\msg\file\2025-08\ManShengTest\ManShengTest - 副本\ManShengTest\obj\x64\Debug\ManShengTest.pdb

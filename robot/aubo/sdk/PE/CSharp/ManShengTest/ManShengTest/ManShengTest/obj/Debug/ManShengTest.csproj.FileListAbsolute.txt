@@ -1,0 +1,22 @@
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\Debug\ManShengTest.exe.config
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManShengTest.csproj.AssemblyReference.cache
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManShengTest.Form1.resources
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManShengTest.Properties.Resources.resources
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManShengTest.csproj.GenerateResource.cache
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManShengTest.csproj.CoreCompileInputs.cache
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManShengTest.exe
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManShengTest.pdb
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\ManShengTest.exe.config
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\ManShengTest.exe.manifest
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\ManShengTest.application
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\ManShengTest.exe
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\ManShengTest.pdb
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\Newtonsoft.Json.Bson.dll
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\Newtonsoft.Json.dll
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\Newtonsoft.Json.pdb
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\Newtonsoft.Json.xml
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\Newtonsoft.Json.Bson.pdb
+D:\project\ManShengTest\ManShengTest\ManShengTest\bin\Debug\Newtonsoft.Json.Bson.xml
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManShengTest.exe.manifest
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManShengTest.application
+D:\project\ManShengTest\ManShengTest\ManShengTest\obj\Debug\ManSheng.06D734F6.Up2Date

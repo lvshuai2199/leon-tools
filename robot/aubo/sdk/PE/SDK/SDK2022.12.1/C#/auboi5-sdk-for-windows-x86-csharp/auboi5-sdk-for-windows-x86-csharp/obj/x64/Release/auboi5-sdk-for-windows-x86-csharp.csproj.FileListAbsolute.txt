@@ -1,0 +1,6 @@
+E:\工作\SDK应用开发包\C\auboi5-sdk-for-windows-x86-x64-v1.4.5\auboi5-sdk-for-windows-x86-csharp\auboi5-sdk-for-windows-x86-csharp\bin\x64\Release\auboi5-sdk-for-windows-x86-csharp.exe
+E:\工作\SDK应用开发包\C\auboi5-sdk-for-windows-x86-x64-v1.4.5\auboi5-sdk-for-windows-x86-csharp\auboi5-sdk-for-windows-x86-csharp\bin\x64\Release\auboi5-sdk-for-windows-x86-csharp.pdb
+E:\工作\SDK应用开发包\C\auboi5-sdk-for-windows-x86-x64-v1.4.5\auboi5-sdk-for-windows-x86-csharp\auboi5-sdk-for-windows-x86-csharp\obj\x64\Release\auboi5-sdk-for-windows-x86-csharp.csprojAssemblyReference.cache
+E:\工作\SDK应用开发包\C\auboi5-sdk-for-windows-x86-x64-v1.4.5\auboi5-sdk-for-windows-x86-csharp\auboi5-sdk-for-windows-x86-csharp\obj\x64\Release\auboi5-sdk-for-windows-x86-csharp.csproj.CoreCompileInputs.cache
+E:\工作\SDK应用开发包\C\auboi5-sdk-for-windows-x86-x64-v1.4.5\auboi5-sdk-for-windows-x86-csharp\auboi5-sdk-for-windows-x86-csharp\obj\x64\Release\auboi5-sdk-for-windows-x86-csharp.exe
+E:\工作\SDK应用开发包\C\auboi5-sdk-for-windows-x86-x64-v1.4.5\auboi5-sdk-for-windows-x86-csharp\auboi5-sdk-for-windows-x86-csharp\obj\x64\Release\auboi5-sdk-for-windows-x86-csharp.pdb

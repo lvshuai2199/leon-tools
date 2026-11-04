@@ -1,0 +1,8 @@
+C:\Users\13326\Desktop\arcs_sdk\csharp\robotControl_CSharp\robotControl_CSharp\bin\x64\Debug\robotControl_CSharp.exe.config
+C:\Users\13326\Desktop\arcs_sdk\csharp\robotControl_CSharp\robotControl_CSharp\bin\x64\Debug\robotControl_CSharp.exe
+C:\Users\13326\Desktop\arcs_sdk\csharp\robotControl_CSharp\robotControl_CSharp\bin\x64\Debug\robotControl_CSharp.pdb
+C:\Users\13326\Desktop\arcs_sdk\csharp\robotControl_CSharp\robotControl_CSharp\obj\x64\Debug\robotControl_CSharp.csproj.AssemblyReference.cache
+C:\Users\13326\Desktop\arcs_sdk\csharp\robotControl_CSharp\robotControl_CSharp\obj\x64\Debug\robotControl_CSharp.csproj.SuggestedBindingRedirects.cache
+C:\Users\13326\Desktop\arcs_sdk\csharp\robotControl_CSharp\robotControl_CSharp\obj\x64\Debug\robotControl_CSharp.csproj.CoreCompileInputs.cache
+C:\Users\13326\Desktop\arcs_sdk\csharp\robotControl_CSharp\robotControl_CSharp\obj\x64\Debug\robotControl_CSharp.exe
+C:\Users\13326\Desktop\arcs_sdk\csharp\robotControl_CSharp\robotControl_CSharp\obj\x64\Debug\robotControl_CSharp.pdb

@@ -21,6 +21,7 @@
 | `local-git/` | 本地 Git 辅助 |
 | `stm32-servo/` | STM32 舵机固件与上位机 |
 | `robot/` | 机器人相关（不拆散） |
+| `robot/aubo/` | 从 aubo-notes 并入的 ARCS/PE SDK、示例和安装包。未带 `.vs` / `.idea`、`.pdb` 和调试符号 |
 | `robot/elite_script_send/` | Elite 脚本下发 |
 | `robot/urdf-server/` | 本地 URDF 预览 |
 | `doc-tools/` | 文档导出脚本（改路径后运行） |
@@ -44,6 +45,7 @@
 | `git-picbed/` | `D:\Softs\git-picbed` |
 | `leonpro-dev-hub/` | 无独立 Softs（`D:\Softs\leonpro-local` 是完整本地栈，不是本托盘） |
 | `stm32-servo/` | `D:\Softs\Servo` |
+| `robot/aubo/` | 无独立 Softs（SDK 与示例在仓库内） |
 | `robot/elite_script_send/` | `D:\Softs\elite-script-send` |
 | `can_tester_linux/` | 无 Windows Softs（Linux 部署） |
 | `edge-start-hub/` | 浏览器扩展，无 Softs |

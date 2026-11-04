@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Configuration Page</title>
+</head>
+<body>
+    <h1>Configuration Settings</h1>
+    <form action="/update" method="post">
+        <label for="robot_ip">RobotIP:</label>
+        <input type="text" id="robot_ip" name="robot_ip" value="{{ config.robot_ip if config.get('robot_ip') else '' }}" required>
+        <br>
+        <label for="procedure_id">Procedure ID:</label>
+        <input type="number" id="procedure_id" name="procedure_id" value="{{ config.procedure_id if config.get('procedure_id') else '' }}" required>
+        <br>
+        <label for="continuous_weld_len">Continuous Weld Length:</label>
+        <input type="number" step="any" id="continuous_weld_len" name="continuous_weld_len" value="{{ config.continuous_weld_len if config.get('continuous_weld_len') else '' }}" required>
+        <br>
+        <label for="continuous_welding">Continuous Welding:</label>
+        <input type="checkbox" id="continuous_welding" name="continuous_welding" {% if config.get('continuous_welding') %} checked {% endif %}>
+        <br>
+        <button type="submit">Update Configuration</button>
+    </form>
+
+    <h2>Current Configuration</h2>
+    <pre>{{ config | tojson }}</pre>
+</body>
+</html>

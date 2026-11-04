@@ -1,0 +1,96 @@
+    QString trackfile_name = "../test_ori/data.txt";
+
+    QFile trackfile(trackfile_name);
+
+    QString lineString;
+
+    int ret;
+
+    if(!trackfile.open(QIODevice::Text |QIODevice::ReadWrite))
+    {
+
+        qDebug() << "can't open file";
+    }
+
+    else
+    {
+        qDebug() << "open file sucess";
+
+        while(trackfile.atEnd() == false)
+        {
+
+
+                lineString = QString(trackfile.readLine()).trimmed();
+
+
+                data_Rpy_angle[0] = lineString.section(',',0, 0).toDouble();
+                data_Rpy_angle[1] = lineString.section(',',1, 1).toDouble();
+                data_Rpy_angle[2] = lineString.section(',',2, 2).toDouble();
+
+
+//                qDebug() << data_Rpy_angle[0] << ","
+//                         << data_Rpy_angle[1] << ","
+//                         << data_Rpy_angle[2];
+
+
+                double ref_point[6] = {0,0,0,0,0,0};
+                aubo_robot_namespace::Pos pos_test;
+                pos_test.x = -0.4;
+                pos_test.y = -0.1;
+                pos_test.z = 0.5;
+
+                aubo_robot_namespace::Rpy rpy_test;
+                rpy_test.rx = data_Rpy_angle[0] / 180.0 * M_PI;
+                rpy_test.ry = data_Rpy_angle[1] / 180.0 * M_PI;
+                rpy_test.rz = data_Rpy_angle[2] / 180.0 * M_PI;
+
+                aubo_robot_namespace::Ori ori_test;
+
+                robotService.RPYToQuaternion(rpy_test,ori_test);
+
+//                qDebug() << "w : " << ori_test.w;
+//                qDebug() << "x : " << ori_test.x;
+//                qDebug() << "y : " << ori_test.y;
+//                qDebug() << "z : " << ori_test.z;
+
+                //aubo_robot_namespace::wayPoint_S waypoint_test;
+
+                robotService.robotServiceRobotIk(ref_point,pos_test,ori_test,move_point);
+
+                vecWaypointInfo.push_back(move_point);
+
+          }
+
+        qDebug() << "vector is :  ";
+
+        for(int i = 0; i < vecWaypointInfo.size(); i++)
+        {
+                qDebug() << vecWaypointInfo[i].jointpos[0] << ","
+                         << vecWaypointInfo[i].jointpos[1] << ","
+                         << vecWaypointInfo[i].jointpos[2] << ","
+                         << vecWaypointInfo[i].jointpos[3] << ","
+                         << vecWaypointInfo[i].jointpos[4] << ","
+                         << vecWaypointInfo[i].jointpos[5];
+        }
+
+
+
+            robotService.robotServiceOfflineTrackWaypointClear();
+
+
+
+            ret = robotService.robotServiceJointMove(first_point, true);
+            if(ret != aubo_robot_namespace::InterfaceCallSuccCode)
+            {
+                std::cerr<<"Movement to first posture failure.　ret:"<<ret<<std::endl;
+            }
+
+            robotService.robotServiceOfflineTrackWaypointAppend(vecWaypointInfo);
+
+            //m_timer->start();
+
+            robotService.robotServiceOfflineTrackMoveStartup(true);
+
+        }
+
+}

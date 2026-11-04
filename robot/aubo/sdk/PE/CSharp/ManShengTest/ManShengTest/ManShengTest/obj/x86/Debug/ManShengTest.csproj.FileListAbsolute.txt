@@ -1,0 +1,15 @@
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x86\Debug\ManShengTest.exe.config
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x86\Debug\ManShengTest.exe
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x86\Debug\ManShengTest.pdb
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x86\Debug\Newtonsoft.Json.Bson.dll
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x86\Debug\Newtonsoft.Json.dll
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x86\Debug\Newtonsoft.Json.pdb
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x86\Debug\Newtonsoft.Json.xml
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x86\Debug\Newtonsoft.Json.Bson.pdb
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\bin\x86\Debug\Newtonsoft.Json.Bson.xml
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x86\Debug\ManShengTest.Form1.resources
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x86\Debug\ManShengTest.Properties.Resources.resources
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x86\Debug\ManShengTest.csproj.GenerateResource.Cache
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x86\Debug\ManShengTest.exe
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x86\Debug\ManShengTest.pdb
+d:\visual studio 2015\Projects\ManShengTest\ManShengTest\obj\x86\Debug\ManShengTest.csprojResolveAssemblyReference.cache
