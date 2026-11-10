@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""轨迹记录：CSV + 离线可打开的 3D HTML。"""
+"""轨迹记录：CSV、离线 3D HTML，以及实时绘制用的降采样点。"""
 from __future__ import print_function
 
 import csv
@@ -18,6 +18,7 @@ CSV_FIELDS = [
 ]
 
 HTML_MAX_POINTS = 8000
+LIVE_MAX_POINTS = 4000
 
 
 def pose_sample(parsed, t0, now=None):
@@ -73,6 +74,32 @@ def _downsample(samples, limit):
     out = []
     for i in range(limit):
         out.append(samples[int(round(i * step))])
+    return out
+
+
+def keep_sample(prev, sample, min_mm):
+    """采集间距。min_mm<=0 或没有上一点时保留；否则相对上一点的位移达到间距才保留。"""
+    if min_mm <= 0 or prev is None:
+        return True
+    x, y, z = sample.get("x_mm"), sample.get("y_mm"), sample.get("z_mm")
+    px, py, pz = prev.get("x_mm"), prev.get("y_mm"), prev.get("z_mm")
+    if None in (x, y, z, px, py, pz):
+        return True
+    dx = float(x) - float(px)
+    dy = float(y) - float(py)
+    dz = float(z) - float(pz)
+    need = float(min_mm)
+    return dx * dx + dy * dy + dz * dz >= need * need
+
+
+def tcp_xyz(samples, limit=LIVE_MAX_POINTS):
+    """笛卡尔点 (x_mm, y_mm, z_mm)，供界面实时绘制。缺坐标的样本丢掉。"""
+    out = []
+    for row in _downsample(samples, limit):
+        x, y, z = row.get("x_mm"), row.get("y_mm"), row.get("z_mm")
+        if x is None or y is None or z is None:
+            continue
+        out.append((float(x), float(y), float(z)))
     return out
 
 

@@ -4,8 +4,9 @@
 from __future__ import annotations
 
 import argparse
-import os
 import json
+import math
+import os
 import socket
 import sys
 import threading
@@ -14,12 +15,14 @@ import traceback
 import webbrowser
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer, Signal, QObject, QSize
-from PySide6.QtGui import QAction, QColor, QFont, QTextCharFormat, QTextCursor
+from PySide6.QtCore import QByteArray, QObject, QPointF, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import QAction, QColor, QFont, QPainter, QPen, QPolygonF, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
     QComboBox,
+    QDockWidget,
+    QDoubleSpinBox,
     QFileDialog,
     QFrame,
     QGridLayout,
@@ -61,7 +64,7 @@ from sender import (
     task,
 )
 from state_listener import RobotStateStream, format_pose
-from trajectory import pose_sample, write_csv, write_html
+from trajectory import keep_sample, pose_sample, tcp_xyz, write_csv, write_html
 
 # Settings / sample helpers inlined — avoid importing Tk legacy (elite_script_send)
 # which pulls tkinter into the onefile and slows cold extract.
@@ -115,6 +118,242 @@ NUM_FONT = QFont("Consolas", 10)
 UI_FONT = QFont("Microsoft YaHei", 9)
 
 
+def _nice_step(span):
+    raw = max(span, 1.0) / 5.0
+    mag = 10 ** math.floor(math.log10(raw))
+    nrm = raw / mag
+    if nrm < 1.5:
+        return mag
+    if nrm < 3.5:
+        return 2 * mag
+    if nrm < 7.5:
+        return 5 * mag
+    return 10 * mag
+
+
+class LiveTrajectoryView(QWidget):
+    """记录过程中的 TCP 三维折线。投影和离线 HTML 一致：拖动旋转，滚轮缩放。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._pts = []
+        self._total = 0
+        self.yaw = 0.75
+        self.pitch = 0.5
+        self.dist = 1.0
+        self.show_axes = False
+        self._drag = None
+        self.setMinimumHeight(140)
+        self.setMouseTracking(True)
+        self.setFocusPolicy(Qt.WheelFocus)
+        self.setCursor(Qt.OpenHandCursor)
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+
+    def set_axes(self, on):
+        self.show_axes = bool(on)
+        self.update()
+
+    def set_points(self, pts, total=None):
+        self._pts = pts
+        self._total = len(pts) if total is None else int(total)
+        self.update()
+
+    def clear_path(self):
+        self.set_points([], 0)
+
+    def _bounds(self, include_origin):
+        pts = self._pts
+        if not pts:
+            return (0.0, 0.0, 0.0), 1.0
+        minx = maxx = pts[0][0]
+        miny = maxy = pts[0][1]
+        minz = maxz = pts[0][2]
+        for x, y, z in pts:
+            if x < minx:
+                minx = x
+            elif x > maxx:
+                maxx = x
+            if y < miny:
+                miny = y
+            elif y > maxy:
+                maxy = y
+            if z < minz:
+                minz = z
+            elif z > maxz:
+                maxz = z
+        if include_origin:
+            minx = min(minx, 0.0)
+            miny = min(miny, 0.0)
+            minz = min(minz, 0.0)
+            maxx = max(maxx, 0.0)
+            maxy = max(maxy, 0.0)
+            maxz = max(maxz, 0.0)
+        cx = (minx + maxx) / 2.0
+        cy = (miny + maxy) / 2.0
+        cz = (minz + maxz) / 2.0
+        radius = max(
+            1.0,
+            abs(minx - cx), abs(maxx - cx),
+            abs(miny - cy), abs(maxy - cy),
+            abs(minz - cz), abs(maxz - cz),
+        )
+        return (cx, cy, cz), radius
+
+    def _project(self, x, y, z, center, radius, width, height):
+        x -= center[0]
+        y -= center[1]
+        z -= center[2]
+        cy = math.cos(self.yaw)
+        sy = math.sin(self.yaw)
+        cp = math.cos(self.pitch)
+        sp = math.sin(self.pitch)
+        x1 = x * cy - y * sy
+        y1 = x * sy + y * cy
+        z2 = y1 * sp + z * cp
+        scale = min(width, height) * 0.86 / (radius * self.dist * 2.0)
+        return width / 2.0 + x1 * scale, height / 2.0 - z2 * scale
+
+    def _draw_axes(self, painter, center, radius, width, height):
+        step = _nice_step(radius * 2.0)
+        reach = math.ceil((radius * 1.15) / step) * step
+        colors = (QColor("#e53935"), QColor("#43a047"), QColor("#1e88e5"))
+        names = ("X", "Y", "Z")
+        painter.setFont(QFont("Consolas", 9))
+        for axis in range(3):
+            neg = [0.0, 0.0, 0.0]
+            pos = [0.0, 0.0, 0.0]
+            neg[axis] = -reach
+            pos[axis] = reach
+            ax, ay = self._project(neg[0], neg[1], neg[2], center, radius, width, height)
+            bx, by = self._project(pos[0], pos[1], pos[2], center, radius, width, height)
+            pen = QPen(colors[axis])
+            pen.setWidthF(1.6)
+            painter.setPen(pen)
+            painter.drawLine(QPointF(ax, ay), QPointF(bx, by))
+            painter.drawText(QPointF(bx + 6, by - 4), names[axis])
+            tick = -reach
+            while tick <= reach + 1e-6:
+                if abs(tick) > 1e-9:
+                    t0 = [0.0, 0.0, 0.0]
+                    t1 = [0.0, 0.0, 0.0]
+                    t0[axis] = tick
+                    t1[axis] = tick
+                    side = (axis + 1) % 3
+                    t0[side] = -step * 0.08
+                    t1[side] = step * 0.08
+                    ux, uy = self._project(t0[0], t0[1], t0[2], center, radius, width, height)
+                    wx, wy = self._project(t1[0], t1[1], t1[2], center, radius, width, height)
+                    painter.drawLine(QPointF(ux, uy), QPointF(wx, wy))
+                    painter.drawText(QPointF(wx + 3, wy + 3), str(int(round(tick))))
+                tick += step
+        ox, oy = self._project(0, 0, 0, center, radius, width, height)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#ffffff"))
+        painter.drawEllipse(QPointF(ox, oy), 3.5, 3.5)
+        painter.setPen(QColor("#ffffff"))
+        painter.drawText(QPointF(ox + 8, oy - 8), "O")
+
+    def paintEvent(self, _event):
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.Antialiasing, True)
+        width = self.width()
+        height = self.height()
+        painter.fillRect(0, 0, width, height, QColor("#111111"))
+        center, radius = self._bounds(self.show_axes)
+        if self.show_axes:
+            self._draw_axes(painter, center, radius, width, height)
+        pts = self._pts
+        if not pts:
+            painter.setPen(QColor("#9CA3AF"))
+            painter.setFont(QFont("Microsoft YaHei", 10))
+            painter.drawText(16, 28, "点「记录」后，TCP 轨迹在这里实时画出")
+            painter.end()
+            return
+        poly = QPolygonF()
+        for x, y, z in pts:
+            sx, sy = self._project(x, y, z, center, radius, width, height)
+            poly.append(QPointF(sx, sy))
+        pen = QPen(QColor("#ffcc02"))
+        pen.setWidthF(1.8)
+        pen.setCosmetic(True)
+        painter.setPen(pen)
+        painter.setBrush(Qt.NoBrush)
+        painter.drawPolyline(poly)
+        painter.setPen(Qt.NoPen)
+        painter.setBrush(QColor("#4caf50"))
+        painter.drawEllipse(poly[0], 5, 5)
+        painter.setBrush(QColor("#ff5252"))
+        painter.drawEllipse(poly[-1], 5, 5)
+        painter.setPen(QColor("#d1d5db"))
+        painter.setFont(QFont("Microsoft YaHei", 9))
+        label = "TCP  %d 点" % self._total
+        if len(pts) != self._total:
+            label += " · 显示 %d" % len(pts)
+        painter.drawText(12, height - 10, label)
+        painter.end()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            pos = event.position()
+            self._drag = (pos.x(), pos.y())
+            self.setCursor(Qt.ClosedHandCursor)
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag is None:
+            super().mouseMoveEvent(event)
+            return
+        pos = event.position()
+        x, y = pos.x(), pos.y()
+        lx, ly = self._drag
+        self.yaw += (x - lx) * 0.008
+        self.pitch += (y - ly) * 0.008
+        if self.pitch > 1.4:
+            self.pitch = 1.4
+        elif self.pitch < -1.4:
+            self.pitch = -1.4
+        self._drag = (x, y)
+        self.update()
+
+    def mouseReleaseEvent(self, event):
+        self._drag = None
+        self.setCursor(Qt.OpenHandCursor)
+        super().mouseReleaseEvent(event)
+
+    def mouseDoubleClickEvent(self, event):
+        self.yaw = 0.75
+        self.pitch = 0.5
+        self.dist = 1.0
+        self._drag = None
+        self.update()
+        super().mouseDoubleClickEvent(event)
+
+    def wheelEvent(self, event):
+        self.dist *= 1.08 if event.angleDelta().y() < 0 else 0.92
+        if self.dist < 0.2:
+            self.dist = 0.2
+        elif self.dist > 8.0:
+            self.dist = 8.0
+        self.update()
+        event.accept()
+
+
+class _NoticeLabel(QLabel):
+    """主界面一行反馈。单击打开日志。"""
+
+    clicked = Signal()
+
+    def __init__(self, text=""):
+        super().__init__(text)
+        self.setCursor(Qt.PointingHandCursor)
+        self.setToolTip("打开日志")
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self.clicked.emit()
+        super().mouseReleaseEvent(event)
+
+
 class _Bridge(QObject):
     listen_status = Signal(str, str)
     listen_connected = Signal(bool)  # True=socket ok; False=retrying/disconnected
@@ -154,6 +393,12 @@ class EliteScriptWindow(QMainWindow):
         self._rec_lock = threading.Lock()
         self._rec_samples = []
         self._rec_t0 = None
+        self._live_n = -1
+        self._dir_started = False
+        try:
+            self._sample_step_mm = float(self.cfg.get("sample_step_mm") or 0)
+        except (TypeError, ValueError):
+            self._sample_step_mm = 0.0
 
         self._bridge = _Bridge()
         self._bridge.listen_status.connect(self._on_listen_status)
@@ -168,7 +413,6 @@ class EliteScriptWindow(QMainWindow):
         self._pose_timer.timeout.connect(self._poll_pose)
 
         self._build_ui()
-        self._refresh(log=False)
         self._restore_last_file()
         self._refresh_history_list()
         self._loading = False
@@ -190,12 +434,9 @@ class EliteScriptWindow(QMainWindow):
                 resolved = cand
             if resolved.is_dir():
                 return resolved
-        fallback = Path(DEFAULT_SCRIPT_DIR)
-        try:
-            fallback.mkdir(parents=True, exist_ok=True)
-        except OSError:
-            pass
-        return fallback
+        if saved_dir:
+            return Path(str(saved_dir)).expanduser()
+        return Path(DEFAULT_SCRIPT_DIR)
 
     def _ellipsis_path(self, shown, limit=36):
         shown = str(shown or "")
@@ -271,11 +512,21 @@ class EliteScriptWindow(QMainWindow):
         btn.clicked.connect(slot)
         return btn
 
+    def _side_btn(self, text, tip):
+        btn = QPushButton(text)
+        btn.setObjectName("sideToggle")
+        btn.setCheckable(True)
+        btn.setFixedHeight(29)
+        btn.setMinimumWidth(52)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setToolTip(tip)
+        return btn
+
     def _build_ui(self):
         # 美工定稿：页底 F5F7FA / 白卡 / 右栏操作竖条
         root = QWidget()
         self.setCentralWidget(root)
-        root.setStyleSheet(
+        self.setStyleSheet(
             "QWidget{background:#F5F7FA;color:#1F2937;font-family:'Microsoft YaHei';font-size:9pt;}"
             "QFrame#zone{background:#FFFFFF;border:1px solid #E5E7EB;border-radius:8px;}"
             "QPlainTextEdit,QListWidget,QLineEdit,QComboBox{"
@@ -303,8 +554,10 @@ class EliteScriptWindow(QMainWindow):
             "QPushButton#success{background:#2563EB;color:#FFFFFF;border:1px solid #2563EB;"
             "min-height:29px;max-height:29px;}"
             "QPushButton#success:hover{background:#1D4ED8;}"
+            "QPushButton#sideToggle:checked{background:#EFF4FF;color:#2563EB;border:1px solid #2563EB;}"
             "QLabel#muted{color:#6B7280;}"
-            "QSplitter::handle{background:#E5E7EB;width:0px;}"
+            "QSplitter#hSplit::handle{background:#E5E7EB;width:0px;height:0px;}"
+            "QSplitter#trajSplit::handle{background:#D1D5DB;height:6px;}"
             "QPlainTextEdit#log{background:#FFFFFF;border:1px solid #E5E7EB;}"
             "QScrollBar:horizontal{height:6px;background:transparent;margin:0;}"
             "QScrollBar:horizontal:handle{background:#D1D5DB;border-radius:3px;min-width:24px;}"
@@ -321,7 +574,7 @@ class EliteScriptWindow(QMainWindow):
         bar.addWidget(QLabel("IP"))
         self.cmb_host = QComboBox()
         self.cmb_host.setEditable(True)
-        self.cmb_host.setMinimumWidth(140)
+        self.cmb_host.setFixedWidth(118)
         self.cmb_host.addItems(self.host_history)
         self.cmb_host.setEditText(str(self.cfg.get("host") or DEFAULT_HOST))
         self.cmb_host.currentTextChanged.connect(lambda *_: self._schedule_save())
@@ -333,32 +586,15 @@ class EliteScriptWindow(QMainWindow):
         bar.addWidget(self.cmb_host)
         bar.addWidget(QLabel("PORT"))
         self.ed_port = QLineEdit(str(self.cfg.get("port") or DEFAULT_PORT))
-        self.ed_port.setFixedWidth(56)
+        self.ed_port.setFixedWidth(46)
         self.ed_port.textChanged.connect(lambda *_: self._schedule_save())
         bar.addWidget(self.ed_port)
         bar.addWidget(QLabel("超时"))
         self.ed_timeout = QLineEdit(str(self.cfg.get("timeout") or DEFAULT_TIMEOUT))
-        self.ed_timeout.setFixedWidth(48)
+        self.ed_timeout.setFixedWidth(40)
         self.ed_timeout.textChanged.connect(lambda *_: self._schedule_save())
         bar.addWidget(self.ed_timeout)
-        # 回执/Dashboard 已去；测连保留（帅吕：测连不需要去掉）
         bar.addWidget(self._tool_btn("测连", self._ping, primary=True, min_w=52))
-        self.chk_open_html = QCheckBox("打开HTML")
-        self.chk_open_html.setChecked(bool(self.cfg.get("open_html", False)))
-        self.chk_open_html.toggled.connect(lambda *_: self._schedule_save())
-        bar.addWidget(self.chk_open_html)
-
-        self.btn_open_traces = self._tool_btn("打开文件夹", self._open_traces_folder, min_w=88)
-        self.btn_open_traces.setFixedHeight(29)
-        self.btn_open_traces.setMinimumHeight(29)
-        self.btn_open_traces.setMaximumHeight(29)
-        self.btn_open_traces.setStyleSheet(
-            "QPushButton{background:#FFFFFF;color:#1F2937;border:1px solid #E5E7EB;"
-            "border-radius:6px;padding:0px 10px;min-height:29px;max-height:29px;}"
-            "QPushButton:hover{background:#EFF4FF;border-color:#2563EB;color:#2563EB;}"
-        )
-        bar.addWidget(self.btn_open_traces)
-        # 顶栏只留 IP/PORT/超时/打开HTML；状态字/说明/回执/测连全去
         bar.addStretch(1)
         estop_top = self._tool_btn("急停", self._estop, danger=True, min_w=96)
         estop_top.setFixedHeight(35)
@@ -375,88 +611,48 @@ class EliteScriptWindow(QMainWindow):
         top_l.addWidget(row)
         lay.addWidget(top_wrap)
 
-        # ----- 2 位姿白卡：左坐标 · 右竖排停止监听/记录 -----
-        pose_box = QFrame()
-        pose_box.setObjectName("zone")
-        pose_box.setMinimumHeight(72)
-        pose_outer = QHBoxLayout(pose_box)
-        pose_outer.setContentsMargins(10, 8, 10, 8)
-        pose_outer.setSpacing(6)
-
-        pose_left = QVBoxLayout()
-        pose_left.setSpacing(4)
-        cart = QHBoxLayout()
-        cart.addWidget(QLabel("笛卡尔"))
-        self.lbl_xyz = []
-        self.lbl_rpy = []
-        for name, unit, bucket in (
-            ("X", "mm", self.lbl_xyz),
-            ("Y", "mm", self.lbl_xyz),
-            ("Z", "mm", self.lbl_xyz),
-            ("Rx", "°", self.lbl_rpy),
-            ("Ry", "°", self.lbl_rpy),
-            ("Rz", "°", self.lbl_rpy),
-        ):
-            cart.addWidget(QLabel(name))
-            lab = QLabel("—")
-            lab.setFont(NUM_FONT)
-            lab.setMinimumWidth(72)
-            lab.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            bucket.append(lab)
-            cart.addWidget(lab)
-            u = QLabel(unit)
-            u.setObjectName("muted")
-            cart.addWidget(u)
-        cart.addStretch(1)
-        pose_left.addLayout(cart)
-
-        joint = QHBoxLayout()
-        joint.addWidget(QLabel("关节"))
-        self.lbl_j = []
-        for i in range(6):
-            joint.addWidget(QLabel("J%d" % (i + 1)))
-            lab = QLabel("—")
-            lab.setFont(NUM_FONT)
-            lab.setMinimumWidth(64)
-            lab.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.lbl_j.append(lab)
-            joint.addWidget(lab)
-            u = QLabel("°")
-            u.setObjectName("muted")
-            joint.addWidget(u)
-        joint.addStretch(1)
-        pose_left.addLayout(joint)
+        # ----- 2 操作行 + 通知栏。坐标改到右侧竖列 -----
+        act_box = QFrame()
+        act_box.setObjectName("zone")
+        act_l = QVBoxLayout(act_box)
+        act_l.setContentsMargins(10, 6, 10, 6)
+        act_l.setSpacing(4)
+        pose_act = QHBoxLayout()
+        pose_act.setSpacing(6)
+        self.btn_listen = self._tool_btn("监听", self._toggle_listen, primary=True, min_w=72)
+        self.btn_listen.setFixedHeight(29)
+        self.btn_listen.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        self.btn_record = self._tool_btn("记录", self._toggle_record, primary=True, min_w=72)
+        self.btn_record.setFixedHeight(29)
+        self.btn_record.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
+        pose_act.addWidget(self.btn_listen)
+        pose_act.addWidget(self.btn_record)
         self.lbl_rec = QLabel("")
         self.lbl_rec.setStyleSheet("color:#2563EB;")
-        pose_left.addWidget(self.lbl_rec)
-        pose_outer.addLayout(pose_left, 1)
+        pose_act.addWidget(self.lbl_rec)
+        pose_act.addStretch(1)
+        self.btn_dir = self._side_btn("目录", "打开脚本目录。不点开不读取文件夹")
+        self.btn_traj = self._side_btn("轨迹", "打开侧边轨迹页，可拉成独立窗口")
+        self.btn_log = self._side_btn("日志", "打开日志和历史")
+        pose_act.addWidget(self.btn_dir)
+        pose_act.addWidget(self.btn_traj)
+        pose_act.addWidget(self.btn_log)
+        act_l.addLayout(pose_act)
+        self.lbl_status = _NoticeLabel("就绪")
+        self.lbl_status.setObjectName("muted")
+        self.lbl_status.setSizePolicy(QSizePolicy.Ignored, QSizePolicy.Fixed)
+        self.lbl_status.clicked.connect(self._open_log_from_notice)
+        act_l.addWidget(self.lbl_status)
+        lay.addWidget(act_box)
 
-        pose_right = QVBoxLayout()
-        pose_right.setSpacing(6)
-        pose_right.setContentsMargins(0, 0, 0, 0)
-        self.btn_listen = self._tool_btn("监听", self._toggle_listen, primary=True, min_w=88)
-        self.btn_listen.setFixedHeight(29)
-        self.btn_listen.setMinimumHeight(29)
-        self.btn_listen.setMaximumHeight(29)
-        self.btn_listen.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        pose_right.addWidget(self.btn_listen)
-        self.btn_record = self._tool_btn("记录", self._toggle_record, primary=True, min_w=88)
-        self.btn_record.setFixedHeight(29)
-        self.btn_record.setMinimumHeight(29)
-        self.btn_record.setMaximumHeight(29)
-        self.btn_record.setSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed)
-        pose_right.addWidget(self.btn_record)
-        pose_right.addStretch(1)
-        pose_outer.addLayout(pose_right)
-        lay.addWidget(pose_box)
-
-        # ----- 3 中区三栏：左列表 | 编辑 | 右操作 -----
+        # ----- 3 脚本编辑 | 右侧电源/运动 -----
         self.splitter = QSplitter(Qt.Horizontal)
         splitter = self.splitter
+        splitter.setObjectName("hSplit")
         splitter.setChildrenCollapsible(False)
         splitter.setHandleWidth(0)
 
-        # 左：脚本列表 200～220
+        # 目录侧边页：启动不读文件夹
         left = QFrame()
         left.setObjectName("zone")
         left_l = QVBoxLayout(left)
@@ -467,7 +663,7 @@ class EliteScriptWindow(QMainWindow):
         files_bar.addWidget(QLabel("脚本"))
         files_bar.addStretch(1)
         files_bar.addWidget(self._tool_btn("刷新", lambda: self._refresh(True), min_w=48))
-        files_bar.addWidget(self._tool_btn("目录", self._pick_dir, min_w=48))
+        files_bar.addWidget(self._tool_btn("更换", self._pick_dir, min_w=48))
         left_l.addLayout(files_bar)
         self.lbl_dir = QLabel("")
         self.lbl_dir.setObjectName("muted")
@@ -478,9 +674,8 @@ class EliteScriptWindow(QMainWindow):
         self.lst.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
         self.lst.currentRowChanged.connect(self._on_select)
         left_l.addWidget(self.lst, 1)
-        left.setMinimumWidth(160)
-        left.setMaximumWidth(220)
-        splitter.addWidget(left)
+        left.setMinimumWidth(180)
+        self._dir_pane = left
 
         # 中：编辑器
         editor = QWidget()
@@ -523,7 +718,7 @@ class EliteScriptWindow(QMainWindow):
         ed_l.addWidget(self.txt, 1)
         self._editor_zone = editor  # pack with right below
 
-        # 右：无滚动条；组内≥6、组间≥10；急停钉底；小窗靠缩钮高
+        # 右：贴在页底上，不进脚本白卡。急停在顶栏。组内 4。
         right = QWidget()
         right.setMinimumWidth(128)
         right.setMaximumWidth(140)
@@ -566,25 +761,72 @@ class EliteScriptWindow(QMainWindow):
             ("清弹窗", self._close_popup),
         )))
         right_l.addStretch(1)
+        right.setFixedWidth(128)
         mid_wrap = QFrame()
         mid_wrap.setObjectName("zone")
-        mid_l = QHBoxLayout(mid_wrap)
+        mid_l = QVBoxLayout(mid_wrap)
         mid_l.setContentsMargins(6, 6, 6, 6)
         mid_l.setSpacing(0)
         mid_l.addWidget(self._editor_zone, 1)
-        mid_l.addWidget(right, 0)
-        right.setFixedWidth(128)
-        splitter.addWidget(mid_wrap)
+        work = QWidget()
+        work_l = QHBoxLayout(work)
+        work_l.setContentsMargins(0, 0, 0, 0)
+        work_l.setSpacing(6)
+        work_l.addWidget(mid_wrap, 1)
+        work_l.addWidget(right, 0)
+        work_l.addWidget(self._build_pose_column(), 0)
+        splitter.addWidget(work)
 
-        splitter.setStretchFactor(0, 0)
-        splitter.setStretchFactor(1, 1)
-        splitter.setSizes([210, 900, 134])
-        lay.addWidget(splitter, 1)
+        splitter.setStretchFactor(0, 1)
+
+        # ----- 3b 实时轨迹（记录中刷新；停录后仍留在画布上） -----
+        traj = QFrame()
+        traj.setObjectName("zone")
+        traj.setMinimumHeight(150)
+        traj_l = QVBoxLayout(traj)
+        traj_l.setContentsMargins(8, 4, 8, 6)
+        traj_l.setSpacing(4)
+        traj_bar = QHBoxLayout()
+        traj_bar.setSpacing(8)
+        traj_bar.addWidget(QLabel("间距"))
+        self.sp_step = QDoubleSpinBox()
+        self.sp_step.setRange(0, 50)
+        self.sp_step.setDecimals(2)
+        self.sp_step.setSingleStep(0.1)
+        self.sp_step.setSuffix(" mm")
+        self.sp_step.setFixedWidth(88)
+        self.sp_step.setValue(self._sample_step_mm)
+        self.sp_step.setToolTip("采集间距。0 表示每个状态包都记；大于 0 时，相对上一个已记录点移动超过该距离才记一点。")
+        self.sp_step.valueChanged.connect(self._on_sample_step)
+        traj_bar.addWidget(self.sp_step)
+        self.live = LiveTrajectoryView()
+        self.chk_axes = QCheckBox("坐标系")
+        self.chk_axes.toggled.connect(self.live.set_axes)
+        traj_bar.addWidget(self.chk_axes)
+        traj_bar.addStretch(1)
+        self.chk_open_html = QCheckBox("打开HTML")
+        self.chk_open_html.setChecked(bool(self.cfg.get("open_html", False)))
+        self.chk_open_html.toggled.connect(lambda *_: self._schedule_save())
+        traj_bar.addWidget(self.chk_open_html)
+        self.btn_open_traces = self._tool_btn("打开文件夹", self._open_traces_folder, min_w=88)
+        self.btn_open_traces.setFixedHeight(26)
+        traj_bar.addWidget(self.btn_open_traces)
+        self.btn_float = QPushButton("拉出")
+        self.btn_float.setFixedHeight(26)
+        self.btn_float.setToolTip("拉成独立窗口；再点一次贴回侧边")
+        self.btn_float.clicked.connect(self._toggle_float_traj)
+        traj_bar.addWidget(self.btn_float)
+        traj_l.addLayout(traj_bar)
+        traj_hint = QLabel("拖动旋转 · 滚轮缩放 · 双击复位")
+        traj_hint.setObjectName("muted")
+        traj_l.addWidget(traj_hint)
+        traj_l.addWidget(self.live, 1)
+        self._traj_pane = traj
 
         # ----- 4 底日志 -----
         self.tabs = QTabWidget()
-        self.tabs.setMinimumHeight(120)
-        self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
+        self.tabs.setMinimumHeight(160)
+        self.tabs.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.log = QPlainTextEdit()
         self.log.setObjectName("log")
         self.log.setReadOnly(True)
@@ -609,9 +851,173 @@ class EliteScriptWindow(QMainWindow):
         hbar.addWidget(self._tool_btn("清空", self._history_clear, min_w=48))
         hist_l.addLayout(hbar)
         self.tabs.addTab(hist, "历史")
-        lay.addWidget(self.tabs)
+        self._log_pane = self.tabs
+
+        lay.addWidget(splitter, 1)
+        self._setup_side_docks()
 
         self._sync_pose_buttons()
+
+    def _pose_row(self, name, unit, bucket):
+        row = QHBoxLayout()
+        row.setSpacing(4)
+        row.setContentsMargins(0, 0, 0, 0)
+        title = QLabel(name)
+        title.setFixedWidth(28)
+        value = QLabel("—")
+        value.setFont(NUM_FONT)
+        value.setAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        value.setMinimumWidth(58)
+        unit_lbl = QLabel(unit)
+        unit_lbl.setObjectName("muted")
+        unit_lbl.setFixedWidth(22)
+        row.addWidget(title)
+        row.addWidget(value, 1)
+        row.addWidget(unit_lbl)
+        bucket.append(value)
+        wrap = QWidget()
+        wrap.setLayout(row)
+        return wrap
+
+    def _build_pose_column(self):
+        card = QFrame()
+        card.setObjectName("zone")
+        card.setFixedWidth(156)
+        lay = QVBoxLayout(card)
+        lay.setContentsMargins(8, 8, 8, 8)
+        lay.setSpacing(2)
+        cart_title = QLabel("笛卡尔")
+        cart_title.setObjectName("muted")
+        lay.addWidget(cart_title)
+        self.lbl_xyz = []
+        self.lbl_rpy = []
+        for name, unit, bucket in (
+            ("X", "mm", self.lbl_xyz),
+            ("Y", "mm", self.lbl_xyz),
+            ("Z", "mm", self.lbl_xyz),
+            ("Rx", "°", self.lbl_rpy),
+            ("Ry", "°", self.lbl_rpy),
+            ("Rz", "°", self.lbl_rpy),
+        ):
+            lay.addWidget(self._pose_row(name, unit, bucket))
+        joint_title = QLabel("关节")
+        joint_title.setObjectName("muted")
+        lay.addSpacing(8)
+        lay.addWidget(joint_title)
+        self.lbl_j = []
+        for i in range(6):
+            lay.addWidget(self._pose_row("J%d" % (i + 1), "°", self.lbl_j))
+        lay.addStretch(1)
+        return card
+
+    def _setup_side_docks(self):
+        feat = QDockWidget.DockWidgetFeature
+        flags = feat.DockWidgetMovable | feat.DockWidgetFloatable | feat.DockWidgetClosable
+        areas = Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
+
+        self.dock_dir = QDockWidget("目录", self)
+        self.dock_dir.setObjectName("dirDock")
+        self.dock_dir.setAllowedAreas(areas)
+        self.dock_dir.setFeatures(flags)
+        self.dock_dir.setWidget(self._dir_pane)
+        self.addDockWidget(Qt.LeftDockWidgetArea, self.dock_dir)
+        self.dock_dir.hide()
+        self.dock_dir.visibilityChanged.connect(self._on_dir_vis)
+        self.btn_dir.toggled.connect(self._set_dir_open)
+
+        self.dock_traj = QDockWidget("轨迹", self)
+        self.dock_traj.setObjectName("trajDock")
+        self.dock_traj.setAllowedAreas(areas)
+        self.dock_traj.setFeatures(flags)
+        self.dock_traj.setWidget(self._traj_pane)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.dock_traj)
+        self.dock_traj.hide()
+        self.dock_traj.visibilityChanged.connect(self._on_traj_vis)
+        self.dock_traj.topLevelChanged.connect(lambda *_: self._sync_float_btn())
+        self.btn_traj.toggled.connect(self._set_traj_open)
+
+        self.dock_log = QDockWidget("日志", self)
+        self.dock_log.setObjectName("logDock")
+        self.dock_log.setAllowedAreas(
+            Qt.BottomDockWidgetArea | Qt.LeftDockWidgetArea | Qt.RightDockWidgetArea
+        )
+        self.dock_log.setFeatures(flags)
+        self.dock_log.setWidget(self._log_pane)
+        self.addDockWidget(Qt.BottomDockWidgetArea, self.dock_log)
+        self.dock_log.hide()
+        self.dock_log.visibilityChanged.connect(self._on_log_vis)
+        self.btn_log.toggled.connect(self._set_log_open)
+
+    def _set_dir_open(self, on):
+        if on:
+            self.dock_dir.show()
+            if not self.dock_dir.isFloating():
+                self.resizeDocks([self.dock_dir], [220], Qt.Horizontal)
+            if not self._dir_started:
+                self._dir_started = True
+                self._refresh(log=False)
+            self.dock_dir.raise_()
+        else:
+            self.dock_dir.hide()
+
+    def _on_dir_vis(self, visible):
+        self.btn_dir.blockSignals(True)
+        self.btn_dir.setChecked(bool(visible))
+        self.btn_dir.blockSignals(False)
+
+    def _set_traj_open(self, on):
+        if on:
+            self.dock_traj.show()
+            if not self.dock_traj.isFloating():
+                self.resizeDocks([self.dock_traj], [380], Qt.Horizontal)
+            self.dock_traj.raise_()
+        else:
+            self.dock_traj.hide()
+
+    def _set_log_open(self, on):
+        if on:
+            self.dock_log.show()
+            if not self.dock_log.isFloating():
+                self.resizeDocks([self.dock_log], [180], Qt.Vertical)
+            self.dock_log.raise_()
+        else:
+            self.dock_log.hide()
+
+    def _on_log_vis(self, visible):
+        self.btn_log.blockSignals(True)
+        self.btn_log.setChecked(bool(visible))
+        self.btn_log.blockSignals(False)
+
+    def _open_log_from_notice(self):
+        if not self.btn_log.isChecked():
+            self.btn_log.setChecked(True)
+        else:
+            self.dock_log.raise_()
+
+    def _on_traj_vis(self, visible):
+        self.btn_traj.blockSignals(True)
+        self.btn_traj.setChecked(bool(visible))
+        self.btn_traj.blockSignals(False)
+        self._sync_float_btn()
+
+    def _toggle_float_traj(self):
+        floating = not self.dock_traj.isFloating()
+        self.dock_traj.setFloating(floating)
+        self.dock_traj.show()
+        if floating:
+            self.dock_traj.resize(480, 640)
+        self.btn_traj.blockSignals(True)
+        self.btn_traj.setChecked(True)
+        self.btn_traj.blockSignals(False)
+        self._sync_float_btn()
+
+    def _sync_float_btn(self):
+        floating = self.dock_traj.isFloating()
+        self.btn_float.setText("贴回" if floating else "拉出")
+
+    def _on_sample_step(self, value):
+        self._sample_step_mm = float(value)
+        self._schedule_save()
 
     def _set_tip(self, text):
         # 顶栏说明已去，仅保留日志侧提示
@@ -620,8 +1026,9 @@ class EliteScriptWindow(QMainWindow):
     def _set_status(self, text, kind="info"):
         colors = {"ok": "#15803D", "err": "#DC2626", "info": "#6B7280", "busy": "#2563EB"}
         if hasattr(self, "lbl_status"):
-            self.lbl_status.setText(text)
-        if hasattr(self, "lbl_status"):
+            shown = (text or "").split("\n")[0][:80]
+            self.lbl_status.setText(shown)
+            self.lbl_status.setToolTip(shown)
             self.lbl_status.setStyleSheet("color:%s;" % colors.get(kind, "#6B7280"))
 
     def _history_item(self):
@@ -717,6 +1124,7 @@ class EliteScriptWindow(QMainWindow):
             "geometry": geo,
             "command_history": self.history[-80:],
             "open_html": bool(self.chk_open_html.isChecked()),
+            "sample_step_mm": float(self._sample_step_mm),
         }
 
     def _schedule_save(self):
@@ -755,18 +1163,8 @@ class EliteScriptWindow(QMainWindow):
             self._pose_timer.start(100)
 
     def _fill_splitter(self):
-        """两栏：左列表 |（编辑+右栏零间距）。"""
-        sp = getattr(self, "splitter", None)
-        if sp is None:
-            return
-        total = max(sp.width(), 1)
-        handles = max(sp.handleWidth(), 0)
-        left_w = 210 if total >= 900 else (180 if total >= 720 else 160)
-        mid = max(total - left_w - handles, 260)
-        used = left_w + mid + handles
-        if used < total:
-            mid += total - used
-        sp.setSizes([left_w, mid])
+        """编辑区单独占中栏；目录在侧边页里，不再挤进这条分割。"""
+        return
 
 
     def _fit_right_btns(self):
@@ -863,11 +1261,7 @@ class EliteScriptWindow(QMainWindow):
         self._sync_pose_buttons()
 
     def _on_listen_status(self, text, kind):
-        if hasattr(self, "lbl_listen"):
-            self.lbl_listen.setText(text[:72])
-        colors = {"ok": "#15803D", "err": "#DC2626", "info": "#6B7280", "busy": "#B45309"}
-        if hasattr(self, "lbl_listen"):
-            self.lbl_listen.setStyleSheet("color:%s;" % colors.get(kind, "#6B7280"))
+        self._set_status(text[:72], kind)
 
     def _on_listen_connected(self, ok):
         self._listen_connected = bool(ok)
@@ -901,8 +1295,14 @@ class EliteScriptWindow(QMainWindow):
                             with self._rec_lock:
                                 t0 = self._rec_t0
                                 if t0 is not None and len(self._rec_samples) < 500000:
+                                    step = self._sample_step_mm
+                                    prev = self._rec_samples[-1] if self._rec_samples else None
                                     for parsed in poses:
-                                        self._rec_samples.append(pose_sample(parsed, t0, now))
+                                        sample = pose_sample(parsed, t0, now)
+                                        if not keep_sample(prev, sample, step):
+                                            continue
+                                        self._rec_samples.append(sample)
+                                        prev = sample
             except Exception as exc:
                 if stop.is_set():
                     break
@@ -936,6 +1336,7 @@ class EliteScriptWindow(QMainWindow):
             with self._rec_lock:
                 n = len(self._rec_samples)
             self.lbl_rec.setText("记录中  %d 点" % n)
+        self._sync_live_path()
 
     def _start_record(self):
         if self._recording:
@@ -948,11 +1349,19 @@ class EliteScriptWindow(QMainWindow):
         with self._rec_lock:
             self._rec_samples = []
             self._rec_t0 = time.time()
+        self._live_n = -1
+        self.live.clear_path()
         self._recording = True
+        if not self.btn_traj.isChecked():
+            self.btn_traj.setChecked(True)
         self.lbl_rec.setText("记录中  0 点")
         self.lbl_rec.setStyleSheet("color:#2563EB;")
         self._sync_pose_buttons()
-        self._append("开始记录 TCP / 关节")
+        step = self._sample_step_mm
+        if step > 0:
+            self._append("开始记录 TCP / 关节，间距 %.2f mm" % step)
+        else:
+            self._append("开始记录 TCP / 关节")
 
     def _stop_record(self, open_html=None):
         if not self._recording and not self._rec_samples:
@@ -962,6 +1371,7 @@ class EliteScriptWindow(QMainWindow):
         with self._rec_lock:
             samples = list(self._rec_samples)
             self._rec_t0 = None
+        self._sync_live_path()
         if not samples:
             self.lbl_rec.setText("未采到点")
             self._append("记录停止：没有数据", "err")
@@ -986,6 +1396,15 @@ class EliteScriptWindow(QMainWindow):
             except Exception:
                 pass
 
+
+    def _sync_live_path(self):
+        with self._rec_lock:
+            n = len(self._rec_samples)
+            if n == self._live_n:
+                return
+            pts = tcp_xyz(self._rec_samples)
+        self._live_n = n
+        self.live.set_points(pts, n)
 
     def _open_traces_folder(self):
         """打开轨迹 traces 目录（与写 CSV/HTML 同路径）；缺则创建。"""
@@ -1118,7 +1537,8 @@ class EliteScriptWindow(QMainWindow):
             return
         self.script_dir = path.parent
         self._set_filename(path.name)
-        self._refresh(log=False)
+        if self._dir_started:
+            self._refresh(log=False)
         for i in range(self.lst.count()):
             item = self.lst.item(i)
             if item.text().startswith("（"):

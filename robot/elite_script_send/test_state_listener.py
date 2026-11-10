@@ -82,6 +82,32 @@ class TestTrajectory(unittest.TestCase):
         self.assertNotIn('id="chkAxes" checked', html)
         self.assertNotIn('id="chkData" checked', html)
 
+    def test_tcp_xyz_skips_missing_and_keeps_ends(self):
+        from trajectory import tcp_xyz
+
+        samples = [{"x_mm": float(i), "y_mm": 0.0, "z_mm": 1.0} for i in range(10)]
+        samples[3]["x_mm"] = None
+        pts = tcp_xyz(samples, limit=10)
+        self.assertEqual(len(pts), 9)
+        self.assertEqual(pts[0], (0.0, 0.0, 1.0))
+        many = [{"x_mm": float(i), "y_mm": 2.0, "z_mm": 3.0} for i in range(100)]
+        shown = tcp_xyz(many, limit=5)
+        self.assertEqual(len(shown), 5)
+        self.assertEqual(shown[0][0], 0.0)
+        self.assertEqual(shown[-1][0], 99.0)
+
+    def test_keep_sample_by_step(self):
+        from trajectory import keep_sample
+
+        origin = {"x_mm": 0.0, "y_mm": 0.0, "z_mm": 0.0}
+        near = {"x_mm": 0.3, "y_mm": 0.0, "z_mm": 0.0}
+        far = {"x_mm": 1.0, "y_mm": 0.0, "z_mm": 0.0}
+        self.assertTrue(keep_sample(origin, near, 0))
+        self.assertFalse(keep_sample(origin, near, 0.5))
+        self.assertTrue(keep_sample(origin, far, 0.5))
+        self.assertTrue(keep_sample(None, near, 1))
+        self.assertTrue(keep_sample(origin, {"x_mm": None, "y_mm": 0.0, "z_mm": 0.0}, 1))
+
 
 if __name__ == "__main__":
     unittest.main()
