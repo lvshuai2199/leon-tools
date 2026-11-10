@@ -24,6 +24,8 @@ cursor-usage-widget\run.bat
 
 请先打开并登录 Cursor。小组件只读本机会话。
 
+`build.bat` 会找本机已装的 VS 2022（Enterprise / Professional / Community / BuildTools），不要求一定是 Enterprise。启动失败时看 `%APPDATA%\cursor-usage-widget\startup.log`。已经在跑时再次打开会把现有用量条拉到屏幕上，不会静默退出。
+
 ## 操作
 
 - 点击展开，移开收起
