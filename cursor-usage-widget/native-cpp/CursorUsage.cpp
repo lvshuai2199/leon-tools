@@ -17,6 +17,7 @@
 #include <ctime>
 #include <sstream>
 #include <algorithm>
+#include <exception>
 #include <fstream>
 #include <regex>
 #include <set>
@@ -43,6 +44,12 @@
 #pragma comment(lib, "windowscodecs.lib")
 #pragma comment(lib, "bcrypt.lib")
 #pragma comment(lib, "crypt32.lib")
+
+// MinGW's commoncontrols.h only declares IID_IImageList unless INITGUID is set.
+#ifndef _MSC_VER
+extern "C" const GUID IID_IImageList = {
+    0x46eb5926, 0x582e, 0x4017, {0x9f, 0xdf, 0xe8, 0x99, 0x8d, 0xaa, 0x09, 0x50}};
+#endif
 
 using Gdiplus::Graphics;
 using Gdiplus::Pen;
@@ -160,12 +167,19 @@ struct JsonParser {
     J number() {
         char* end = nullptr;
         J j; j.t = J::NUM; j.n = strtod(p, &end);
-        if (end) p = end;
+        if (end && end != p) p = end;
+        else if (p < e) ++p;
         return j;
     }
     J boolean() {
         J j; j.t = J::BOOL;
-        if (*p == 't') { p += 4; j.b = true; } else { p += 5; j.b = false; }
+        if (p + 4 <= e && p[0] == 't' && p[1] == 'r' && p[2] == 'u' && p[3] == 'e') {
+            p += 4; j.b = true;
+        } else if (p + 5 <= e && p[0] == 'f' && p[1] == 'a' && p[2] == 'l' && p[3] == 's' && p[4] == 'e') {
+            p += 5; j.b = false;
+        } else if (p < e) {
+            ++p;
+        }
         return j;
     }
     J obj() {
@@ -174,7 +188,7 @@ struct JsonParser {
         if (eat('}')) return j;
         for (;;) {
             sp();
-            if (*p != '"') break;
+            if (p >= e || *p != '"') break;
             std::string k = str();
             eat(':');
             j.o[k] = val();
@@ -188,6 +202,7 @@ struct JsonParser {
         sp();
         if (eat(']')) return j;
         for (;;) {
+            if (p >= e) break;
             j.a.push_back(val());
             if (eat(']')) break;
             eat(',');
@@ -1293,7 +1308,7 @@ static std::wstring ConfigPath() {
 }
 
 static void LoadConfig() {
-    std::ifstream in(ConfigPath());
+    std::ifstream in(ConfigPath().c_str());
     if (!in) return;
     std::string line;
     while (std::getline(in, line)) {
@@ -1329,7 +1344,7 @@ static void LoadConfig() {
 }
 
 static void SaveConfig() {
-    std::ofstream out(ConfigPath());
+    std::ofstream out(ConfigPath().c_str());
     if (!out) return;
     out << "scale=" << g.scale << "\n";
     out << "dock=" << (g.dockEdge == 0 ? "left" : g.dockEdge == 2 ? "top" : "right") << "\n";
@@ -1459,20 +1474,70 @@ static void ApplyRegion(HWND h) {
     if (h) SetWindowRgn(h, nullptr, TRUE);
 }
 
+static bool WorkAreaUsable(const RECT& wa) {
+    return (wa.right - wa.left) >= 200 && (wa.bottom - wa.top) >= 200;
+}
+
+// lo>hi happens when the strip is taller than the work area, or SPI_GETWORKAREA
+// is still empty during logon. Clamping into that range parks the window off-screen.
+static int ClampAnchor(int v, int lo, int hi, int fallback) {
+    if (hi < lo) return fallback;
+    if (v < 0) v = fallback;
+    return ClampI(v, lo, hi);
+}
+
+static void StartupLog(const wchar_t* msg) {
+    if (!msg) return;
+    wchar_t ad[MAX_PATH] = {};
+    if (!GetEnvironmentVariableW(L"APPDATA", ad, MAX_PATH) || !ad[0]) return;
+    std::wstring dir = std::wstring(ad) + L"\\cursor-usage-widget";
+    CreateDirectoryW(dir.c_str(), nullptr);
+    HANDLE f = CreateFileW((dir + L"\\startup.log").c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
+                           nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (f == INVALID_HANDLE_VALUE) return;
+    SYSTEMTIME st{};
+    GetLocalTime(&st);
+    wchar_t line[640];
+    swprintf(line, 640, L"%04u-%02u-%02u %02u:%02u:%02u %ls\r\n",
+             st.wYear, st.wMonth, st.wDay, st.wHour, st.wMinute, st.wSecond, msg);
+    int n = WideCharToMultiByte(CP_UTF8, 0, line, -1, nullptr, 0, nullptr, nullptr);
+    if (n > 1) {
+        std::string u8((size_t)n - 1, 0);
+        WideCharToMultiByte(CP_UTF8, 0, line, -1, &u8[0], n, nullptr, nullptr);
+        DWORD wrote = 0;
+        WriteFile(f, u8.data(), (DWORD)u8.size(), &wrote, nullptr);
+    }
+    CloseHandle(f);
+}
+
 static void Place(HWND h) {
     RECT wa = Work();
     int w = WinW();
     int hh = WinH();
-    int x = 0, y = 0;
+    if (w < 1) w = 1;
+    if (hh < 1) hh = 1;
+    int x = 8, y = 8;
+    if (!WorkAreaUsable(wa)) {
+        SetWindowPos(h, HWND_TOPMOST, x, y, w, hh,
+                     SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_SHOWWINDOW);
+        KeepTopMost(h);
+        ApplyRegion(h);
+        RedrawWindow(h, nullptr, nullptr, RDW_INVALIDATE | RDW_UPDATENOW | RDW_NOERASE);
+        return;
+    }
     if (g.dockEdge == 2) {
-        if (g.y < 0) g.y = wa.left + (wa.right - wa.left - w) / 2;
-        g.y = ClampI(g.y, (int)wa.left + 4, (int)wa.right - w - 4);
+        int lo = (int)wa.left + 4;
+        int hi = (int)wa.right - w - 4;
+        int mid = (int)wa.left + ((int)wa.right - (int)wa.left - w) / 2;
+        g.y = ClampAnchor(g.y, lo, hi, mid);
         x = g.y;
-        y = wa.top;
+        y = (int)wa.top;
     } else {
-        if (g.y < 0) g.y = wa.top + (wa.bottom - wa.top - hh) / 2;
-        g.y = ClampI(g.y, (int)wa.top + 4, (int)wa.bottom - hh - 4);
-        x = g.dockEdge == 1 ? wa.right - w : wa.left;
+        int lo = (int)wa.top + 4;
+        int hi = (int)wa.bottom - hh - 4;
+        int mid = (int)wa.top + ((int)wa.bottom - (int)wa.top - hh) / 2;
+        g.y = ClampAnchor(g.y, lo, hi, mid);
+        x = g.dockEdge == 1 ? (int)wa.right - w : (int)wa.left;
         y = g.y;
     }
     SetWindowPos(h, HWND_TOPMOST, x, y, w, hh,
@@ -1994,6 +2059,7 @@ static constexpr UINT WM_CUW_RELOAD_CONFIG = WM_APP + 0x41;
 static constexpr UINT WM_CUW_CLEAR_HISTORY = WM_APP + 0x42;
 static constexpr UINT WM_CUW_WALLPAPER_NOW = WM_APP + 0x43;
 static constexpr UINT WM_CUW_OPEN_MANAGE_SHORTCUTS = WM_APP + 0x44;
+static constexpr UINT WM_CUW_REVEAL = WM_APP + 0x45;
 
 static void OpenSettings();
 static void RefreshSettingsShortcuts();
@@ -2346,7 +2412,7 @@ static std::vector<InstalledApp> EnumInstalledApps() {
 static void LoadShortcuts() {
     FreeShortcutIcons();
     g_shortcuts.clear();
-    std::ifstream in(ShortcutsPath());
+    std::ifstream in(ShortcutsPath().c_str());
     if (!in) return;
     std::string line;
     while (std::getline(in, line)) {
@@ -2364,7 +2430,7 @@ static void LoadShortcuts() {
 }
 
 static void SaveShortcuts() {
-    std::ofstream out(ShortcutsPath());
+    std::ofstream out(ShortcutsPath().c_str());
     if (!out) return;
     for (auto& s : g_shortcuts) out << WideToUtf8(s.path) << "\n";
 }
@@ -5059,7 +5125,19 @@ static void Paint(HWND h, HDC hdc) {
         BLENDFUNCTION bf{ AC_SRC_OVER, 0, 255, AC_SRC_ALPHA };
         // Do not pass a screen position. SetWindowPos owns placement; giving
         // UpdateLayeredWindow a Y here makes clicks miss once the window is low.
-        UpdateLayeredWindow(h, nullptr, nullptr, &sz, mem, &src, 0, &bf, ULW_ALPHA);
+        // A layered window stays invisible until this call succeeds. If it fails,
+        // blit once so startup still shows a window instead of a silent process.
+        if (!UpdateLayeredWindow(h, nullptr, nullptr, &sz, mem, &src, 0, &bf, ULW_ALPHA)) {
+            wchar_t why[96];
+            swprintf(why, 96, L"UpdateLayeredWindow failed err=%lu", GetLastError());
+            StartupLog(why);
+            HDC wnd = GetDC(h);
+            if (wnd) {
+                BitBlt(wnd, 0, 0, w, hh, mem, 0, 0, SRCCOPY);
+                ReleaseDC(h, wnd);
+            }
+            SetLayeredWindowAttributes(h, 0, 255, LWA_ALPHA);
+        }
         SelectObject(mem, old);
         DeleteObject(bmp);
     } else if (bmp) {
@@ -5071,9 +5149,19 @@ static void Paint(HWND h, HDC hdc) {
 }
 
 static DWORD WINAPI FetchThread(LPVOID) {
-    Snapshot s = FetchUsage();
-    Snapshot* heap = new Snapshot(s);
-    PostMessage(g.hwnd, WM_USAGE, 0, (LPARAM)heap);
+    Snapshot s;
+    try {
+        s = FetchUsage();
+    } catch (const std::exception& ex) {
+        s.ok = false;
+        s.error = std::string("读取失败: ") + ex.what();
+    } catch (...) {
+        s.ok = false;
+        s.error = "读取失败";
+    }
+    if (!g.hwnd || !IsWindow(g.hwnd)) return 0;
+    Snapshot* heap = new Snapshot(std::move(s));
+    if (!PostMessage(g.hwnd, WM_USAGE, 0, (LPARAM)heap)) delete heap;
     return 0;
 }
 
@@ -5088,13 +5176,16 @@ static void TrackLeave(HWND h) {
 static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     switch (m) {
     case WM_CREATE:
+        // Assign before any worker posts WM_USAGE. CreateWindowEx returns
+        // only after this handler, so g.hwnd would still be null otherwise.
+        g.hwnd = h;
         Acrylic(h);
         RefreshTheme(h);
-        Place(h);
         Refresh();
         SetTimer(h, 1, 45000, nullptr);
         SetTimer(h, 2, 2000, nullptr); // theme poll
         SetTimer(h, 4, 500, nullptr); // stay above other windows
+        SetTimer(h, 5, 500, nullptr);  // logon work-area may still be empty
         SetTimer(h, 7, 60000, nullptr); // wallpaper schedule check
         SetTimer(h, 8, 8000, nullptr);  // wallpaper first check after start
         return 0;
@@ -5112,6 +5203,32 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         Place(h);
         return 0;
     case WM_TIMER:
+        if (w == 5) {
+            static int ticks = 0;
+            ++ticks;
+            RECT wa = Work();
+            RECT wr{};
+            GetWindowRect(h, &wr);
+            RECT hit{};
+            bool onScreen = WorkAreaUsable(wa) && IntersectRect(&hit, &wr, &wa);
+            if (!onScreen) {
+                if (WorkAreaUsable(wa)) g.y = -1;
+                g.peeking = true;
+                Place(h);
+                StartupLog(L"startup reposition");
+            }
+            if (ticks >= 30 || (onScreen && ticks >= 6)) KillTimer(h, 5);
+            return 0;
+        }
+        if (w == 6) {
+            KillTimer(h, 6);
+            if (g.autoHide && !g.expanded && !g.dragging && !g.menuOpen && !CursorNearPeek()) {
+                g.peeking = false;
+                g_hideArmed = false;
+                Place(h);
+            }
+            return 0;
+        }
         if (w == 3) {
             if (g_launchAnim < 0 || GetTickCount() - g_launchAnimAt >= kLaunchAnimMs) {
                 g_launchAnim = -1;
@@ -5166,7 +5283,13 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     }
     case WM_PAINT: {
         PAINTSTRUCT ps; HDC hdc = BeginPaint(h, &ps);
-        Paint(h, hdc);
+        try {
+            Paint(h, hdc);
+        } catch (const std::exception& ex) {
+            StartupLog(Utf8ToWide(ex.what()).c_str());
+        } catch (...) {
+            StartupLog(L"paint exception");
+        }
         EndPaint(h, &ps);
         return 0;
     }
@@ -5361,6 +5484,21 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         OnClearCursorHistoryClick(h);
         return 0;
     }
+    case WM_CUW_REVEAL: {
+        g.peeking = true;
+        g_hideArmed = false;
+        KillTimer(h, 6);
+        RECT wa = Work();
+        RECT wr{};
+        GetWindowRect(h, &wr);
+        RECT hit{};
+        if (!WorkAreaUsable(wa) || !IntersectRect(&hit, &wr, &wa)) g.y = -1;
+        Place(h);
+        ShowWindow(h, SW_SHOW);
+        SetForegroundWindow(h);
+        StartupLog(L"reveal existing");
+        return 0;
+    }
     case WM_CUW_WALLPAPER_NOW: {
         LoadConfig();
         if (g_wp.enabled && WpUrlOk() && !g_wp.busy) {
@@ -5378,6 +5516,8 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
         KillTimer(h, 2);
         KillTimer(h, 3);
         KillTimer(h, 4);
+        KillTimer(h, 5);
+        KillTimer(h, 6);
         KillTimer(h, 7);
         KillTimer(h, 8);
         KillTimer(h, kHideTimer);
@@ -5387,6 +5527,14 @@ static LRESULT CALLBACK WndProc(HWND h, UINT m, WPARAM w, LPARAM l) {
     return DefWindowProc(h, m, w, l);
 }
 
+static void ShutdownRuntime(HANDLE mu) {
+    if (g.gdip) Gdiplus::GdiplusShutdown(g.gdip);
+    g.gdip = 0;
+    FreeShortcutIcons();
+    CoUninitialize();
+    if (mu) CloseHandle(mu);
+}
+
 int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     // Must run before any USER32/GDI call, or mouse coords drift when the window is not at (0,0).
     using SetDpiCtxFn = BOOL (WINAPI*)(HANDLE);
@@ -5394,17 +5542,49 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     if (!setDpi || !setDpi((HANDLE)-4))
         SetProcessDPIAware();
 
+    // CreateMutex does not clear a stale last-error on success. DPI setup above can
+    // leave one, which used to make a fresh start look like "already running" and exit.
+    SetLastError(0);
     HANDLE mu = CreateMutexW(nullptr, TRUE, L"CursorUsageWidgetCpp");
-    if (GetLastError() == ERROR_ALREADY_EXISTS) return 0;
+    if (!mu) {
+        MessageBoxW(nullptr, L"无法创建实例锁，用量条没有启动。", L"Cursor 用量", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    if (GetLastError() == ERROR_ALREADY_EXISTS) {
+        CloseHandle(mu);
+        HWND w = nullptr;
+        for (int i = 0; i < 80 && !w; ++i) {
+            w = FindWindowW(L"CursorUsageWidget", nullptr);
+            if (!w) Sleep(100);
+        }
+        if (w) {
+            ShowWindow(w, SW_SHOW);
+            PostMessageW(w, WM_CUW_REVEAL, 0, 0);
+            StartupLog(L"already running, revealed");
+            return 0;
+        }
+        StartupLog(L"already running, no window");
+        MessageBoxW(nullptr,
+                    L"用量条已在运行，但没有窗口。\n请在任务管理器结束 CursorUsage.exe 后再打开。",
+                    L"Cursor 用量", MB_OK | MB_ICONWARNING);
+        return 1;
+    }
+
     CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
     INITCOMMONCONTROLSEX icc{ sizeof(icc), ICC_LISTVIEW_CLASSES };
     InitCommonControlsEx(&icc);
     LoadConfig();
     g_wp.startupPending = g_wp.enabled && g_wp.interval == 4;
-    LoadShortcuts();
     g.dark = ReadAppsDark();
     Gdiplus::GdiplusStartupInput in;
-    Gdiplus::GdiplusStartup(&g.gdip, &in, nullptr);
+    g.gdip = 0;
+    if (Gdiplus::GdiplusStartup(&g.gdip, &in, nullptr) != Gdiplus::Ok) {
+        g.gdip = 0;
+        StartupLog(L"gdiplus startup failed");
+        MessageBoxW(nullptr, L"GDI+ 初始化失败，用量条无法启动。", L"Cursor 用量", MB_OK | MB_ICONERROR);
+        ShutdownRuntime(mu);
+        return 1;
+    }
 
     WNDCLASSEXW wc{ sizeof(wc) };
     wc.lpfnWndProc = WndProc;
@@ -5415,20 +5595,50 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
     wc.lpszClassName = L"CursorUsageWidget";
     wc.style = CS_HREDRAW | CS_VREDRAW;
     wc.hbrBackground = CreateSolidBrush(RGB(248, 248, 250));
-    RegisterClassExW(&wc);
+    if (!RegisterClassExW(&wc)) {
+        wchar_t b[96];
+        swprintf(b, 96, L"窗口类注册失败 err=%lu", GetLastError());
+        StartupLog(b);
+        MessageBoxW(nullptr, b, L"Cursor 用量", MB_OK | MB_ICONERROR);
+        ShutdownRuntime(mu);
+        return 1;
+    }
 
-    g.hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
-                             wc.lpszClassName, L"Cursor 用量",
-                             WS_POPUP,
-                             0, 0, StripW(), StripH(),
-                             nullptr, nullptr, inst, nullptr);
-    Acrylic(g.hwnd);
-    if (wc.hIcon) SendMessageW(g.hwnd, WM_SETICON, ICON_BIG, (LPARAM)wc.hIcon);
-    if (wc.hIconSm) SendMessageW(g.hwnd, WM_SETICON, ICON_SMALL, (LPARAM)wc.hIconSm);
-    Place(g.hwnd);
-    ShowWindow(g.hwnd, SW_SHOW);
-    UpdateWindow(g.hwnd);
+    // Peek immediately so a cold start is a visible strip, not a 5px edge sliver.
+    g.peeking = true;
+    HWND hwnd = CreateWindowExW(WS_EX_TOPMOST | WS_EX_TOOLWINDOW | WS_EX_LAYERED,
+                                wc.lpszClassName, L"Cursor 用量",
+                                WS_POPUP,
+                                0, 0, WinW(), WinH(),
+                                nullptr, nullptr, inst, nullptr);
+    if (!hwnd) {
+        wchar_t b[96];
+        swprintf(b, 96, L"窗口创建失败 err=%lu", GetLastError());
+        StartupLog(b);
+        MessageBoxW(nullptr, b, L"Cursor 用量", MB_OK | MB_ICONERROR);
+        ShutdownRuntime(mu);
+        return 1;
+    }
+    g.hwnd = hwnd;
+    if (wc.hIcon) SendMessageW(hwnd, WM_SETICON, ICON_BIG, (LPARAM)wc.hIcon);
+    if (wc.hIconSm) SendMessageW(hwnd, WM_SETICON, ICON_SMALL, (LPARAM)wc.hIconSm);
+    // Layered windows stay invisible until UpdateLayeredWindow. Show first, then paint.
+    ShowWindow(hwnd, SW_SHOWNA);
+    Place(hwnd);
+    StartupLog(L"window shown");
+    // Icons can take a while. Load after the strip is on screen so a second
+    // launch can find the window instead of reporting "running but no window".
+    LoadShortcuts();
     g_mouseHook = SetWindowsHookExW(WH_MOUSE_LL, MouseHookProc, GetModuleHandleW(nullptr), 0);
+    if (!g_mouseHook) {
+        StartupLog(L"mouse hook failed; keep strip visible");
+        g.peeking = true;
+        Place(hwnd);
+    } else {
+        // Hide back to the edge only after the strip has been visible for a bit.
+        // Arm this after LoadShortcuts so a slow icon load cannot eat the delay.
+        SetTimer(hwnd, 6, 4000, nullptr);
+    }
 
     MSG msg;
     while (GetMessage(&msg, nullptr, 0, 0)) {
@@ -5437,9 +5647,6 @@ int WINAPI wWinMain(HINSTANCE inst, HINSTANCE, LPWSTR, int) {
         DispatchMessage(&msg);
     }
     if (g_mouseHook) { UnhookWindowsHookEx(g_mouseHook); g_mouseHook = nullptr; }
-    Gdiplus::GdiplusShutdown(g.gdip);
-    FreeShortcutIcons();
-    CoUninitialize();
-    CloseHandle(mu);
+    ShutdownRuntime(mu);
     return 0;
 }

@@ -7,11 +7,20 @@ $settingsExe = Join-Path $qtRuntime "CursorUsageSettings.exe"
 $dist = Join-Path $root "dist"
 $setupDir = Join-Path $root "setup"
 $payloadZip = Join-Path $dist "_payload.zip"
-$vcvars = "C:\Program Files\Microsoft Visual Studio\2022\Enterprise\VC\Auxiliary\Build\vcvars64.bat"
-
-if (-not (Test-Path -LiteralPath $vcvars)) {
-  Write-Host "Missing VS2022 vcvars64.bat"
-  Write-Host $vcvars
+$vcvars = $null
+$vswhere = Join-Path ${env:ProgramFiles(x86)} "Microsoft Visual Studio\Installer\vswhere.exe"
+if (Test-Path -LiteralPath $vswhere) {
+  $found = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -find "VC\Auxiliary\Build\vcvars64.bat" | Select-Object -First 1
+  if ($found) { $vcvars = $found.Trim() }
+}
+if (-not $vcvars) {
+  foreach ($edition in @("Enterprise", "Professional", "Community", "BuildTools")) {
+    $candidate = "C:\Program Files\Microsoft Visual Studio\2022\$edition\VC\Auxiliary\Build\vcvars64.bat"
+    if (Test-Path -LiteralPath $candidate) { $vcvars = $candidate; break }
+  }
+}
+if (-not $vcvars) {
+  Write-Host "Missing VS2022 vcvars64.bat (Enterprise / Professional / Community / BuildTools)."
   exit 1
 }
 
@@ -75,7 +84,7 @@ $bat = Join-Path $setupDir "_pack.cmd"
   "cd /d `"$setupDir`""
   "rc /nologo /fo Setup.res Setup.rc"
   "if errorlevel 1 exit /b 1"
-  "cl /nologo /O2 /EHsc /utf-8 /DUNICODE /D_UNICODE /W3 Setup.cpp Setup.res /Fe:`"$outExe`" /link /SUBSYSTEM:WINDOWS ole32.lib shell32.lib shlwapi.lib user32.lib advapi32.lib uuid.lib"
+  "cl /nologo /O2 /MT /EHsc /utf-8 /DUNICODE /D_UNICODE /W3 Setup.cpp Setup.res /Fe:`"$outExe`" /link /SUBSYSTEM:WINDOWS ole32.lib shell32.lib shlwapi.lib user32.lib advapi32.lib uuid.lib"
   "if errorlevel 1 exit /b 1"
   "del /q Setup.obj Setup.res 2>nul"
 ) | Set-Content -LiteralPath $bat -Encoding ASCII

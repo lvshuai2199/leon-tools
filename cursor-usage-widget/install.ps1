@@ -113,7 +113,14 @@ if ($autoOk) {
   } catch {}
 }
 
-Start-Process -FilePath $exe
+$proc = Start-Process -FilePath $exe -PassThru
+Start-Sleep -Milliseconds 1200
+if ($proc.HasExited) {
+  Write-Host "用量条启动后立即退出，退出码 $($proc.ExitCode)。"
+  Write-Host "请查看 $cfgDir\startup.log"
+  Write-Host "若提示已在运行但看不到窗口，请在任务管理器结束 CursorUsage.exe 后再打开。"
+  exit 1
+}
 
 Write-Host ""
 Write-Host "已安装到："

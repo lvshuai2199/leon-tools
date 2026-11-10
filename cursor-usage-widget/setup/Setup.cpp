@@ -282,11 +282,30 @@ static int DoInstall() {
     SaveInstallPath(dest);
     std::wstring exe = Join(dest, L"CursorUsage.exe");
     EnableAutoStart(exe);
-    ShellExecuteW(nullptr, L"open", exe.c_str(), nullptr, nullptr, SW_SHOWNORMAL);
     std::wstring done = L"已安装到：\n" + dest +
         L"\n\n已写入开机启动。请先打开并登录 Cursor。\n"
         L"设置窗口：托盘菜单打开，或运行 qt-runtime\\CursorUsageSettings.exe\n"
         L"卸载：安装目录里的「卸载.bat」。";
+    STARTUPINFOW si{ sizeof(si) };
+    PROCESS_INFORMATION pi{};
+    std::wstring cmd = L"\"" + exe + L"\"";
+    if (!CreateProcessW(nullptr, &cmd[0], nullptr, nullptr, FALSE, 0, nullptr, dest.c_str(), &si, &pi)) {
+        std::wstring err = done + L"\n\n启动失败，错误码 " + std::to_wstring(GetLastError())
+            + L"。\n若提示缺少 DLL，请重新编译（build.bat 已静态链接运行库）。";
+        MessageBoxW(nullptr, err.c_str(), L"启动失败", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+    WaitForSingleObject(pi.hProcess, 1600);
+    DWORD code = STILL_ACTIVE;
+    GetExitCodeProcess(pi.hProcess, &code);
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    if (code != STILL_ACTIVE) {
+        std::wstring err = done + L"\n\n用量条启动后立即退出（代码 " + std::to_wstring(code)
+            + L"）。\n日志：%APPDATA%\\cursor-usage-widget\\startup.log";
+        MessageBoxW(nullptr, err.c_str(), L"启动失败", MB_OK | MB_ICONERROR);
+        return 1;
+    }
     MessageBoxW(nullptr, done.c_str(), L"安装完成", MB_OK | MB_ICONINFORMATION);
     return 0;
 }
