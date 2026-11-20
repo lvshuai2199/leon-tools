@@ -855,6 +855,7 @@ class EliteScriptWindow(QMainWindow):
 
         lay.addWidget(splitter, 1)
         self._setup_side_docks()
+        self._restore_docks()
 
         self._sync_pose_buttons()
 
@@ -964,6 +965,7 @@ class EliteScriptWindow(QMainWindow):
         self.btn_dir.blockSignals(True)
         self.btn_dir.setChecked(bool(visible))
         self.btn_dir.blockSignals(False)
+        self._schedule_save()
 
     def _set_traj_open(self, on):
         if on:
@@ -987,6 +989,7 @@ class EliteScriptWindow(QMainWindow):
         self.btn_log.blockSignals(True)
         self.btn_log.setChecked(bool(visible))
         self.btn_log.blockSignals(False)
+        self._schedule_save()
 
     def _open_log_from_notice(self):
         if not self.btn_log.isChecked():
@@ -999,6 +1002,7 @@ class EliteScriptWindow(QMainWindow):
         self.btn_traj.setChecked(bool(visible))
         self.btn_traj.blockSignals(False)
         self._sync_float_btn()
+        self._schedule_save()
 
     def _toggle_float_traj(self):
         floating = not self.dock_traj.isFloating()
@@ -1010,6 +1014,12 @@ class EliteScriptWindow(QMainWindow):
         self.btn_traj.setChecked(True)
         self.btn_traj.blockSignals(False)
         self._sync_float_btn()
+
+    def _restore_docks(self):
+        """无记录则默认收起；有记录则恢复上次目录 / 轨迹 / 日志开合。"""
+        self._set_dir_open(bool(self.cfg.get("dock_dir_open")))
+        self._set_traj_open(bool(self.cfg.get("dock_traj_open")))
+        self._set_log_open(bool(self.cfg.get("dock_log_open")))
 
     def _sync_float_btn(self):
         floating = self.dock_traj.isFloating()
@@ -1125,6 +1135,9 @@ class EliteScriptWindow(QMainWindow):
             "command_history": self.history[-80:],
             "open_html": bool(self.chk_open_html.isChecked()),
             "sample_step_mm": float(self._sample_step_mm),
+            "dock_dir_open": bool(self.btn_dir.isChecked()),
+            "dock_traj_open": bool(self.btn_traj.isChecked()),
+            "dock_log_open": bool(self.btn_log.isChecked()),
         }
 
     def _schedule_save(self):
