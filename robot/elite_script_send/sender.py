@@ -131,14 +131,56 @@ def dashboard_cmd(command, host=None, port=None, timeout=None):
         sock.close()
 
 
+def explain_dashboard(reply):
+    """把 Dashboard 英文拒绝翻成示教器上要做的事。"""
+    text = (reply or "").strip()
+    low = text.lower()
+    if "enable remote control setting" in low or "enable setting first" in low:
+        return "示教器未启用远程控制。请打开 Elite 图标 → 设置，启用远程控制后再试。"
+    if "operation mode" in low and "automatic" in low:
+        return "当前是手动模式。请在示教器先切到自动模式，再切到远程控制。"
+    if "local control mode" in low:
+        return "控制器在本地控制模式，上电/松闸/运行被拒绝。请在示教器把「本地控制」切成「远程控制」。"
+    if "enable failed" in low or "disable failed" in low:
+        return "切换控制模式失败：" + text
+    return text
+
+
+def ensure_remote_control(host=None, timeout=None):
+    """上电、松闸、运行在本地控制模式下会被拒。LOCAL 时先发 remoteControl -on。
+
+    NONE（未启用远程控制，混合模式）和 REMOTE 不改。旧固件不认识该命令时也不拦后续操作。
+    """
+    mode = dashboard_cmd("remoteControl -s", host=host, timeout=timeout).strip()
+    if mode.upper() != "LOCAL":
+        return {"ok": True, "mode": mode, "switched": False, "reply": mode}
+    switched = dashboard_cmd("remoteControl -on", host=host, timeout=timeout).strip()
+    ok = switched == "Remote control mode enabled."
+    return {
+        "ok": ok,
+        "mode": "REMOTE" if ok else mode,
+        "switched": ok,
+        "reply": switched,
+        "message": "已切换到远程控制" if ok else explain_dashboard(switched),
+    }
+
+
 def powering_on(host=None, timeout=None):
+    remote = ensure_remote_control(host=host, timeout=timeout)
+    if not remote["ok"]:
+        return {"ok": False, "reply": remote["reply"], "message": remote["message"]}
     data = dashboard_cmd("robotControl -on", host=host, timeout=timeout)
     time.sleep(0.5)
     ok = data == "Powering on"
-    return {"ok": ok, "reply": data, "message": "上电成功" if ok else data}
+    prefix = "已切换到远程控制，" if remote.get("switched") else ""
+    message = (prefix + "上电成功") if ok else explain_dashboard(data)
+    return {"ok": ok, "reply": data, "message": message}
 
 
 def powering_off(host=None, timeout=None, stop_event=None, interval=0.5, max_wait=60.0):
+    remote = ensure_remote_control(host=host, timeout=timeout)
+    if not remote["ok"]:
+        return {"ok": False, "reply": remote["reply"], "message": remote["message"]}
     started = time.time()
     last = ""
     while True:
@@ -148,11 +190,17 @@ def powering_off(host=None, timeout=None, stop_event=None, interval=0.5, max_wai
             raise SendError("下电超时: %s" % last)
         last = dashboard_cmd("robotControl -off", host=host, timeout=timeout)
         if last == "Powering off":
-            return {"ok": True, "reply": last, "message": "下电成功"}
+            prefix = "已切换到远程控制，" if remote.get("switched") else ""
+            return {"ok": True, "reply": last, "message": prefix + "下电成功"}
+        if "local control mode" in last.lower():
+            return {"ok": False, "reply": last, "message": explain_dashboard(last)}
         time.sleep(interval)
 
 
 def brake_releasing(host=None, timeout=None, stop_event=None, interval=0.5, max_wait=60.0):
+    remote = ensure_remote_control(host=host, timeout=timeout)
+    if not remote["ok"]:
+        return {"ok": False, "reply": remote["reply"], "message": remote["message"]}
     started = time.time()
     last = ""
     while True:
@@ -162,15 +210,23 @@ def brake_releasing(host=None, timeout=None, stop_event=None, interval=0.5, max_
             raise SendError("松闸超时: %s" % last)
         last = dashboard_cmd("brakeRelease", host=host, timeout=timeout)
         if last == "Brake is released.":
-            return {"ok": True, "reply": last, "message": "抱闸释放成功"}
+            prefix = "已切换到远程控制，" if remote.get("switched") else ""
+            return {"ok": True, "reply": last, "message": prefix + "抱闸释放成功"}
+        if "local control mode" in last.lower():
+            return {"ok": False, "reply": last, "message": explain_dashboard(last)}
         time.sleep(interval)
 
 
 def play(host=None, timeout=None):
+    remote = ensure_remote_control(host=host, timeout=timeout)
+    if not remote["ok"]:
+        return {"ok": False, "reply": remote["reply"], "message": remote["message"]}
     data = dashboard_cmd("play", host=host, timeout=timeout)
     time.sleep(1)
     ok = data == "Starting task"
-    return {"ok": ok, "reply": data, "message": "已启动任务" if ok else ("运行失败：" + data)}
+    prefix = "已切换到远程控制，" if remote.get("switched") else ""
+    message = (prefix + "已启动任务") if ok else ("运行失败：" + explain_dashboard(data))
+    return {"ok": ok, "reply": data, "message": message}
 
 
 def task(host=None, timeout=None):
