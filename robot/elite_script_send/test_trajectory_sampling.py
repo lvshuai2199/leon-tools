@@ -1,0 +1,120 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+import json
+from pathlib import Path
+import tempfile
+import unittest
+
+from trajectory import keep_sample
+
+
+def point(x, y=0, z=0):
+    return dict(x_mm=x, y_mm=y, z_mm=z)
+
+
+class DistanceSamplingTest(unittest.TestCase):
+    def test_first_and_distance_boundaries(self):
+        self.assertTrue(keep_sample(None, point(0), 1, strict=True))
+        for value in (0, 0.5, 1):
+            self.assertFalse(keep_sample(point(0), point(value), 1, strict=True))
+        self.assertTrue(keep_sample(point(0), point(1.001), 1, strict=True))
+
+    def test_xyz_euclidean_distance(self):
+        self.assertFalse(keep_sample(point(0), point(3, 4, 0), 5, strict=True))
+        self.assertTrue(keep_sample(point(0), point(3, 4, 1), 5, strict=True))
+        self.assertTrue(keep_sample(point(0), point(-6), 5, strict=True))
+
+    def test_reference_is_last_recorded_not_last_received(self):
+        kept = []
+        for value in (0, 0.6, 1.1, 1.6, 2.2):
+            sample = point(value)
+            if keep_sample(kept[-1] if kept else None, sample, 1, strict=True):
+                kept.append(sample)
+        self.assertEqual([p['x_mm'] for p in kept], [0, 1.1, 2.2])
+
+    def test_invalid_current_is_not_recorded(self):
+        for sample in ({}, point(None), point(float('nan')), point(float('inf'))):
+            self.assertFalse(keep_sample(None, sample, 1, strict=True))
+            self.assertFalse(keep_sample(point(0), sample, 1, strict=True))
+
+    def test_invalid_old_reference_reseeds_after_enabling(self):
+        self.assertTrue(keep_sample({}, point(0), 1, strict=True))
+
+    def test_disabled_and_legacy_semantics_unchanged(self):
+        self.assertTrue(keep_sample(point(0), point(0), 0))
+        self.assertTrue(keep_sample(point(0), point(1), 1))
+
+
+try:
+    import elite_script_send_qt as ui
+    from PySide6.QtWidgets import QApplication
+except ImportError:
+    ui = None
+
+
+@unittest.skipIf(ui is None, 'PySide6 UI not installed')
+class DistanceSwitchUiTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.root = Path(self.temp.name)
+        self.old_path, self.old_dir = ui.SETTINGS_PATH, ui.app_dir
+        ui.SETTINGS_PATH = self.root / 'last_settings.json'
+        ui.app_dir = lambda: self.root
+        self.windows = []
+
+    def tearDown(self):
+        for window in self.windows:
+            window.close()
+            window.deleteLater()
+        self.app.processEvents()
+        ui.SETTINGS_PATH, ui.app_dir = self.old_path, self.old_dir
+        self.temp.cleanup()
+
+    def make_window(self, settings=None):
+        if settings is not None:
+            ui.SETTINGS_PATH.write_text(json.dumps(settings), encoding='utf-8')
+        window = ui.EliteScriptWindow()
+        window._boot_after_show_done = True
+        self.windows.append(window)
+        return window
+
+    def test_toggle_persistence_and_live_filter(self):
+        window = self.make_window({})
+        self.assertFalse(window.chk_distance_filter.isChecked())
+        self.assertFalse(window.sp_step.isEnabled())
+        self.assertTrue(window._should_record_sample(point(0), point(0)))
+        window.chk_distance_filter.setChecked(True)
+        window.sp_step.setValue(2.5)
+        self.assertTrue(window.sp_step.isEnabled())
+        self.assertFalse(window._should_record_sample(point(0), point(2.5)))
+        self.assertTrue(window._should_record_sample(point(0), point(2.51)))
+        window.chk_distance_filter.setChecked(False)
+        self.assertEqual(window.sp_step.value(), 2.5)
+        self.assertTrue(window._should_record_sample(point(0), point(0)))
+        window._save_now()
+        restored = self.make_window()
+        self.assertFalse(restored.chk_distance_filter.isChecked())
+        self.assertEqual(restored.sp_step.value(), 2.5)
+        restored.chk_distance_filter.setChecked(True)
+        restored._save_now()
+        enabled = self.make_window()
+        self.assertTrue(enabled.chk_distance_filter.isChecked())
+        self.assertEqual(enabled.sp_step.value(), 2.5)
+
+    def test_legacy_nonzero_threshold_stays_enabled(self):
+        window = self.make_window({'sample_step_mm': 3.25})
+        self.assertTrue(window.chk_distance_filter.isChecked())
+        self.assertEqual(window.sp_step.value(), 3.25)
+
+    def test_legacy_zero_stays_unfiltered(self):
+        window = self.make_window({'sample_step_mm': 0})
+        self.assertFalse(window.chk_distance_filter.isChecked())
+        self.assertFalse(window.sp_step.isEnabled())
+
+
+if __name__ == '__main__':
+    unittest.main()

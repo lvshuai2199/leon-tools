@@ -5,6 +5,7 @@ from __future__ import print_function
 
 import csv
 import json
+import math
 import time
 from pathlib import Path
 
@@ -77,9 +78,26 @@ def _downsample(samples, limit):
     return out
 
 
-def keep_sample(prev, sample, min_mm):
-    """采集间距。min_mm<=0 或没有上一点时保留；否则相对上一点的位移达到间距才保留。"""
-    if min_mm <= 0 or prev is None:
+def keep_sample(prev, sample, min_mm, strict=False):
+    """采集间距；strict=True 要求有效 XYZ 且严格超过间距，默认保留旧采样语义。"""
+    if min_mm <= 0:
+        return True
+    if strict:
+        # GUI 的独立过滤开关：无有效 XYZ 时不能判断距离，不写入记录。
+        try:
+            current = tuple(float(sample[key]) for key in ("x_mm", "y_mm", "z_mm"))
+        except (KeyError, TypeError, ValueError, OverflowError):
+            return False
+        if not all(math.isfinite(value) for value in current):
+            return False
+        if prev is not None:
+            try:
+                previous = tuple(float(prev[key]) for key in ("x_mm", "y_mm", "z_mm"))
+            except (KeyError, TypeError, ValueError, OverflowError):
+                return True  # 从未过滤模式切入时，以首个有效点重新建立基准。
+            if not all(math.isfinite(value) for value in previous):
+                return True
+    if prev is None:
         return True
     x, y, z = sample.get("x_mm"), sample.get("y_mm"), sample.get("z_mm")
     px, py, pz = prev.get("x_mm"), prev.get("y_mm"), prev.get("z_mm")
@@ -89,7 +107,8 @@ def keep_sample(prev, sample, min_mm):
     dy = float(y) - float(py)
     dz = float(z) - float(pz)
     need = float(min_mm)
-    return dx * dx + dy * dy + dz * dz >= need * need
+    distance_sq = dx * dx + dy * dy + dz * dz
+    return distance_sq > need * need if strict else distance_sq >= need * need
 
 
 def tcp_xyz(samples, limit=LIVE_MAX_POINTS):

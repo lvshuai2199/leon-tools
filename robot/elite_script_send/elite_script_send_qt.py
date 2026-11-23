@@ -478,6 +478,11 @@ class EliteScriptWindow(QMainWindow):
             self._sample_step_mm = float(self.cfg.get("sample_step_mm") or 0)
         except (TypeError, ValueError):
             self._sample_step_mm = 0.0
+        self._distance_filter_enabled = bool(self.cfg.get(
+            "distance_filter_enabled", self._sample_step_mm > 0))
+        if not math.isfinite(self._sample_step_mm) or self._sample_step_mm <= 0:
+            self._sample_step_mm = 1.0
+        self._sample_step_mm = min(50.0, max(0.01, self._sample_step_mm))
 
         self._bridge = _Bridge()
         self._bridge.listen_status.connect(self._on_listen_status)
@@ -866,13 +871,18 @@ class EliteScriptWindow(QMainWindow):
         traj_l.setContentsMargins(8, 4, 8, 6)
         traj_l.setSpacing(4)
         self.sp_step = QDoubleSpinBox()
-        self.sp_step.setRange(0, 50)
+        self.sp_step.setRange(0.01, 50)
         self.sp_step.setDecimals(2)
         self.sp_step.setSingleStep(0.1)
         self.sp_step.setSuffix(" mm")
         self.sp_step.setFixedWidth(88)
         self.sp_step.setValue(self._sample_step_mm)
-        self.sp_step.setToolTip("采集间距。0 表示每个状态包都记；大于 0 时，相对上一个已记录点移动超过该距离才记一点。")
+        self.sp_step.setToolTip("相对上一个已记录点的 TCP 空间距离；只有严格超过该毫米数才记录，等于或小于不记录。")
+        self.sp_step.setEnabled(self._distance_filter_enabled)
+        self.chk_distance_filter = QCheckBox("按距离记录")
+        self.chk_distance_filter.setChecked(self._distance_filter_enabled)
+        self.chk_distance_filter.setToolTip("首个有效 TCP 点先记录，之后只记录离上一个已记录点超过设定距离的点；关闭后不做距离过滤。")
+        self.chk_distance_filter.toggled.connect(self._on_distance_filter)
         self.sp_step.valueChanged.connect(self._on_sample_step)
         self.live = LiveTrajectoryView()
         self.chk_axes = QCheckBox("坐标系")
@@ -892,7 +902,7 @@ class EliteScriptWindow(QMainWindow):
         self.btn_float.clicked.connect(self._toggle_float_traj)
         traj_bar = _TrajToolBar()
         traj_bar.set_groups(
-            [QLabel("间距"), self.sp_step, self.chk_axes, self.btn_open_html, self.btn_open_traces],
+            [self.chk_distance_filter, self.sp_step, self.chk_axes, self.btn_open_html, self.btn_open_traces],
             [self.btn_clear_traj, self.btn_float],
         )
         traj_l.addWidget(traj_bar)
@@ -1105,6 +1115,16 @@ class EliteScriptWindow(QMainWindow):
         floating = self.dock_traj.isFloating()
         self.btn_float.setText("贴回" if floating else "拉出")
 
+    def _on_distance_filter(self, enabled):
+        self._distance_filter_enabled = bool(enabled)
+        self.sp_step.setEnabled(self._distance_filter_enabled)
+        self._schedule_save()
+
+    def _should_record_sample(self, prev, sample):
+        enabled = self._distance_filter_enabled
+        step = self._sample_step_mm if enabled else 0.0
+        return keep_sample(prev, sample, step, strict=enabled)
+
     def _on_sample_step(self, value):
         self._sample_step_mm = float(value)
         self._schedule_save()
@@ -1214,6 +1234,7 @@ class EliteScriptWindow(QMainWindow):
             "geometry": geo,
             "command_history": self.history[-80:],
             "sample_step_mm": float(self._sample_step_mm),
+            "distance_filter_enabled": bool(self._distance_filter_enabled),
             "dock_dir_open": bool(self.btn_dir.isChecked()),
             "dock_traj_open": bool(self.btn_traj.isChecked()),
             "dock_log_open": bool(self.btn_log.isChecked()),
@@ -1387,11 +1408,10 @@ class EliteScriptWindow(QMainWindow):
                             with self._rec_lock:
                                 t0 = self._rec_t0
                                 if t0 is not None and len(self._rec_samples) < 500000:
-                                    step = self._sample_step_mm
                                     prev = self._rec_samples[-1] if self._rec_samples else None
                                     for parsed in poses:
                                         sample = pose_sample(parsed, t0, now)
-                                        if not keep_sample(prev, sample, step):
+                                        if not self._should_record_sample(prev, sample):
                                             continue
                                         self._rec_samples.append(sample)
                                         prev = sample
@@ -1451,8 +1471,8 @@ class EliteScriptWindow(QMainWindow):
         self._sync_pose_buttons()
         self._sync_traj_actions()
         step = self._sample_step_mm
-        if step > 0:
-            self._append("开始记录 TCP / 关节，间距 %.2f mm" % step)
+        if self._distance_filter_enabled:
+            self._append("开始记录 TCP / 关节，按距离记录：超过 %.2f mm" % step)
         else:
             self._append("开始记录 TCP / 关节")
 
