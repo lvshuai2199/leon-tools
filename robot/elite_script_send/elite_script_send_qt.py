@@ -309,7 +309,10 @@ class LiveTrajectoryView(QWidget):
         pos = event.position()
         x, y = pos.x(), pos.y()
         lx, ly = self._drag
-        self.yaw += (x - lx) * 0.008
+        # Below the horizontal plane the projected yaw direction reverses.
+        # Re-evaluate on every move so a drag crossing the plane stays consistent.
+        yaw_sign = 1.0 if self.pitch >= 0.0 else -1.0
+        self.yaw += (x - lx) * 0.008 * yaw_sign
         self.pitch += (y - ly) * 0.008
         if self.pitch > 1.4:
             self.pitch = 1.4
