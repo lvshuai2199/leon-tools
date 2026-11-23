@@ -161,6 +161,9 @@ class LiveTrajectoryView(QWidget):
     def clear_path(self):
         self.set_points([], 0)
 
+    def has_path(self):
+        return bool(self._pts)
+
     def _bounds(self, include_origin):
         pts = self._pts
         if not pts:
@@ -358,6 +361,75 @@ class _Bridge(QObject):
     listen_status = Signal(str, str)
     listen_connected = Signal(bool)  # True=socket ok; False=retrying/disconnected
     work_done = Signal(str, object, object, bool)  # title, result, err, force
+
+
+
+class _TrajToolBar(QWidget):
+    """一行：间距、坐标系、打开HTML、打开文件夹、清除轨迹、拉出；放不下则第二行从左放清除轨迹。"""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self._leading = []
+        self._trailing = []
+        self._wrapped = None
+        lay = QVBoxLayout(self)
+        lay.setContentsMargins(0, 0, 0, 0)
+        lay.setSpacing(4)
+        self._row1 = QHBoxLayout()
+        self._row1.setContentsMargins(0, 0, 0, 0)
+        self._row1.setSpacing(8)
+        self._row2_host = QWidget()
+        self._row2 = QHBoxLayout(self._row2_host)
+        self._row2.setContentsMargins(0, 0, 0, 0)
+        self._row2.setSpacing(8)
+        lay.addLayout(self._row1)
+        lay.addWidget(self._row2_host)
+        self._row2_host.hide()
+
+    def set_groups(self, leading, trailing):
+        self._leading = list(leading)
+        self._trailing = list(trailing)
+        self._wrapped = None
+        self._place(False)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        QTimer.singleShot(0, self._relayout)
+
+    def _needed_width(self):
+        widgets = self._leading + self._trailing
+        if not widgets:
+            return 0
+        return sum(max(w.sizeHint().width(), w.minimumWidth()) for w in widgets) + 8 * (len(widgets) - 1)
+
+    def _relayout(self):
+        wrap = self.width() < self._needed_width() + 4
+        if wrap == self._wrapped:
+            return
+        self._place(wrap)
+
+    def _clear_layout(self, layout):
+        while layout.count():
+            item = layout.takeAt(0)
+            w = item.widget()
+            if w is not None:
+                w.setParent(self)
+
+    def _place(self, wrap):
+        self._clear_layout(self._row1)
+        self._clear_layout(self._row2)
+        for w in self._leading:
+            self._row1.addWidget(w)
+        if wrap:
+            for w in self._trailing:
+                self._row2.addWidget(w)
+            self._row2.addStretch(1)
+            self._row2_host.show()
+        else:
+            for w in self._trailing:
+                self._row1.addWidget(w)
+            self._row2_host.hide()
+        self._wrapped = wrap
 
 
 class EliteScriptWindow(QMainWindow):
@@ -786,9 +858,6 @@ class EliteScriptWindow(QMainWindow):
         traj_l = QVBoxLayout(traj)
         traj_l.setContentsMargins(8, 4, 8, 6)
         traj_l.setSpacing(4)
-        traj_bar = QHBoxLayout()
-        traj_bar.setSpacing(8)
-        traj_bar.addWidget(QLabel("间距"))
         self.sp_step = QDoubleSpinBox()
         self.sp_step.setRange(0, 50)
         self.sp_step.setDecimals(2)
@@ -798,25 +867,28 @@ class EliteScriptWindow(QMainWindow):
         self.sp_step.setValue(self._sample_step_mm)
         self.sp_step.setToolTip("采集间距。0 表示每个状态包都记；大于 0 时，相对上一个已记录点移动超过该距离才记一点。")
         self.sp_step.valueChanged.connect(self._on_sample_step)
-        traj_bar.addWidget(self.sp_step)
         self.live = LiveTrajectoryView()
         self.chk_axes = QCheckBox("坐标系")
         self.chk_axes.toggled.connect(self.live.set_axes)
-        traj_bar.addWidget(self.chk_axes)
-        traj_bar.addStretch(1)
-        self.chk_open_html = QCheckBox("打开HTML")
-        self.chk_open_html.setChecked(bool(self.cfg.get("open_html", False)))
-        self.chk_open_html.toggled.connect(lambda *_: self._schedule_save())
-        traj_bar.addWidget(self.chk_open_html)
+        self.btn_open_html = self._tool_btn("打开HTML", self._open_latest_html, min_w=88)
+        self.btn_open_html.setFixedHeight(29)
+        self.btn_open_html.setToolTip("打开 traces 目录里最新一份录制的 HTML。没有文件时不可用。")
         self.btn_open_traces = self._tool_btn("打开文件夹", self._open_traces_folder, min_w=88)
-        self.btn_open_traces.setFixedHeight(26)
-        traj_bar.addWidget(self.btn_open_traces)
+        self.btn_open_traces.setFixedHeight(29)
+        self.btn_clear_traj = self._tool_btn("清除轨迹", self._clear_current_traj, min_w=88)
+        self.btn_clear_traj.setFixedHeight(29)
+        self.btn_clear_traj.setToolTip("清除当前显示/记录的轨迹。正在记录时先停止再清除，不删除已保存的历史文件。")
+        self.btn_clear_traj.setEnabled(False)
         self.btn_float = QPushButton("拉出")
-        self.btn_float.setFixedHeight(26)
+        self.btn_float.setFixedHeight(29)
         self.btn_float.setToolTip("拉成独立窗口；再点一次贴回侧边")
         self.btn_float.clicked.connect(self._toggle_float_traj)
-        traj_bar.addWidget(self.btn_float)
-        traj_l.addLayout(traj_bar)
+        traj_bar = _TrajToolBar()
+        traj_bar.set_groups(
+            [QLabel("间距"), self.sp_step, self.chk_axes, self.btn_open_html, self.btn_open_traces],
+            [self.btn_clear_traj, self.btn_float],
+        )
+        traj_l.addWidget(traj_bar)
         traj_hint = QLabel("拖动旋转 · 滚轮缩放 · 双击复位")
         traj_hint.setObjectName("muted")
         traj_l.addWidget(traj_hint)
@@ -1020,6 +1092,7 @@ class EliteScriptWindow(QMainWindow):
         self._set_dir_open(bool(self.cfg.get("dock_dir_open")))
         self._set_traj_open(bool(self.cfg.get("dock_traj_open")))
         self._set_log_open(bool(self.cfg.get("dock_log_open")))
+        self._sync_traj_actions()
 
     def _sync_float_btn(self):
         floating = self.dock_traj.isFloating()
@@ -1133,7 +1206,6 @@ class EliteScriptWindow(QMainWindow):
             "dashboard": self.ed_dash.text().strip(),
             "geometry": geo,
             "command_history": self.history[-80:],
-            "open_html": bool(self.chk_open_html.isChecked()),
             "sample_step_mm": float(self._sample_step_mm),
             "dock_dir_open": bool(self.btn_dir.isChecked()),
             "dock_traj_open": bool(self.btn_traj.isChecked()),
@@ -1370,6 +1442,7 @@ class EliteScriptWindow(QMainWindow):
         self.lbl_rec.setText("记录中  0 点")
         self.lbl_rec.setStyleSheet("color:#2563EB;")
         self._sync_pose_buttons()
+        self._sync_traj_actions()
         step = self._sample_step_mm
         if step > 0:
             self._append("开始记录 TCP / 关节，间距 %.2f mm" % step)
@@ -1388,6 +1461,7 @@ class EliteScriptWindow(QMainWindow):
         if not samples:
             self.lbl_rec.setText("未采到点")
             self._append("记录停止：没有数据", "err")
+            self._sync_traj_actions()
             return
         stamp = time.strftime("%Y%m%d_%H%M%S")
         folder = app_dir() / "traces"
@@ -1401,13 +1475,7 @@ class EliteScriptWindow(QMainWindow):
         self.lbl_rec.setStyleSheet("color:#15803D;")
         self._append("轨迹 CSV   %s" % csv_path, "ok")
         self._append("轨迹 HTML  %s" % html_path, "ok")
-        if open_html is None:
-            open_html = bool(self.chk_open_html.isChecked())
-        if open_html:
-            try:
-                webbrowser.open(html_path.resolve().as_uri())
-            except Exception:
-                pass
+        self._sync_traj_actions()
 
 
     def _sync_live_path(self):
@@ -1418,6 +1486,7 @@ class EliteScriptWindow(QMainWindow):
             pts = tcp_xyz(self._rec_samples)
         self._live_n = n
         self.live.set_points(pts, n)
+        self._sync_traj_actions()
 
     def _open_traces_folder(self):
         """打开轨迹 traces 目录（与写 CSV/HTML 同路径）；缺则创建。"""
@@ -1428,15 +1497,71 @@ class EliteScriptWindow(QMainWindow):
             self._append("已打开轨迹目录  %s" % folder, "ok")
         except OSError as exc:
             self._append("打开轨迹目录失败: %s" % exc, "err")
+        self._sync_traj_actions()
+
+    def _latest_traj_html(self):
+        folder = app_dir() / "traces"
+        if not folder.is_dir():
+            return None
+        files = []
+        try:
+            for p in folder.glob("traj_*.html"):
+                if p.is_file() and not p.name.endswith("_marked.html"):
+                    files.append(p)
+        except OSError:
+            return None
+        if not files:
+            return None
+        return max(files, key=lambda p: (p.stat().st_mtime, p.name))
+
+    def _open_latest_html(self):
+        path = self._latest_traj_html()
+        if path is None:
+            self._sync_traj_actions()
+            return
+        try:
+            webbrowser.open(path.resolve().as_uri())
+            self._append("已打开最新轨迹 HTML  %s" % path, "ok")
+        except Exception as exc:
+            self._append("打开 HTML 失败: %s" % exc, "err")
+
+    def _clear_current_traj(self):
+        if self._recording:
+            self._stop_record(open_html=False)
+        with self._rec_lock:
+            self._rec_samples = []
+            self._rec_t0 = None
+        self._live_n = -1
+        self.live.clear_path()
+        self.lbl_rec.setText("")
+        self._sync_pose_buttons()
+        self._sync_traj_actions()
+        self._append("已清除当前记录轨迹")
+
+    def _sync_traj_actions(self):
+        if hasattr(self, "btn_clear_traj"):
+            has = bool(self._recording) or bool(self.live.has_path())
+            if not has:
+                with self._rec_lock:
+                    has = bool(self._rec_samples)
+            self.btn_clear_traj.setEnabled(has)
+        if hasattr(self, "btn_open_html"):
+            self.btn_open_html.setEnabled(self._latest_traj_html() is not None)
 
     # ----- files / editor -----
     def _append(self, line, kind="info"):
         colors = {"ok": "#15803D", "err": "#DC2626", "busy": "#2563EB", "info": "#1F2937"}
-        fmt = QTextCharFormat()
-        fmt.setForeground(QColor(colors.get(kind, "#111111")))
+        time_fmt = QTextCharFormat()
+        time_fmt.setForeground(QColor("#6B7280"))
+        time_fmt.setFont(QFont("Consolas", 10))
+        body_fmt = QTextCharFormat()
+        body_fmt.setForeground(QColor(colors.get(kind, "#111111")))
+        stamp = time.strftime("%Y-%m-%d %H:%M:%S")
         cur = self.log.textCursor()
         cur.movePosition(QTextCursor.End)
-        cur.insertText(line + "\n", fmt)
+        cur.insertText(stamp, time_fmt)
+        cur.insertText(" ", time_fmt)
+        cur.insertText(line + "\n", body_fmt)
         self.log.setTextCursor(cur)
         self.log.ensureCursorVisible()
         self._set_status(line.split("\n")[0][:80], kind)
