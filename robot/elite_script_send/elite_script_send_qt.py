@@ -385,6 +385,7 @@ class _TrajToolBar(QWidget):
         lay.addLayout(self._row1)
         lay.addWidget(self._row2_host)
         self._row2_host.hide()
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Preferred)
 
     def set_groups(self, leading, trailing):
         self._leading = list(leading)
@@ -400,10 +401,13 @@ class _TrajToolBar(QWidget):
         widgets = self._leading + self._trailing
         if not widgets:
             return 0
-        return sum(max(w.sizeHint().width(), w.minimumWidth()) for w in widgets) + 8 * (len(widgets) - 1)
+        return sum(max(w.sizeHint().width(), w.minimumSizeHint().width(), w.minimumWidth()) for w in widgets) + 8 * (len(widgets) - 1)
 
     def _relayout(self):
-        wrap = self.width() < self._needed_width() + 4
+        # 宽度尚未就绪时不要先折行，避免一直锁在第二行
+        if self.width() <= 1:
+            return
+        wrap = self.width() < self._needed_width() + 8
         if wrap == self._wrapped:
             return
         self._place(wrap)
@@ -1043,7 +1047,7 @@ class EliteScriptWindow(QMainWindow):
         if on:
             self.dock_traj.show()
             if not self.dock_traj.isFloating():
-                self.resizeDocks([self.dock_traj], [380], Qt.Horizontal)
+                self.resizeDocks([self.dock_traj], [600], Qt.Horizontal)
             self.dock_traj.raise_()
         else:
             self.dock_traj.hide()
