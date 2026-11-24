@@ -115,6 +115,32 @@ class DistanceSwitchUiTest(unittest.TestCase):
         self.assertFalse(window.chk_distance_filter.isChecked())
         self.assertFalse(window.sp_step.isEnabled())
 
+    def test_clear_traj_restarts_recording(self):
+        window = self.make_window({})
+        window._recording = True
+        with window._rec_lock:
+            window._rec_samples = [point(0), point(10)]
+            window._rec_t0 = 1.0
+        window._clear_current_traj()
+        self.assertTrue(window._recording)
+        with window._rec_lock:
+            self.assertEqual(window._rec_samples, [])
+            self.assertGreater(window._rec_t0, 1.0)
+        self.assertEqual(window.lbl_rec.text(), "记录中  0 点")
+        self.assertEqual(window.btn_record.text(), "停止记录")
+
+    def test_clear_traj_without_recording_stays_stopped(self):
+        window = self.make_window({})
+        with window._rec_lock:
+            window._rec_samples = [point(0)]
+            window._rec_t0 = 1.0
+        window._clear_current_traj()
+        self.assertFalse(window._recording)
+        with window._rec_lock:
+            self.assertEqual(window._rec_samples, [])
+            self.assertIsNone(window._rec_t0)
+        self.assertEqual(window.lbl_rec.text(), "")
+
 
 if __name__ == '__main__':
     unittest.main()

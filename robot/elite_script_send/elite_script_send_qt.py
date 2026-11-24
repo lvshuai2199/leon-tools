@@ -894,7 +894,7 @@ class EliteScriptWindow(QMainWindow):
         self.btn_open_traces.setFixedHeight(29)
         self.btn_clear_traj = self._tool_btn("清除轨迹", self._clear_current_traj, min_w=88)
         self.btn_clear_traj.setFixedHeight(29)
-        self.btn_clear_traj.setToolTip("清除当前显示/记录的轨迹。正在记录时先停止再清除，不删除已保存的历史文件。")
+        self.btn_clear_traj.setToolTip("清除当前显示/记录的轨迹。正在记录时清空后继续记录，不删除已保存的历史文件。")
         self.btn_clear_traj.setEnabled(False)
         self.btn_float = QPushButton("拉出")
         self.btn_float.setFixedHeight(29)
@@ -1553,17 +1553,21 @@ class EliteScriptWindow(QMainWindow):
             self._append("打开 HTML 失败: %s" % exc, "err")
 
     def _clear_current_traj(self):
-        if self._recording:
-            self._stop_record(open_html=False)
+        was_recording = self._recording
         with self._rec_lock:
             self._rec_samples = []
-            self._rec_t0 = None
+            self._rec_t0 = time.time() if was_recording else None
         self._live_n = -1
         self.live.clear_path()
-        self.lbl_rec.setText("")
+        if was_recording:
+            self.lbl_rec.setText("记录中  0 点")
+            self.lbl_rec.setStyleSheet("color:#2563EB;")
+            self._append("已清除当前记录轨迹，重新开始记录")
+        else:
+            self.lbl_rec.setText("")
+            self._append("已清除当前记录轨迹")
         self._sync_pose_buttons()
         self._sync_traj_actions()
-        self._append("已清除当前记录轨迹")
 
     def _sync_traj_actions(self):
         if hasattr(self, "btn_clear_traj"):
