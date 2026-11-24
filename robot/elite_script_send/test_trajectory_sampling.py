@@ -5,7 +5,7 @@ from pathlib import Path
 import tempfile
 import unittest
 
-from trajectory import keep_sample
+from trajectory import ORBIT_PITCH_MAX, ORBIT_PITCH_MIN, keep_sample, orbit_view
 
 
 def point(x, y=0, z=0):
@@ -43,6 +43,29 @@ class DistanceSamplingTest(unittest.TestCase):
     def test_disabled_and_legacy_semantics_unchanged(self):
         self.assertTrue(keep_sample(point(0), point(0), 0))
         self.assertTrue(keep_sample(point(0), point(1), 1))
+
+
+class OrbitViewTest(unittest.TestCase):
+    def test_horizontal_drag_keeps_yaw_direction(self):
+        for pitch in (0.0, 0.5, 1.2, -0.8):
+            yaw, out_pitch = orbit_view(0.0, pitch, 10, 0)
+            self.assertGreater(yaw, 0.0)
+            self.assertGreaterEqual(out_pitch, ORBIT_PITCH_MIN)
+
+    def test_pitch_stops_at_horizon(self):
+        yaw, pitch = orbit_view(0.75, 0.05, 0, -100)
+        self.assertEqual(yaw, 0.75)
+        self.assertEqual(pitch, ORBIT_PITCH_MIN)
+
+    def test_pitch_stops_at_top(self):
+        yaw, pitch = orbit_view(0.75, 1.3, 0, 100)
+        self.assertEqual(yaw, 0.75)
+        self.assertEqual(pitch, ORBIT_PITCH_MAX)
+
+    def test_crossing_horizon_does_not_invert_yaw(self):
+        yaw, pitch = orbit_view(1.0, 0.01, 5, -20)
+        self.assertGreater(yaw, 1.0)
+        self.assertGreaterEqual(pitch, ORBIT_PITCH_MIN)
 
 
 try:

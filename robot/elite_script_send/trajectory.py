@@ -20,6 +20,20 @@ CSV_FIELDS = [
 
 HTML_MAX_POINTS = 8000
 LIVE_MAX_POINTS = 4000
+ORBIT_SENSITIVITY = 0.008
+ORBIT_PITCH_MIN = 0.0
+ORBIT_PITCH_MAX = 1.4
+
+
+def orbit_view(yaw, pitch, dx, dy, sensitivity=ORBIT_SENSITIVITY):
+    """转盘视角：水平拖动始终同一方向绕 Z；俯仰停在 XY 平面上方，避免翻到下面镜像。"""
+    yaw = yaw + dx * sensitivity
+    pitch = pitch + dy * sensitivity
+    if pitch > ORBIT_PITCH_MAX:
+        pitch = ORBIT_PITCH_MAX
+    elif pitch < ORBIT_PITCH_MIN:
+        pitch = ORBIT_PITCH_MIN
+    return yaw, pitch
 
 
 def pose_sample(parsed, t0, now=None):
@@ -216,6 +230,8 @@ var canvas = document.getElementById("c");
 var ctx = canvas.getContext("2d");
 var yaw = savedState.yaw != null ? savedState.yaw : 0.75;
 var pitch = savedState.pitch != null ? savedState.pitch : 0.5;
+if (pitch < 0) pitch = 0;
+if (pitch > 1.4) pitch = 1.4;
 var dist = savedState.dist != null ? savedState.dist : 1;
 var drag = false, lx = 0, ly = 0, hover = -1, picked = -1, downX = 0, downY = 0;
 var marks = savedState.marks || [];
@@ -507,7 +523,7 @@ window.addEventListener("mousemove", function(e){
     var moved=(e.clientX-downX)*(e.clientX-downX)+(e.clientY-downY)*(e.clientY-downY);
     if (moved < 16) return;
     yaw += (e.clientX-lx)*0.008; pitch += (e.clientY-ly)*0.008;
-    if(pitch>1.4) pitch=1.4; if(pitch<-1.4) pitch=-1.4;
+    if(pitch>1.4) pitch=1.4; if(pitch<0) pitch=0;
     lx=e.clientX; ly=e.clientY; draw();
     return;
   }
