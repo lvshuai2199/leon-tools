@@ -8,5 +8,6 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+python -c "from pathlib import Path; import shutil; root=Path(r'build\dist')/'Elite脚本下发'/'_internal'/'PySide6'; names=['opengl32sw.dll','Qt6Quick.dll','Qt6Qml.dll','Qt6QmlModels.dll','Qt6QmlMeta.dll','Qt6QmlWorkerScript.dll','Qt6Pdf.dll','Qt6OpenGL.dll','Qt6Network.dll','Qt6Svg.dll','Qt6VirtualKeyboard.dll']; [(root/n).unlink() for n in names if (root/n).exists()]; plugins=root/'plugins'; [shutil.rmtree(plugins/n) for n in ['generic','iconengines','imageformats','networkinformation','platforminputcontexts','tls'] if (plugins/n).exists()]; trans=root/'translations'; shutil.rmtree(trans) if trans.exists() else None; [p.unlink() for p in (plugins/'platforms').glob('*.dll') if p.name.lower()!='qwindows.dll']; keep={'QtCore.pyd','QtGui.pyd','QtWidgets.pyd'}; [p.unlink() for p in root.glob('Qt*.pyd') if p.name not in keep]"
 echo 已生成 %~dp0Elite脚本下发.exe
 pause

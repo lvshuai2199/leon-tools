@@ -165,7 +165,7 @@ def write_html(path, samples):
     html = html.replace(
         "__STATE__",
         json.dumps(
-            {"marks": [], "yaw": 0.75, "pitch": 0.5, "dist": 1, "axes": False, "data": False, "marking": False},
+            {"marks": [], "yaw": 0.75, "pitch": 0.5, "dist": 1, "panX": 0, "panY": 0, "axes": False, "data": False, "marking": False},
             ensure_ascii=False,
         ),
     )
@@ -199,7 +199,7 @@ _HTML_TEMPLATE = r"""<!DOCTYPE html>
 </head>
 <body>
 <div id="bar">
-  <span>TCP 轨迹（mm） 记录 __COUNT__ 点 / 显示 __SHOWN__ 点 · 拖动旋转 · 悬停看点</span>
+  <span>TCP 轨迹（mm） 记录 __COUNT__ 点 / 显示 __SHOWN__ 点 · 左键旋转 · 右键平移 · 悬停看点</span>
   <label><input type="checkbox" id="chkAxes"/> 坐标系</label>
   <label><input type="checkbox" id="chkData"/> 坐标数据</label>
   <label><input type="checkbox" id="chkMark"/> 标记</label>
@@ -233,7 +233,8 @@ var pitch = savedState.pitch != null ? savedState.pitch : 0.5;
 if (pitch < -1.4) pitch = -1.4;
 if (pitch > 1.4) pitch = 1.4;
 var dist = savedState.dist != null ? savedState.dist : 1;
-var drag = false, lx = 0, ly = 0, hover = -1, picked = -1, downX = 0, downY = 0;
+var panX = savedState.panX || 0, panY = savedState.panY || 0;
+var drag = false, dragPan = false, lx = 0, ly = 0, hover = -1, picked = -1, downX = 0, downY = 0;
 var marks = savedState.marks || [];
 var PAL = ["#29b6f6","#ab47bc","#ff7043","#26a69a","#ec407a","#7e57c2","#66bb6a","#ffa726"];
 var chkAxes = document.getElementById("chkAxes");
@@ -274,7 +275,7 @@ function project(x,y,z){
   var x1=x*cy - y*sy, y1=x*sy + y*cy;
   var y2=y1*cp - z*sp, z2=y1*sp + z*cp;
   var s = Math.min(canvas.width, canvas.height) * 0.86 / (B.r * dist * 2);
-  return [canvas.width/2 + x1*s, canvas.height/2 - z2*s];
+  return [canvas.width/2 + x1*s + panX, canvas.height/2 - z2*s + panY];
 }
 function drawAxes(){
   var step = niceStep(B.r*2);
@@ -418,7 +419,7 @@ function hitMark(mx,my){
   return best;
 }
 function saveHtml(){
-  var st={marks:marks, yaw:yaw, pitch:pitch, dist:dist, axes:!!chkAxes.checked, data:!!chkData.checked, marking:!!chkMark.checked};
+  var st={marks:marks, yaw:yaw, pitch:pitch, dist:dist, panX:panX, panY:panY, axes:!!chkAxes.checked, data:!!chkData.checked, marking:!!chkMark.checked};
   document.getElementById("savedState").textContent=JSON.stringify(st);
   if (chkAxes.checked) chkAxes.setAttribute("checked","checked"); else chkAxes.removeAttribute("checked");
   if (chkData.checked) chkData.setAttribute("checked","checked"); else chkData.removeAttribute("checked");
@@ -500,12 +501,15 @@ document.getElementById("btnOk").addEventListener("click", confirmMark);
 document.getElementById("btnCancel").addEventListener("click", cancelMark);
 document.getElementById("nameIn").addEventListener("keydown", function(e){ if(e.key==="Enter") confirmMark(); });
 side.className = savedState.data ? "" : "hidden";
+canvas.addEventListener("contextmenu", function(e){ e.preventDefault(); });
 canvas.addEventListener("mousedown", function(e){
+  dragPan = e.button===2 || e.button===1 || (e.button===0 && e.shiftKey);
+  if (e.button!==0 && !dragPan) return;
   drag=true; lx=e.clientX; ly=e.clientY; downX=e.clientX; downY=e.clientY;
-  canvas.style.cursor="grabbing";
+  canvas.style.cursor = dragPan ? "move" : "grabbing";
 });
 window.addEventListener("mouseup", function(e){
-  if (drag && chkMark.checked){
+  if (drag && !dragPan && chkMark.checked){
     var dx=e.clientX-downX, dy=e.clientY-downY;
     if (dx*dx+dy*dy < 16){
       var rec=canvas.getBoundingClientRect();
@@ -515,15 +519,19 @@ window.addEventListener("mouseup", function(e){
       setPicked(hit);
     }
   }
-  drag=false;
+  drag=false; dragPan=false;
   canvas.style.cursor="grab";
 });
 window.addEventListener("mousemove", function(e){
   if(drag){
     var moved=(e.clientX-downX)*(e.clientX-downX)+(e.clientY-downY)*(e.clientY-downY);
     if (moved < 16) return;
-    yaw += (e.clientX-lx)*0.008; pitch += (e.clientY-ly)*0.008;
-    if(pitch>1.4) pitch=1.4; if(pitch<-1.4) pitch=-1.4;
+    if (dragPan){
+      panX += e.clientX-lx; panY += e.clientY-ly;
+    } else {
+      yaw += (e.clientX-lx)*0.008; pitch += (e.clientY-ly)*0.008;
+      if(pitch>1.4) pitch=1.4; if(pitch<-1.4) pitch=-1.4;
+    }
     lx=e.clientX; ly=e.clientY; draw();
     return;
   }
@@ -537,7 +545,10 @@ canvas.addEventListener("wheel", function(e){
   dist *= (e.deltaY>0 ? 1.08 : 0.92);
   if(dist<0.2) dist=0.2; if(dist>8) dist=8; draw();
 }, {passive:false});
-window.addEventListener("blur", function(){ drag=false; canvas.style.cursor="grab"; });
+window.addEventListener("blur", function(){ drag=false; dragPan=false; canvas.style.cursor="grab"; });
+canvas.addEventListener("dblclick", function(){
+  yaw=0.75; pitch=0.5; dist=1; panX=0; panY=0; draw();
+});
 syncMarkMode();
 chkMark.addEventListener("change", syncMarkMode);
 fillStats();
