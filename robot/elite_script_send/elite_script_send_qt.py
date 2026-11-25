@@ -132,7 +132,7 @@ def _nice_step(span):
 
 
 class LiveTrajectoryView(QWidget):
-    """记录过程中的 TCP 三维折线。投影和离线 HTML 一致：拖动旋转，滚轮缩放。"""
+    """记录过程中的 TCP 三维折线。投影和离线 HTML 一致：左键旋转，右键平移，滚轮缩放。"""
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -141,12 +141,15 @@ class LiveTrajectoryView(QWidget):
         self.yaw = 0.75
         self.pitch = 0.5
         self.dist = 1.0
+        self.pan_x = 0.0
+        self.pan_y = 0.0
         self.show_axes = False
         self._drag = None
         self.setMinimumHeight(140)
         self.setMouseTracking(True)
         self.setFocusPolicy(Qt.WheelFocus)
         self.setCursor(Qt.OpenHandCursor)
+        self.setContextMenuPolicy(Qt.NoContextMenu)
         self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
     def set_axes(self, on):
@@ -214,7 +217,7 @@ class LiveTrajectoryView(QWidget):
         y1 = x * sy + y * cy
         z2 = y1 * sp + z * cp
         scale = min(width, height) * 0.86 / (radius * self.dist * 2.0)
-        return width / 2.0 + x1 * scale, height / 2.0 - z2 * scale
+        return width / 2.0 + x1 * scale + self.pan_x, height / 2.0 - z2 * scale + self.pan_y
 
     def _draw_axes(self, painter, center, radius, width, height):
         step = _nice_step(radius * 2.0)
@@ -296,10 +299,16 @@ class LiveTrajectoryView(QWidget):
         painter.end()
 
     def mousePressEvent(self, event):
-        if event.button() == Qt.LeftButton:
+        button = event.button()
+        pan = button in (Qt.RightButton, Qt.MiddleButton) or (
+            button == Qt.LeftButton and bool(event.modifiers() & Qt.ShiftModifier)
+        )
+        if button == Qt.LeftButton or pan:
             pos = event.position()
-            self._drag = (pos.x(), pos.y())
-            self.setCursor(Qt.ClosedHandCursor)
+            self._drag = (pos.x(), pos.y(), "pan" if pan else "orbit")
+            self.setCursor(Qt.SizeAllCursor if pan else Qt.ClosedHandCursor)
+            event.accept()
+            return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -308,9 +317,13 @@ class LiveTrajectoryView(QWidget):
             return
         pos = event.position()
         x, y = pos.x(), pos.y()
-        lx, ly = self._drag
-        self.yaw, self.pitch = orbit_view(self.yaw, self.pitch, x - lx, y - ly)
-        self._drag = (x, y)
+        lx, ly, mode = self._drag
+        if mode == "pan":
+            self.pan_x += x - lx
+            self.pan_y += y - ly
+        else:
+            self.yaw, self.pitch = orbit_view(self.yaw, self.pitch, x - lx, y - ly)
+        self._drag = (x, y, mode)
         self.update()
 
     def mouseReleaseEvent(self, event):
@@ -322,6 +335,8 @@ class LiveTrajectoryView(QWidget):
         self.yaw = 0.75
         self.pitch = 0.5
         self.dist = 1.0
+        self.pan_x = 0.0
+        self.pan_y = 0.0
         self._drag = None
         self.update()
         super().mouseDoubleClickEvent(event)
@@ -898,7 +913,7 @@ class EliteScriptWindow(QMainWindow):
             [self.btn_clear_traj, self.btn_float],
         )
         traj_l.addWidget(traj_bar)
-        traj_hint = QLabel("拖动旋转 · 滚轮缩放 · 双击复位")
+        traj_hint = QLabel("左键旋转 · 右键平移 · 滚轮缩放 · 双击复位")
         traj_hint.setObjectName("muted")
         traj_l.addWidget(traj_hint)
         traj_l.addWidget(self.live, 1)

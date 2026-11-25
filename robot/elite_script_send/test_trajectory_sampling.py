@@ -52,8 +52,13 @@ class OrbitViewTest(unittest.TestCase):
             self.assertGreater(yaw, 0.0)
             self.assertGreaterEqual(out_pitch, ORBIT_PITCH_MIN)
 
-    def test_pitch_stops_at_horizon(self):
+    def test_upward_drag_continues_past_overhead(self):
         yaw, pitch = orbit_view(0.75, 0.05, 0, -100)
+        self.assertEqual(yaw, 0.75)
+        self.assertAlmostEqual(pitch, -0.75)
+
+    def test_pitch_stops_at_lower_limit(self):
+        yaw, pitch = orbit_view(0.75, -1.3, 0, -100)
         self.assertEqual(yaw, 0.75)
         self.assertEqual(pitch, ORBIT_PITCH_MIN)
 
