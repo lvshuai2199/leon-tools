@@ -1,3 +1,0 @@
-1 ICON "..\\native-cpp\\usage-mark.ico"
-100 RCDATA "..\\dist\\_payload.zip"
-1 24 "..\\native-cpp\\CursorUsage.manifest"
